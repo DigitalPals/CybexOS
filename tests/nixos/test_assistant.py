@@ -1,4 +1,4 @@
-"""The NerdOS Assistant service against fake agent CLIs and speech-dispatcher.
+"""The Cybex OS Assistant service against fake agent CLIs and speech-dispatcher.
 
 No model is ever called: `claude` and `codex` are small scripts speaking the
 same stream-json control protocol and app-server JSON-RPC as the real CLIs.
@@ -19,9 +19,9 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "desktop" / "assistant"))
 
-from nerdos_assistant import auth, policy, prompt, speech  # noqa: E402
-from nerdos_assistant.protocol import encode, iter_lines, parse_json  # noqa: E402
-from nerdos_assistant.server import RESTARTED, Server  # noqa: E402
+from cybexos_assistant import auth, policy, prompt, speech  # noqa: E402
+from cybexos_assistant.protocol import encode, iter_lines, parse_json  # noqa: E402
+from cybexos_assistant.server import RESTARTED, Server  # noqa: E402
 
 
 FAKE_CLAUDE = r'''
@@ -91,23 +91,23 @@ while True:
         second = ask("r2", "Bash", {"command": "touch ~/y"})
         finish(first["behavior"] + "/" + second["behavior"])
     elif "edit" in text:
-        target = home / ".config/nerdos/shell.json"
+        target = home / ".config/cybexos/shell.json"
         answer = ask("r1", "Edit", {"file_path": str(target), "old_string": "a", "new_string": "b"})
         if answer["behavior"] == "allow":
             target.write_text('{"bar": "transparent"}\n')
         finish("edited")
     elif "plugin" in text:
-        target = home / ".local/share/nerdos/plugins/personal.cputemp/manifest.json"
+        target = home / ".local/share/cybexos/plugins/personal.cputemp/manifest.json"
         answer = ask("r1", "Write", {"file_path": str(target), "content": "{}"})
         if answer["behavior"] == "allow":
             target.parent.mkdir(parents=True)
             target.write_text(json.dumps({"id": "personal.cputemp", "name": "CPU temperature"}))
         finish("widget")
     elif "stage" in text:
-        Path(os.environ["NERDOS_ASSISTANT_STATUS"]).write_text(json.dumps({
+        Path(os.environ["CYBEXOS_ASSISTANT_STATUS"]).write_text(json.dumps({
             "transaction": "b" * 32, "state": "ready", "phase": "Built and checked",
             "changes": "obsidian: + 1.9.12", "reviewToken": "c" * 64}))
-        answer = ask("r1", "Bash", {"command": "nerd update apply " + "b" * 32 + " " + "c" * 64})
+        answer = ask("r1", "Bash", {"command": "cybex update apply " + "b" * 32 + " " + "c" * 64})
         finish("applied" if answer["behavior"] == "allow" else "not applied")
     elif "hang" in text:
         say("working")
@@ -210,7 +210,7 @@ while True:
                               "cwd": str(home), "reason": "Clean up", "startedAtMs": 0, "kind": "command", "environmentId": None})
             final("decision:" + result["decision"])
         elif "edit" in text:
-            target = home / ".config/nerdos/shell.json"
+            target = home / ".config/cybexos/shell.json"
             notify("item/started", {"threadId": "th-1", "turnId": "tu-1", "item": {
                 "type": "fileChange", "id": "f1", "status": "inProgress",
                 "changes": [{"path": str(target), "kind": {"type": "update", "move_path": None}, "diff": "-a\n+b"}]}})
@@ -305,23 +305,23 @@ class Harness:
         self.runtime = self.root / "r"
         self.home.mkdir()
         self.runtime.mkdir(mode=0o700)
-        (self.home / ".config/nerdos").mkdir(parents=True)
-        (self.home / ".config/nerdos/shell.json").write_text('{"bar": "solid"}\n')
+        (self.home / ".config/cybexos").mkdir(parents=True)
+        (self.home / ".config/cybexos/shell.json").write_text('{"bar": "solid"}\n')
         self.log = self.root / "log.jsonl"
         self.status = self.root / "status.json"
         self.status.write_text(json.dumps({"transaction": "a" * 32, "state": "done"}))
         self.bin = self.root / "bin"
         self.bin.mkdir()
         env = {"HOME": str(self.home), "XDG_RUNTIME_DIR": str(self.runtime), "PATH": os.environ.get("PATH", ""),
-               "FAKE_LOG": str(self.log), "NERDOS_ASSISTANT_STATUS": str(self.status),
-               "NERDOS_ASSISTANT_SPEECHD": str(self.runtime / "speechd.sock")}
+               "FAKE_LOG": str(self.log), "CYBEXOS_ASSISTANT_STATUS": str(self.status),
+               "CYBEXOS_ASSISTANT_SPEECHD": str(self.runtime / "speechd.sock")}
         for name, source, wanted in (("claude", FAKE_CLAUDE, claude), ("codex", FAKE_CODEX, codex)):
             path = self.bin / name
             path.write_text(f"#!{sys.executable}\n" + textwrap.dedent(source))
             path.chmod(0o755)
-            env["NERDOS_ASSISTANT_" + name.upper()] = str(path) if wanted else str(self.bin / "absent")
+            env["CYBEXOS_ASSISTANT_" + name.upper()] = str(path) if wanted else str(self.bin / "absent")
         self.env = env
-        self.socket = self.runtime / "nerdos" / "assistant.sock"
+        self.socket = self.runtime / "cybexos" / "assistant.sock"
         self.state = self.root / "state"
         self.server = None
 
@@ -467,7 +467,7 @@ class AuthenticationTest(ServiceTest):
         self.assertEqual(self.harness.server.resolve('claude', status['agents']), 'claude')
         invalid = await self.client.call('auth.login', {'agent': '../../bad'})
         self.assertEqual(invalid['error']['code'], -32602)
-        self.harness.server.env['NERDOS_ASSISTANT_CODEX'] = str(self.harness.bin / 'absent')
+        self.harness.server.env['CYBEXOS_ASSISTANT_CODEX'] = str(self.harness.bin / 'absent')
         missing = await self.client.call('auth.login', {'agent': 'codex'})
         self.assertEqual(missing['error']['code'], -32003)
 
@@ -503,17 +503,17 @@ class PolicyTest(unittest.TestCase):
 
     def test_read_only_commands_are_allowed(self):
         for command in ("ls -la ~/.config", "cat /etc/os-release | head -5", "hyprctl -j monitors",
-                        "nerd update status", "systemctl --user status quickshell.service",
-                        "journalctl --user -u quickshell -n 50", "jq .bar ~/.config/nerdos/shell.json",
+                        "cybex update status", "systemctl --user status quickshell.service",
+                        "journalctl --user -u quickshell -n 50", "jq .bar ~/.config/cybexos/shell.json",
                         "git status", "bash -c 'ls -la'", "rg -n foo ~/.config 2>/dev/null",
-                        "cd ~/.config && ls", "uname -a; id", "nerd plugin list", "cat $HOME/.bashrc"):
+                        "cd ~/.config && ls", "uname -a; id", "cybex plugin list", "cat $HOME/.bashrc"):
             self.assertEqual(self.decide(command).action, "allow", command)
 
     def test_staging_is_allowed_and_applying_needs_review(self):
-        staged = self.decide("nerd update stage local")
+        staged = self.decide("cybex update stage local")
         self.assertEqual((staged.action, staged.step), ("allow", "Waiting for administrator authentication"))
-        self.assertEqual(self.decide("nerd software stage '{\"add\": [\"obsidian\"]}'").action, "allow")
-        apply = self.decide("nerd update apply " + "0" * 32 + " " + "1" * 64)
+        self.assertEqual(self.decide("cybex software stage '{\"add\": [\"obsidian\"]}'").action, "allow")
+        apply = self.decide("cybex update apply " + "0" * 32 + " " + "1" * 64)
         self.assertEqual((apply.action, apply.card["kind"]), ("ask", "apply"))
         self.assertIsNone(apply.key)
 
@@ -521,7 +521,7 @@ class PolicyTest(unittest.TestCase):
         for command, fragment in (("sudo rm -rf /", "administrator"), ("cd /tmp && sudo ls", "administrator"),
                                   ("echo $(pkexec id)", "administrator"), ("nixos-rebuild switch", "reviewed"),
                                   ("systemctl reboot", "restarts"), ("reboot", "restarts"),
-                                  ("loginctl suspend", "restarts"), ("nerd update rollback", "Rollback"),
+                                  ("loginctl suspend", "restarts"), ("cybex update rollback", "Rollback"),
                                   ("env FOO=1 sudo id", "administrator")):
             decision = self.decide(command)
             self.assertEqual(decision.action, "deny", command)
@@ -531,7 +531,7 @@ class PolicyTest(unittest.TestCase):
         for command in ("rm -rf ~/x", "echo hi > /tmp/x", "find . -delete", "fd -x rm", "rg x --pre=sh",
                         "sort -o out in", "git push", "hyprctl dispatch exec kitty", "cat $FOO",
                         "ls & rm x", "ls && rm x", "bash -c 'rm x'", "journalctl --vacuum-size=1M",
-                        "./ls", "nerd plugin enable personal.x", "yq -i .a f", "uniq a b",
+                        "./ls", "cybex plugin enable personal.x", "yq -i .a f", "uniq a b",
                         # Evaluation can read the environment, fetch and build.
                         "nix eval --expr 'builtins.getEnv \"HOME\"'", "nix eval nixpkgs#hello.version",
                         "nix search nixpkgs hello", "nix-instantiate --eval -E 1",
@@ -546,21 +546,21 @@ class PolicyTest(unittest.TestCase):
             status = Path(directory) / "status.json"
             status.write_text(json.dumps({"transaction": "f" * 32, "state": "ready", "phase": "Built and checked",
                                           "changes": "obsidian: ∅ → 1.9.12"}))
-            card = policy.decide_command("nerd update apply " + "f" * 32 + " " + "e" * 64, self.home, status).card
+            card = policy.decide_command("cybex update apply " + "f" * 32 + " " + "e" * 64, self.home, status).card
             self.assertEqual((card["transaction"], card["ready"], card["detail"]), ("f" * 32, True, "Built and checked"))
             self.assertIn("obsidian", card["changes"])
-            other = policy.decide_command("nerd update apply " + "d" * 32 + " " + "e" * 64, self.home, status).card
+            other = policy.decide_command("cybex update apply " + "d" * 32 + " " + "e" * 64, self.home, status).card
             self.assertEqual((other["changes"], other["ready"]), ("", False))
 
     def test_tools_and_edits(self):
         home = self.home
         self.assertEqual(policy.decide_tool("Read", {"file_path": "/etc/passwd"}, home).action, "allow")
         self.assertEqual(policy.decide_tool("WebFetch", {"url": "https://nixos.org"}, home).action, "allow")
-        preference = policy.decide_tool("Edit", {"file_path": "~/.config/nerdos/shell.json"}, home)
-        self.assertEqual((preference.action, preference.paths), ("allow", [home + "/.config/nerdos/shell.json"]))
-        plugin = policy.decide_tool("Write", {"file_path": home + "/.local/share/nerdos/plugins/p.x/W.qml"}, home)
+        preference = policy.decide_tool("Edit", {"file_path": "~/.config/cybexos/shell.json"}, home)
+        self.assertEqual((preference.action, preference.paths), ("allow", [home + "/.config/cybexos/shell.json"]))
+        plugin = policy.decide_tool("Write", {"file_path": home + "/.local/share/cybexos/plugins/p.x/W.qml"}, home)
         self.assertEqual(plugin.action, "allow")
-        for vendor in ("/nix/store/abc-x/y", "/etc/nerdos/release.json", "/run/current-system/sw/bin/x"):
+        for vendor in ("/nix/store/abc-x/y", "/etc/cybexos/release.json", "/run/current-system/sw/bin/x"):
             self.assertEqual(policy.decide_tool("Write", {"file_path": vendor}, home).action, "deny")
         other = policy.decide_tool("Write", {"file_path": "notes.txt", "content": "one\ntwo"}, home)
         self.assertEqual((other.action, other.card["path"], other.card["diff"]), ("ask", "~/notes.txt", "+ one\n+ two"))
@@ -573,23 +573,23 @@ class PolicyTest(unittest.TestCase):
     def test_a_link_out_of_the_personal_directories_is_an_ordinary_edit(self):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
-            (home / ".config/nerdos").mkdir(parents=True)
+            (home / ".config/cybexos").mkdir(parents=True)
             (home / ".bashrc").write_text("# shell\n")
-            (home / ".config/nerdos/evil").symlink_to(home / ".bashrc")
-            linked = policy.decide_edit(["~/.config/nerdos/evil"], str(home))
+            (home / ".config/cybexos/evil").symlink_to(home / ".bashrc")
+            linked = policy.decide_edit(["~/.config/cybexos/evil"], str(home))
             self.assertEqual((linked.action, linked.card["kind"]), ("ask", "edit"))
             (home / "dotfiles").mkdir()
-            (home / ".local/share/nerdos").mkdir(parents=True)
-            (home / ".local/share/nerdos/plugins").symlink_to(home / "dotfiles")
-            self.assertEqual(policy.decide_edit(["~/.local/share/nerdos/plugins/p.x/W.qml"], str(home)).action, "ask",
+            (home / ".local/share/cybexos").mkdir(parents=True)
+            (home / ".local/share/cybexos/plugins").symlink_to(home / "dotfiles")
+            self.assertEqual(policy.decide_edit(["~/.local/share/cybexos/plugins/p.x/W.qml"], str(home)).action, "ask",
                              "a linked parent directory counts as well")
-            self.assertEqual(policy.decide_edit(["~/.config/nerdos/shell.json"], str(home)).action, "allow")
+            self.assertEqual(policy.decide_edit(["~/.config/cybexos/shell.json"], str(home)).action, "allow")
 
 
 class SnapshotTest(unittest.TestCase):
     def setUp(self):
         self.home = Path(tempfile.mkdtemp())
-        self.shell = self.home / ".config/nerdos/shell.json"
+        self.shell = self.home / ".config/cybexos/shell.json"
         self.shell.parent.mkdir(parents=True)
         self.shell.write_text("before")
         os.chmod(self.shell, 0o640)
@@ -600,19 +600,19 @@ class SnapshotTest(unittest.TestCase):
     def test_undo_restores_preferences_and_removes_created_files(self):
         snapshots = policy.Snapshots(self.home)
         snapshots.begin()
-        widget = self.home / ".local/share/nerdos/plugins/personal.cpu/Widget.qml"
+        widget = self.home / ".local/share/cybexos/plugins/personal.cpu/Widget.qml"
         snapshots.take(str(widget))
         self.shell.write_text("after")
         widget.parent.mkdir(parents=True)
         widget.write_text("Item {}")
-        self.assertEqual(snapshots.finish(), ["~/.config/nerdos/shell.json",
-                                              "~/.local/share/nerdos/plugins/personal.cpu/Widget.qml"])
+        self.assertEqual(snapshots.finish(), ["~/.config/cybexos/shell.json",
+                                              "~/.local/share/cybexos/plugins/personal.cpu/Widget.qml"])
         restored, skipped = snapshots.undo()
         self.assertEqual((len(restored), skipped), (2, []))
         self.assertEqual(self.shell.read_text(), "before")
         self.assertEqual(self.shell.stat().st_mode & 0o777, 0o640)
         self.assertFalse(widget.parent.exists())
-        self.assertTrue((self.home / ".local/share/nerdos/plugins").exists())
+        self.assertTrue((self.home / ".local/share/cybexos/plugins").exists())
 
     def test_later_edits_are_not_overwritten(self):
         snapshots = policy.Snapshots(self.home)
@@ -621,7 +621,7 @@ class SnapshotTest(unittest.TestCase):
         snapshots.finish()
         self.shell.write_text("person")
         restored, skipped = snapshots.undo()
-        self.assertEqual((restored, skipped), ([], ["~/.config/nerdos/shell.json"]))
+        self.assertEqual((restored, skipped), ([], ["~/.config/cybexos/shell.json"]))
         self.assertEqual(self.shell.read_text(), "person")
 
     def test_unchanged_files_are_not_listed(self):
@@ -632,7 +632,7 @@ class SnapshotTest(unittest.TestCase):
     def test_plugins_and_staged_changes(self):
         before = policy.plugin_manifests(self.home)
         for identifier, name in (("personal.cputemp", "CPU temperature"), ("Bad ID", "x")):
-            folder = self.home / ".local/share/nerdos/plugins" / identifier.replace(" ", "")
+            folder = self.home / ".local/share/cybexos/plugins" / identifier.replace(" ", "")
             folder.mkdir(parents=True)
             (folder / "manifest.json").write_text(json.dumps({"id": identifier, "name": name}))
         self.assertEqual(policy.new_plugins(before, policy.plugin_manifests(self.home)),
@@ -654,7 +654,7 @@ class TextTest(unittest.TestCase):
             environment.systemPackages = [ pkgs.obsidian ];
             ```
             ```sh
-            nerd update status
+            cybex update status
             ```
             That's it!""")
         self.assertEqual(speech.sentences(reply), [
@@ -667,12 +667,12 @@ class TextTest(unittest.TestCase):
             (Path(directory) / "release.json").write_text(json.dumps({"version": "1.2.3"}))
             (Path(directory) / "developer-enabled").write_text("enabled\n")
             built = prompt.build(release_path=Path(directory) / "release.json", feature_dir=directory)
-        self.assertIn("NerdOS 1.2.3", built)
+        self.assertIn("Cybex OS 1.2.3", built)
         self.assertIn("feature groups: developer", built)
-        self.assertIn("nerd update apply TRANSACTION REVIEW_TOKEN", built)
+        self.assertIn("cybex update apply TRANSACTION REVIEW_TOKEN", built)
         self.assertEqual(prompt.turn_text("Hi", {}), "Hi")
         noted = prompt.turn_text("Why?", {"output": "DP-1", "speak": True}, screenshot=True)
-        self.assertTrue(noted.startswith("[NerdOS: A screenshot of the display the person is looking at (DP-1)"))
+        self.assertTrue(noted.startswith("[Cybex OS: A screenshot of the display the person is looking at (DP-1)"))
         self.assertIn("read aloud", noted)
         self.assertTrue(noted.endswith("]\nWhy?"))
 
@@ -731,11 +731,11 @@ class ClaudeTest(ServiceTest):
     async def test_preference_edit_is_allowed_and_undoable(self):
         turn = await self.ask("edit the bar")
         done = await self.client.finished()
-        self.assertEqual((done["text"], done["undo"]), ("edited", ["~/.config/nerdos/shell.json"]))
-        shell = self.harness.home / ".config/nerdos/shell.json"
+        self.assertEqual((done["text"], done["undo"]), ("edited", ["~/.config/cybexos/shell.json"]))
+        shell = self.harness.home / ".config/cybexos/shell.json"
         self.assertIn("transparent", shell.read_text())
         undone = await self.client.result("turn.undo", {"id": turn["id"]})
-        self.assertEqual(undone, {"restored": ["~/.config/nerdos/shell.json"], "skipped": []})
+        self.assertEqual(undone, {"restored": ["~/.config/cybexos/shell.json"], "skipped": []})
         self.assertEqual(shell.read_text(), '{"bar": "solid"}\n')
         self.assertEqual((await self.client.turn(lambda turn: not turn["undo"]))["undo"], [])
         again = await self.client.call("turn.undo", {"id": turn["id"]})
@@ -745,7 +745,7 @@ class ClaudeTest(ServiceTest):
         await self.ask("make a plugin")
         done = await self.client.finished()
         self.assertEqual(done["plugins"], [{"id": "personal.cputemp", "name": "CPU temperature"}])
-        self.assertEqual(done["undo"], ["~/.local/share/nerdos/plugins/personal.cputemp/manifest.json"])
+        self.assertEqual(done["undo"], ["~/.local/share/cybexos/plugins/personal.cputemp/manifest.json"])
 
     async def test_staged_change_and_apply_card(self):
         await self.ask("stage obsidian")
@@ -777,7 +777,7 @@ class ClaudeTest(ServiceTest):
         self.assertEqual((done["status"], done["errorKind"]), ("failed", "auth"))
 
     async def test_screenshot_is_attached_and_deleted(self):
-        shots = self.harness.runtime / "nerdos" / "assistant"
+        shots = self.harness.runtime / "cybexos" / "assistant"
         shot = shots / "screen.jpg"
         shot.write_bytes(b"\xff\xd8fake")
         turn = await self.ask("what is this image", screenshot=str(shot), context={"output": "DP-1"})
@@ -791,7 +791,7 @@ class ClaudeTest(ServiceTest):
         self.assertEqual(rejected["error"]["code"], -32602)
 
     async def test_missing_agent_and_invalid_requests(self):
-        self.harness.server.env["NERDOS_ASSISTANT_CLAUDE"] = str(self.harness.bin / "absent")
+        self.harness.server.env["CYBEXOS_ASSISTANT_CLAUDE"] = str(self.harness.bin / "absent")
         self.harness.server.discovered = (0.0, {})
         await self.ask("hello")
         done = await self.client.finished()
@@ -839,7 +839,7 @@ class ClaudeTest(ServiceTest):
         state = self.harness.state / "state.json"
         state.write_text(json.dumps({"version": 1, "conversation": {"agent": "claude", "claude": "sess-9"},
                                      "turn": {"id": "t-1", "agent": "claude", "prompt": "p", "status": "running",
-                                              "text": "half", "undo": ["~/.config/nerdos/shell.json"]}}))
+                                              "text": "half", "undo": ["~/.config/cybexos/shell.json"]}}))
         server = await self.harness.start()
         self.client = await Client().open(self.harness.socket)
         turn = (await self.client.result("hello"))["turn"]
@@ -864,7 +864,7 @@ class CodexTest(ServiceTest):
         thread = entries[3]["params"]
         self.assertEqual((thread["sandbox"], thread["approvalPolicy"], thread["cwd"]),
                          ("read-only", "on-request", str(self.harness.home)))
-        self.assertIn("NerdOS Assistant", thread["developerInstructions"])
+        self.assertIn("Cybex OS Assistant", thread["developerInstructions"])
         handoff = await self.client.result("conversation.handoff")
         self.assertEqual(handoff["argv"][1:], ["resume", "th-1"])
 
@@ -878,7 +878,7 @@ class CodexTest(ServiceTest):
     async def test_preference_patch_is_accepted(self):
         await self.ask("edit preferences")
         done = await self.client.finished()
-        self.assertEqual((done["text"], done["undo"]), ("decision:accept", ["~/.config/nerdos/shell.json"]))
+        self.assertEqual((done["text"], done["undo"]), ("decision:accept", ["~/.config/cybexos/shell.json"]))
 
     async def test_unsupported_requests_are_declined(self):
         await self.ask("elicit something")
@@ -890,7 +890,7 @@ class CodexTest(ServiceTest):
         await self.client.result("turn.stop")
         self.assertEqual((await self.client.finished())["status"], "stopped")
         self.client.notifications.clear()
-        shot = self.harness.runtime / "nerdos" / "assistant" / "screen.png"
+        shot = self.harness.runtime / "cybexos" / "assistant" / "screen.png"
         shot.write_bytes(b"\x89PNG")
         await self.ask("image", screenshot=str(shot))
         self.assertEqual((await self.client.finished())["text"], "image:yes")
@@ -901,7 +901,7 @@ class CommandLineTest(ServiceTest):
     async def command(self, *args):
         env = dict(self.harness.env, PYTHONPATH=str(ROOT / "desktop" / "assistant"), PYTHONDONTWRITEBYTECODE="1")
         process = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "nerdos_assistant", *args, env=env,
+            sys.executable, "-m", "cybexos_assistant", *args, env=env,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         out, err = await asyncio.wait_for(process.communicate(), 20)
         return process.returncode, out.decode(), err.decode()
@@ -925,7 +925,7 @@ class ServeTest(unittest.IsolatedAsyncioTestCase):
         try:
             env = dict(harness.env, PYTHONPATH=str(ROOT / "desktop" / "assistant"), PYTHONDONTWRITEBYTECODE="1")
             process = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "nerdos_assistant", "serve", "--state-dir", str(harness.state), env=env,
+                sys.executable, "-m", "cybexos_assistant", "serve", "--state-dir", str(harness.state), env=env,
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             for _ in range(500):
                 if harness.socket.exists():
@@ -933,7 +933,7 @@ class ServeTest(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(0.01)
             self.assertEqual(harness.socket.stat().st_mode & 0o777, 0o600)
             self.assertEqual(harness.socket.parent.stat().st_mode & 0o777, 0o700)
-            self.assertEqual((harness.runtime / "nerdos" / "assistant").stat().st_mode & 0o777, 0o700)
+            self.assertEqual((harness.runtime / "cybexos" / "assistant").stat().st_mode & 0o777, 0o700)
             client = await Client().open(harness.socket)
             self.assertEqual((await client.result("hello"))["protocol"], 1)
             await client.close()
@@ -949,7 +949,7 @@ class ServeTest(unittest.IsolatedAsyncioTestCase):
 class SpeechTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.harness = Harness()
-        self.speechd = FakeSpeechd(Path(self.harness.env["NERDOS_ASSISTANT_SPEECHD"]))
+        self.speechd = FakeSpeechd(Path(self.harness.env["CYBEXOS_ASSISTANT_SPEECHD"]))
 
     async def asyncTearDown(self):
         await self.harness.stop()

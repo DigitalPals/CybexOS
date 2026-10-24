@@ -1,15 +1,15 @@
 // Pure helpers for personal-file backups (no Qt APIs, so Node tests load
-// them). The user helper nerdos-backup owns the configuration, the
+// them). The user helper cybexos-backup owns the configuration, the
 // keyring password and every restic run; Settings reads its `status --json`
 // and starts long runs as transient user units, so closing Settings or
 // restarting the shell never interrupts a backup or a restore.
 
-var HELPER_NAME = "nerdos-backup";
-// The same shapes the helper accepts (assets/scripts/nerdos-backup).
+var HELPER_NAME = "cybexos-backup";
+// The same shapes the helper accepts (assets/scripts/cybexos-backup).
 var HOST_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.@%-]{0,253}$/;
 var REMOTE_PATH_PATTERN = /^\/?[A-Za-z0-9_][A-Za-z0-9_. +\/-]{0,250}$/;
 var SNAPSHOT_PATTERN = /^(latest|[0-9a-f]{8,64})$/;
-var DEFAULT_REMOTE_PATH = "nerdos-backup";
+var DEFAULT_REMOTE_PATH = "cybexos-backup";
 
 function text(value) {
     return typeof value === "string" ? value : "";
@@ -30,7 +30,7 @@ function emptyStatus() {
     };
 }
 
-// A bounded, typed copy of `nerdos-backup status --json`.
+// A bounded, typed copy of `cybexos-backup status --json`.
 function parseStatus(raw) {
     var data;
     try {
@@ -225,7 +225,7 @@ function setupCommand(helper, kind, target, path, existing) {
 // helper's lock refuses a second one.
 function transient(name, serial, description) {
     return ["systemd-run", "--user", "--quiet", "--collect",
-        "--unit=nerdos-backup-" + name + "-" + String(serial).replace(/[^0-9]/g, ""),
+        "--unit=cybexos-backup-" + name + "-" + String(serial).replace(/[^0-9]/g, ""),
         "--description=" + description, "--"];
 }
 
@@ -245,7 +245,7 @@ function restoreCommand(helper, snapshotId, path, serial) {
 }
 
 // The helper prints {"ok": false, "error": "..."} for --json requests and
-// "nerdos-backup: ..." on stderr otherwise.
+// "cybexos-backup: ..." on stderr otherwise.
 function errorText(code, body, stderr) {
     var data = null;
     try {
@@ -258,7 +258,7 @@ function errorText(code, body, stderr) {
     var lines = String(stderr || "").split("\n").map(function(line) { return line.trim(); })
         .filter(function(line) { return line !== ""; });
     for (var i = lines.length - 1; i >= 0; i--) {
-        var match = /^nerdos-backup: (.+)$/.exec(lines[i]);
+        var match = /^cybexos-backup: (.+)$/.exec(lines[i]);
         if (match)
             return match[1];
     }

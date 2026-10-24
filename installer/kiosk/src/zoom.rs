@@ -6,7 +6,7 @@
 pub const CANVAS: (f32, f32) = (1280.0, 800.0);
 
 pub fn detect_resolution() -> Option<(u32, u32)> {
-    if let Ok(value) = std::env::var("NERDOS_INSTALLER_RESOLUTION") {
+    if let Ok(value) = std::env::var("CYBEXOS_INSTALLER_RESOLUTION") {
         if let Some((w, h)) = value.split_once('x') {
             if let (Ok(w), Ok(h)) = (w.parse(), h.parse()) {
                 return Some((w, h));

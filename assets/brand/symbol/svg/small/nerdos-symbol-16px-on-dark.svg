@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-labelledby="title">
-  <title id="title">NerdOS glasses symbol, 16px-hinted</title>
-  <path id="frames" fill="#F3F2EC" d="M8 6V7H7V8H6V9H6.99C6.91 10.21 6.05 11 4.8 11H2.2C0.88 11 0 10.12 0 8.8V6.2C0 5.48 0.48 5 1.2 5H5.8C6.45 5 6.91 5.39 6.99 6H8ZM10.2 5H14.8C15.52 5 16 5.48 16 6.2V8.8C16 10.12 15.12 11 13.8 11H11.2C9.88 11 9 10.12 9 8.8V7H10V5.01C10.06 5 10.13 5 10.2 5ZM2 7V9H5V7ZM11 7V9H14V7Z"/>
-  <path id="tape" fill="#C8FF1F" d="M9 4H11V5H10V7H9V8H8V9H6V8H7V7H8V5H9Z"/>
-</svg>

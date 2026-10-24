@@ -22,12 +22,12 @@ function read(relative) {
 }
 
 function packs(args, input) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nerdos-tests.themes."));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cybexos-tests.themes."));
     try {
         const result = spawnSync(python, ["-B", path.join(shellDir, "scripts/theme-packs.py"), ...args], {
             encoding: "utf8", input,
-            env: { ...process.env, NERDOS_THEME_ROOT: root, PYTHONDONTWRITEBYTECODE: "1",
-                NERDOS_RUNTIME_HELPER: path.join(root, "absent") },
+            env: { ...process.env, CYBEXOS_THEME_ROOT: root, PYTHONDONTWRITEBYTECODE: "1",
+                CYBEXOS_RUNTIME_HELPER: path.join(root, "absent") },
         });
         assert.equal(result.status, 0, result.stderr);
         return JSON.parse(result.stdout);
@@ -47,7 +47,7 @@ function applied(id, base) {
 test("every built-in theme maps to values the settings schema stores unchanged", () => {
     assert.equal(entries.length, listing.themes.length, "the shell drops no built-in theme");
     assert.ok(entries.length >= 8);
-    assert.equal(entries[0].id, "nerdos");
+    assert.equal(entries[0].id, "cybexos");
     for (const entry of entries) {
         // patchIn accepts only values normalizeKey leaves as they are, so the
         // Python mapping and the JS schema agree key by key.
@@ -79,7 +79,7 @@ test("the theme keys default-fill for existing settings, so nobody's look change
     assert.deepEqual(H.overrideKeys({ v: H.VERSION, themePalette: byId("nord").patch.themePalette }),
         ["themePalette"]);
     // A fresh install shows the default theme, unmodified, with no dirty mark.
-    assert.deepEqual(T.current(entries, d), { value: "nerdos", label: "NerdOS", modified: false });
+    assert.deepEqual(T.current(entries, d), { value: "cybexos", label: "Cybex OS", modified: false });
     assert.equal(T.differsFromDefault(d, d), false);
 });
 
@@ -168,8 +168,8 @@ test("the IPC payload is held to the schema before anything changes", () => {
         { ...good, patch: { ...good.patch, themePalette: { mode: "dark", text: "white" } } },
         { ...good, patch: { ...good.patch, theme: "" } },
         { ...good, patch: { theme: "nord" } },
-        { id: "nerdos", name: "NerdOS",
-            patch: { ...byId("nerdos").patch, barCustomHue: 10 } },
+        { id: "cybexos", name: "Cybex OS",
+            patch: { ...byId("cybexos").patch, barCustomHue: 10 } },
     ];
     for (const payload of bad)
         assert.equal(T.payloadIn(payload, H.normalizeKey), null, JSON.stringify(payload));
@@ -182,7 +182,7 @@ test("the dropdown previews each theme in its own colours", () => {
     const references = { dark: { background: "#1a1917", text: "#f2f0ea" },
         light: { background: "#eae9ef", text: "#1f1d2b" } };
     assert.deepEqual(T.swatches(byId("nord"), references), ["#2e3440", "#88c0d0", "#eceff4"]);
-    assert.deepEqual(T.swatches(byId("nerdos"), references), ["#1a1917", "#d3d283", "#f2f0ea"]);
+    assert.deepEqual(T.swatches(byId("cybexos"), references), ["#1a1917", "#60a5fa", "#f2f0ea"]);
     assert.deepEqual(T.swatches(byId("catppuccin-latte"), references),
         ["#e6e9ef", "#8839ef", "#4c4f69"]);
     assert.deepEqual(T.swatches(null, references), []);

@@ -67,7 +67,7 @@ Singleton {
     readonly property string home: Quickshell.env("HOME")
     readonly property string dataHome: Quickshell.env("XDG_DATA_HOME") || (home + "/.local/share")
     readonly property string clipboardTool: Quickshell.shellDir + "/scripts/clipboard-tool.py"
-    readonly property string pinDir: dataHome + "/nerdos/clipboard/pins"
+    readonly property string pinDir: dataHome + "/cybexos/clipboard/pins"
     property var clipboardPins: []
     property var clipboardPreviews: ({})
     property string clipboardPreviewKey: ""
@@ -408,7 +408,7 @@ Singleton {
             // own outcome. A fixed command runs under a fixed wrapper whose
             // only job is to say so when it fails.
             root.pendingCommand = argument !== undefined ? argv
-                : ["sh", "-c", '"$@" || notify-send --app-name=NerdOS -- "$0 failed"'
+                : ["sh", "-c", '"$@" || notify-send --app-name=Cybex OS -- "$0 failed"'
                     + ' "The command exited with an error"', action.name].concat(argv);
             // Started once the launcher has left the screen, so a capture
             // never contains it and a new window takes focus from no one.
@@ -757,7 +757,7 @@ Singleton {
             }
             root.pastePending = false;
             if (code !== 0)
-                Quickshell.execDetached(["notify-send", "--app-name=NerdOS",
+                Quickshell.execDetached(["notify-send", "--app-name=Cybex OS",
                     "Clipboard", "The entry could not be copied"]);
         }
     }
@@ -777,7 +777,7 @@ Singleton {
         id: webAppListProc
         property bool exitSeen: false
         property int lastExit: 0
-        command: ["nerdos-webapp", "list", "--json"]
+        command: ["cybexos-webapp", "list", "--json"]
         stdout: StdioCollector {
             onStreamFinished: root.webApps = ProviderHelpers.parseWebApps(text)
         }
@@ -812,7 +812,7 @@ Singleton {
 
     FileView {
         id: pinsView
-        path: root.dataHome + "/nerdos/clipboard/pins.json"
+        path: root.dataHome + "/cybexos/clipboard/pins.json"
         printErrors: false
         watchChanges: true
         onFileChanged: reload()
@@ -897,7 +897,7 @@ Singleton {
 
     FileView {
         id: emojiFile
-        path: root.emojiRequested ? "/etc/nerdos/emoji-test.txt" : ""
+        path: root.emojiRequested ? "/etc/cybexos/emoji-test.txt" : ""
         printErrors: false
         onLoaded: {
             root.emojiEntries = ProviderHelpers.parseEmojiData(text());

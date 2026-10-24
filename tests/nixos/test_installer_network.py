@@ -8,8 +8,8 @@ from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'lifecycle'))
-from nerdos.common import CommandFailure, Failure
-from nerdos.installer_network import diagnostics, ensure_internet
+from cybexos.common import CommandFailure, Failure
+from cybexos.installer_network import diagnostics, ensure_internet
 
 spec = importlib.util.spec_from_file_location('installer_network_tool', ROOT / 'desktop/quickshell/scripts/network-tool.py')
 tool = importlib.util.module_from_spec(spec)

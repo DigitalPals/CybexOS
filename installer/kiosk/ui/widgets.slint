@@ -77,13 +77,13 @@ export component Btn inherits Rectangle {
     in property <bool> icon-right;
     callback clicked;
     property <length> pad: root.small ? 14px : 26px;
-    property <color> ink: root.kind == "ghost" ? Theme.ink : Theme.lime-ink;
+    property <color> ink: root.kind == "ghost" ? Theme.ink : Theme.accent-ink;
     height: root.small ? 38px : 52px;
     width: row.preferred-width + 2 * root.pad;
     border-radius: root.small ? 10px : 12px;
-    background: root.kind == "primary" ? Theme.lime : root.kind == "danger" ? Theme.red : transparent;
+    background: root.kind == "primary" ? Theme.accent : root.kind == "danger" ? Theme.red : transparent;
     border-width: 1px;
-    border-color: root.kind == "primary" ? Theme.lime : root.kind == "danger" ? Theme.red
+    border-color: root.kind == "primary" ? Theme.accent : root.kind == "danger" ? Theme.red
         : (touch.has-hover || focus.has-focus) && root.enabled ? Theme.fog : Theme.line-2;
     opacity: root.enabled ? 1 : 0.35;
     if focus.has-focus: Rectangle {
@@ -93,7 +93,7 @@ export component Btn inherits Rectangle {
         height: parent.height + 8px;
         border-radius: parent.border-radius + 4px;
         border-width: 2px;
-        border-color: Theme.lime;
+        border-color: Theme.accent;
     }
     row := HorizontalLayout {
         x: (parent.width - self.preferred-width) / 2;
@@ -145,7 +145,7 @@ export component LinkButton inherits Text {
     in property <bool> in-sheet;
     in property <bool> keyboard-focus: true;
     callback clicked;
-    color: Theme.lime;
+    color: Theme.accent;
     font-size: 14px;
     font-weight: 500;
     if focus.has-focus: Rectangle {
@@ -155,7 +155,7 @@ export component LinkButton inherits Text {
         height: parent.height + 6px;
         border-radius: 8px;
         border-width: 2px;
-        border-color: Theme.lime;
+        border-color: Theme.accent;
     }
     focus := FocusScope {
         enabled: root.enabled && (root.in-sheet || Store.sheet == "");
@@ -215,7 +215,7 @@ export component Chip inherits Rectangle {
         height: parent.height + 6px;
         border-radius: 8px;
         border-width: 2px;
-        border-color: Theme.lime;
+        border-color: Theme.accent;
     }
     focus := FocusScope {
         enabled: root.enabled && (root.in-sheet || Store.sheet == "");
@@ -260,7 +260,7 @@ export component Field inherits Rectangle {
     border-radius: 12px;
     background: Theme.bg-deep;
     border-width: 1px;
-    border-color: root.bad ? Theme.red : input.has-focus ? Theme.lime : Theme.line-2;
+    border-color: root.bad ? Theme.red : input.has-focus ? Theme.accent : Theme.line-2;
     if input.has-focus: Rectangle {
         x: -3px;
         y: -3px;
@@ -268,7 +268,7 @@ export component Field inherits Rectangle {
         height: parent.height + 6px;
         border-radius: parent.border-radius + 3px;
         border-width: 3px;
-        border-color: root.bad ? #ff6b5724 : #c8ff1f29;
+        border-color: root.bad ? #ff6b5724 : #60a5fa29;
     }
     if root.text == "": Text {
         x: 16px;
@@ -291,7 +291,7 @@ export component Field inherits Rectangle {
         font-family: root.mono ? Theme.mono : Theme.sans;
         font-size: root.mono ? 17px : 18px;
         color: Theme.ink;
-        selection-background-color: #c8ff1f55;
+        selection-background-color: #60a5fa55;
         selection-foreground-color: Theme.ink;
         input-type: root.password ? InputType.password : InputType.text;
         text <=> root.text;
@@ -322,14 +322,14 @@ export component Toggle inherits Rectangle {
     width: 48px;
     height: 28px;
     border-radius: 14px;
-    background: root.on ? Theme.lime : Theme.line-2;
+    background: root.on ? Theme.accent : Theme.line-2;
     Rectangle {
         x: root.on ? 23px : 3px;
         y: 3px;
         width: 22px;
         height: 22px;
         border-radius: 11px;
-        background: root.on ? Theme.lime-ink : Theme.fog;
+        background: root.on ? Theme.accent-ink : Theme.fog;
     }
     if focus.has-focus: Rectangle {
         x: -4px;
@@ -338,7 +338,7 @@ export component Toggle inherits Rectangle {
         height: parent.height + 8px;
         border-radius: 18px;
         border-width: 2px;
-        border-color: Theme.lime;
+        border-color: Theme.accent;
     }
     focus := FocusScope {
         focus-on-tab-navigation: root.keyboard-focus;
@@ -366,12 +366,12 @@ export component Mark inherits Rectangle {
     width: 24px;
     height: 24px;
     border-radius: 12px;
-    background: root.state == 0 ? Theme.lime-tint : root.state == 3 ? Theme.amber-tint : root.state == 4 ? Theme.red-tint : transparent;
+    background: root.state == 0 ? Theme.accent-tint : root.state == 3 ? Theme.amber-tint : root.state == 4 ? Theme.red-tint : transparent;
     border-width: root.state == 1 || root.state == 2 ? 1.5px : 0px;
     border-color: root.state == 1 ? Theme.line-2 : #3b3d43;
     if root.state == 0: Icon {
         d: Icons.check;
-        tint: Theme.lime;
+        tint: Theme.accent;
         size: 14px;
     }
     if root.state == 1: Rectangle {
@@ -379,7 +379,7 @@ export component Mark inherits Rectangle {
         width: 8px;
         height: 8px;
         border-radius: 4px;
-        background: Theme.lime;
+        background: Theme.accent;
         opacity: Math.mod(root.tick, 2) == 0 ? 1 : 0.45;
     }
     if root.state == 3: Text {
@@ -397,17 +397,17 @@ export component Mark inherits Rectangle {
 
 export component Tag inherits Rectangle {
     in property <string> text;
-    in property <string> tone;   // "", lime, red, amber
+    in property <string> tone;   // "", accent, red, amber
     height: 22px;
     width: label.preferred-width + 14px;
     border-radius: 6px;
-    background: root.tone == "lime" ? Theme.lime-tint : root.tone == "red" ? Theme.red-tint : root.tone == "amber" ? Theme.amber-tint : Theme.card-2;
+    background: root.tone == "accent" ? Theme.accent-tint : root.tone == "red" ? Theme.red-tint : root.tone == "amber" ? Theme.amber-tint : Theme.card-2;
     label := Text {
         text: root.text;
         font-family: Theme.mono;
         font-size: 11px;
         font-weight: 500;
-        color: root.tone == "lime" ? Theme.lime : root.tone == "red" ? Theme.red : root.tone == "amber" ? Theme.amber : Theme.fog;
+        color: root.tone == "accent" ? Theme.accent : root.tone == "red" ? Theme.red : root.tone == "amber" ? Theme.amber : Theme.fog;
         vertical-alignment: center;
     }
 }
@@ -422,9 +422,9 @@ export component Row inherits Rectangle {
     callback clicked;
     height: root.row-height;
     border-radius: 12px;
-    background: root.selected ? Theme.lime-soft : touch.has-hover ? Theme.card-2 : transparent;
+    background: root.selected ? Theme.accent-soft : touch.has-hover ? Theme.card-2 : transparent;
     border-width: 1px;
-    border-color: root.selected ? #c8ff1f59 : transparent;
+    border-color: root.selected ? #60a5fa59 : transparent;
     if focus.has-focus: Rectangle {
         x: -3px;
         y: -3px;
@@ -432,7 +432,7 @@ export component Row inherits Rectangle {
         height: parent.height + 6px;
         border-radius: 8px;
         border-width: 2px;
-        border-color: Theme.lime;
+        border-color: Theme.accent;
     }
     focus := FocusScope {
         enabled: root.enabled && (root.in-sheet || Store.sheet == "");
@@ -456,7 +456,7 @@ export component Row inherits Rectangle {
 export component Help inherits Text {
     in property <int> tone;   // 0 neutral, 1 ok, 2 problem, 3 note
     font-size: 13.5px;
-    color: root.tone == 1 ? Theme.lime : root.tone == 2 ? Theme.red : root.tone == 3 ? Theme.amber : Theme.faint;
+    color: root.tone == 1 ? Theme.accent : root.tone == 2 ? Theme.red : root.tone == 3 ? Theme.amber : Theme.faint;
     wrap: word-wrap;
 }
 

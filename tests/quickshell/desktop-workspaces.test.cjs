@@ -225,7 +225,7 @@ test("overview restores minimized records while keeping scratchpad and inactive 
         WindowCommands: W };
     vm.createContext(context);
     vm.runInContext(source, context);
-    const hidden = { address: "abc", workspace: { id: -98, name: "special:nerdos-minimized" },
+    const hidden = { address: "abc", workspace: { id: -98, name: "special:cybexos-minimized" },
         title: "Editor", lastIpcObject: { hidden: true, size: [200, 100], fullscreen: 2, floating: true } };
     const record = context.record(hidden);
     assert.equal(record.workspaceId, 8);

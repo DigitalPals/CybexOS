@@ -2,6 +2,6 @@ function rebootLabel(recommendation, kernelPending) { return recommendation || (
 function pendingSummary(upstream, apps, firmware, project, version) {
     const parts = [];
     if (upstream) parts.push("Upstream NixOS packages");
-    if (project) parts.push("NerdOS " + version);
+    if (project) parts.push("Cybex OS " + version);
     return parts.join(" · ") || "Check update sources";
 }

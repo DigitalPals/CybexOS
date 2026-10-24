@@ -19,7 +19,7 @@ import time
 
 import pexpect
 
-PASSWORD = 'Nerdos8!'
+PASSWORD = 'Cybexos8!'
 
 
 class VM:
@@ -28,7 +28,7 @@ class VM:
         self.process = None
         self.control_directory = None
         self.command_ready = False
-        self.firmware = Path(os.environ['NERDOS_OVMF'])
+        self.firmware = Path(os.environ['CYBEXOS_OVMF'])
         self.vars = directory / 'vars.fd'
         if not self.vars.exists():
             shutil.copyfile(self.firmware / 'OVMF_VARS.fd', self.vars)
@@ -44,7 +44,7 @@ class VM:
                 '-cpu','host' if os.access('/dev/kvm',os.R_OK|os.W_OK) else 'max', '-m','12288','-smp','4',
                 '-drive',f'if=pflash,format=raw,readonly=on,file={self.firmware / "OVMF_CODE.fd"}',
                 '-drive',f'if=pflash,format=raw,file={self.vars}',
-                '-drive',f'file={self.disk},if=none,id=systemdisk,format=qcow2','-device','virtio-blk-pci,drive=systemdisk,serial=NERDOS-QA-DISK',
+                '-drive',f'file={self.disk},if=none,id=systemdisk,format=qcow2','-device','virtio-blk-pci,drive=systemdisk,serial=CYBEXOS-QA-DISK',
                 '-netdev','user,id=net','-device','virtio-net-pci,netdev=net','-device','virtio-vga',
                 # An absolute pointer lets QMP click the installer screen exactly.
                 '-device','qemu-xhci','-device','usb-tablet',
@@ -65,25 +65,25 @@ class VM:
         # a root shell, used here only to observe the installer services.
         # The medium's autologin banner itself contains "login:".
         index = 1 if live else 0
-        self.process.expect(r'root@nerdos-installer' if live else r'login:', timeout=600)
+        self.process.expect(r'root@cybexos-installer' if live else r'login:', timeout=600)
         if index == 0:
-            self.process.sendline('nerdqa')
+            self.process.sendline('cybexqa')
             self.process.expect('Password:');self.process.sendline(password)
         # Fish's terminal capability queries can take seconds on a serial
         # console; wait for the shell before sending administration commands.
         time.sleep(4 if live else 2)
         if not live:
             self.process.sendline('sudo -i')
-            index = self.process.expect([r'password for nerdqa:',r'root@'],timeout=60)
+            index = self.process.expect([r'password for cybexqa:',r'root@'],timeout=60)
             if index == 0:
                 self.process.sendline(password)
                 self.process.expect(r'root@',timeout=60)
-        self.process.sendline('export TERM=dumb; export PS1="NERDOS_ROOT> "; stty -echo')
-        self.process.expect('NERDOS_ROOT> ',timeout=30)
+        self.process.sendline('export TERM=dumb; export PS1="CYBEXOS_ROOT> "; stty -echo')
+        self.process.expect('CYBEXOS_ROOT> ',timeout=30)
         self.command('true')
 
     def command(self, script, timeout=1800):
-        marker = 'NERDOS_QA_' + os.urandom(6).hex()
+        marker = 'CYBEXOS_QA_' + os.urandom(6).hex()
         command = 'bash -c ' + shlex.quote('printf "\\n' + marker + '_BEGIN\\n"\n(set -e\n' + script + '\n)\nqa_result=$?\nprintf "\\n'+marker+':%s\\n" "$qa_result"')
         self.command_ready = False
         self.process.sendline(command)
@@ -107,8 +107,8 @@ class VM:
         if self.iso:
             # The installation medium carries no Python or desktop session.
             script = '''systemctl --failed --no-pager --no-legend || true
-systemctl status --no-pager -n 0 nerdos-installerd.service nerdos-installer-ui.service || true
-journalctl -b --no-pager -u nerdos-installerd.service -u nerdos-installer-ui.service -n 60 || true'''
+systemctl status --no-pager -n 0 cybexos-installerd.service cybexos-installer-ui.service || true
+journalctl -b --no-pager -u cybexos-installerd.service -u cybexos-installer-ui.service -n 60 || true'''
             try:
                 return {'state': 'collected', 'medium': self.command(script, timeout=120)[-6000:]}
             except Exception as error:
@@ -125,7 +125,7 @@ def run(label, args):
     except Exception as error:
         output[label] = {'error': str(error)}
         return ''
-run('updaterStatus', ['nerd', 'update', 'status'])
+run('updaterStatus', ['cybex', 'update', 'status'])
 prefix = ['runuser', '-u', pwd.getpwuid(1000).pw_name, '--', 'env', 'XDG_RUNTIME_DIR=/run/user/1000', 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus']
 environment = run('environment', prefix + ['systemctl', '--user', 'show-environment'])
 output.pop('environment')
@@ -137,7 +137,7 @@ if pid.isdecimal() and int(pid) > 0:
     try:
         path = next((entry.decode(errors='replace')[5:] for entry in Path('/proc', pid, 'environ').read_bytes().split(b'\0') if entry.startswith(b'PATH=')), '')
         output['quickshellPath'] = path[:3000]
-        output['quickshellHelpers'] = {name: shutil.which(name, path=path) for name in ['nerd', 'quickshell-reminder', 'tailscale']}
+        output['quickshellHelpers'] = {name: shutil.which(name, path=path) for name in ['cybex', 'quickshell-reminder', 'tailscale']}
     except OSError as error:
         output['quickshellPath'] = {'error': str(error)}
 invocation = run('quickshellInvocation', prefix + ['systemctl', '--user', 'show', 'quickshell.service', '-p', 'InvocationID', '--value']).strip()
@@ -183,7 +183,7 @@ QA_DIAGNOSTIC'''
             time.sleep(.08)
         call('human-monitor-command',{'command-line':'sendkey ret'})
         stream.close();qmp.close()
-        self.command('for n in $(seq 1 90); do nerdos-health desktop-required && exit 0; sleep 2; done; exit 1',timeout=240)
+        self.command('for n in $(seq 1 90); do cybexos-health desktop-required && exit 0; sleep 2; done; exit 1',timeout=240)
 
     def check_desktop_defaults(self):
         self.command(r'''python3 - <<'QA_DEFAULTS'
@@ -201,7 +201,7 @@ assert subprocess.check_output(prefix + schema_environment + ['gsettings', 'get'
 subprocess.run(['systemctl', 'is-active', '--quiet', 'avahi-daemon.service'], check=True)
 subprocess.run(['systemctl', 'is-active', '--quiet', 'firewall.service'], check=True)
 assert '5353' in subprocess.check_output(['iptables-save'], text=True)
-path = pathlib.Path(user.pw_dir, '.config/nerdos/shell.json')
+path = pathlib.Path(user.pw_dir, '.config/cybexos/shell.json')
 if path.exists():
     saved = json.loads(path.read_text())
     if 'mods' in saved:
@@ -214,12 +214,12 @@ QA_DEFAULTS''', timeout=60)
     def password_change(self, encrypted, evidence=None):
         evidence = {} if evidence is None else evidence
         evidence.update(result='running', encrypted=encrypted, roundTrips=0)
-        prefix = 'runuser -u nerdqa -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus '
-        self.command('timeout 30 ' + prefix + "sh -c 'printf qa-keyring-value | secret-tool store --label=Qualification nerdos qualification'", timeout=45)
+        prefix = 'runuser -u cybexqa -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus '
+        self.command('timeout 30 ' + prefix + "sh -c 'printf qa-keyring-value | secret-tool store --label=Qualification cybexos qualification'", timeout=45)
         evidence['keyringStored'] = True
         for current, new in ((PASSWORD, 'Changed8!'), ('Changed8!', PASSWORD)):
             request = json.dumps({'current': current, 'new': new})
-            script = 'printf %s ' + shlex.quote(request) + ' | env PKEXEC_UID=1000 nerdos-password-worker'
+            script = 'printf %s ' + shlex.quote(request) + ' | env PKEXEC_UID=1000 cybexos-password-worker'
             result = json.loads(self.command(script, timeout=360).strip())
             if result.get('success') is not True:
                 raise RuntimeError('Installed password worker: ' + json.dumps(result))
@@ -227,12 +227,12 @@ QA_DEFAULTS''', timeout=60)
             if encrypted:
                 self.command('printf %s ' + shlex.quote(new) + ' | cryptsetup open --test-passphrase --key-file - /dev/vda2\n' +
                              '! printf %s ' + shlex.quote(current) + ' | cryptsetup open --test-passphrase --key-file - /dev/vda2', timeout=90)
-            self.command('test ! -e /var/lib/nerdos/password-change.json')
+            self.command('test ! -e /var/lib/cybexos/password-change.json')
             self.reboot(encrypted, password=new)
             self.login_desktop(password=new)
-            self.command('test "$(timeout 20 ' + prefix + 'secret-tool lookup nerdos qualification)" = qa-keyring-value', timeout=35)
+            self.command('test "$(timeout 20 ' + prefix + 'secret-tool lookup cybexos qualification)" = qa-keyring-value', timeout=35)
             evidence['roundTrips'] += 1
-        self.command(prefix + 'secret-tool clear nerdos qualification')
+        self.command(prefix + 'secret-tool clear cybexos qualification')
         evidence.update(result='passed', checks=['real packaged worker and PAM',
             'old disk key rejected' if encrypted else 'no disk change',
             'reboot and password desktop login', 'login keyring unlocked with changed password'])
@@ -281,7 +281,7 @@ QA_DEFAULTS''', timeout=60)
         """A real pointer click at canvas coordinates through the USB tablet.
 
         The screen fits its 1280×800 canvas to the display and centres it, with
-        the same zoom rule as nerdos-installer (src/zoom.rs).
+        the same zoom rule as cybexos-installer (src/zoom.rs).
         """
         zoom = round(min(max(min(size[0] / 1280, size[1] / 800), 0.8), 3.0), 2)
         px = ((size[0] / zoom - 1280) / 2 + x) * zoom
@@ -299,11 +299,11 @@ QA_DEFAULTS''', timeout=60)
     def installer_state(self, timeout=20):
         """The installer service's current snapshot, exactly as the screen receives it."""
         import base64
-        raw = self.command(f'nerdos-installerd --client --timeout {timeout} | base64 -w0', timeout=timeout + 60).strip()
+        raw = self.command(f'cybexos-installerd --client --timeout {timeout} | base64 -w0', timeout=timeout + 60).strip()
         return json.loads(base64.b64decode(raw))
 
     def installer_request(self, request):
-        self.command('nerdos-installerd --client --timeout 5 --request ' + shlex.quote(json.dumps(request)) + ' >/dev/null', timeout=60)
+        self.command('cybexos-installerd --client --timeout 5 --request ' + shlex.quote(json.dumps(request)) + ' >/dev/null', timeout=60)
 
     def wait_installer(self, predicate, what, timeout=600, interval=2):
         deadline = time.monotonic() + timeout
@@ -320,7 +320,7 @@ QA_DEFAULTS''', timeout=60)
     def graphical_install(self, encrypted, applications, screenshots=None):
         """Install through the real tty1 screen with real keyboard and pointer input.
 
-        The screen (nerdos-installer) and its state service (nerdos-installerd)
+        The screen (cybexos-installer) and its state service (cybexos-installerd)
         are the packaged ISO units. The serial console only observes the
         service's snapshots; every choice that matters is made on the screen:
         development consent, navigation, encryption, name, username, both
@@ -330,15 +330,15 @@ QA_DEFAULTS''', timeout=60)
         """
         evidence = {'result': 'running'}
         shot = lambda name: screenshots and self.screenshot(screenshots / name)
-        self.command('systemctl is-active nerdos-installerd.service nerdos-installer-ui.service')
-        self.command('test "$(systemctl show nerdos-installer-ui.service -p User --value)" = nerdos-installer')
+        self.command('systemctl is-active cybexos-installerd.service cybexos-installer-ui.service')
+        self.command('test "$(systemctl show cybexos-installer-ui.service -p User --value)" = cybexos-installer')
         # The bracket keeps pgrep -f from matching this command's own shell.
         self.command("! id nixos && ! pgrep -x Hyprland && ! pgrep -f '[q]uickshell' && ! systemctl is-active --quiet display-manager.service")
-        evidence['installerOnlyRuntime'] = 'tty1 kiosk as nerdos-installer; no live account, compositor or display manager'
+        evidence['installerOnlyRuntime'] = 'tty1 kiosk as cybexos-installer; no live account, compositor or display manager'
         # The installed QA system keeps a serial console for this harness.
-        self.command("mkdir -p /run/systemd/system/nerdos-installerd.service.d\n"
-                     "printf '[Service]\\nEnvironment=NERDOS_INSTALLER_WORKER_ARGS=--serial-console\\n' > /run/systemd/system/nerdos-installerd.service.d/qa.conf\n"
-                     "systemctl daemon-reload\nsystemctl restart nerdos-installerd.service")
+        self.command("mkdir -p /run/systemd/system/cybexos-installerd.service.d\n"
+                     "printf '[Service]\\nEnvironment=CYBEXOS_INSTALLER_WORKER_ARGS=--serial-console\\n' > /run/systemd/system/cybexos-installerd.service.d/qa.conf\n"
+                     "systemctl daemon-reload\nsystemctl restart cybexos-installerd.service")
         # The restart disconnects the screen; keys sent before it reconnects
         # reach no page. Wait for the service's report of an attached screen.
         state = self.wait_installer(lambda s: s.get('phase') in ('development', 'setup') and s.get('screens', 0) > 0,
@@ -364,13 +364,13 @@ QA_DEFAULTS''', timeout=60)
         shot('disk.png')
         self.press('ret')
         state = self.wait_installer(lambda s: s['draft']['screen'] == 'account', 'the account step')
-        self.type_text('Nerd QA')
+        self.type_text('Cybex QA')
         self.press('ret', 'ctrl-a')
-        self.type_text('NerdQA')
-        state = self.wait_installer(lambda s: s['draft']['username'] == 'nerdqa', 'the lowercase username')
-        if state['draft']['fullName'] != 'Nerd QA':
+        self.type_text('CybexQA')
+        state = self.wait_installer(lambda s: s['draft']['username'] == 'cybexqa', 'the lowercase username')
+        if state['draft']['fullName'] != 'Cybex QA':
             raise RuntimeError('The typed name did not reach the installer service: ' + repr(state['draft']['fullName']))
-        evidence['lowercaseUsername'] = 'typed NerdQA; the screen kept nerdqa'
+        evidence['lowercaseUsername'] = 'typed CybexQA; the screen kept cybexqa'
         self.press('ret')
         self.type_text(PASSWORD)
         self.press('ret')
@@ -379,7 +379,7 @@ QA_DEFAULTS''', timeout=60)
         self.press('ret')
         state = self.wait_installer(lambda s: s.get('phase') == 'review' and not s.get('reviewPending'), 'the review')
         plan = state['review']
-        expected = {'username': 'nerdqa', 'fullName': 'Nerd QA', 'hostname': 'nerdqa-nerdos', 'encrypted': encrypted, 'disk': '/dev/vda'}
+        expected = {'username': 'cybexqa', 'fullName': 'Cybex QA', 'hostname': 'cybexqa-cybexos', 'encrypted': encrypted, 'disk': '/dev/vda'}
         if {key: plan.get(key) for key in expected} != expected:
             raise RuntimeError('Reviewed plan differs from the screen input: ' + json.dumps(plan))
         evidence['reviewedPlan'] = {key: plan.get(key) for key in ('username', 'fullName', 'hostname', 'timezone', 'keyboard', 'encrypted', 'features')}
@@ -408,29 +408,29 @@ def wait_state(vm, expected, timeout=2100, previous=None):
     """Observe the real worker; asynchronous acceptance is not completion."""
     script = '''deadline=$((SECONDS + TIMEOUT))
 while test "$SECONDS" -lt "$deadline"; do
-  read -r state transaction < <(nerd update status | python3 -c 'import json,sys;s=json.load(sys.stdin);print(s["state"],s.get("transaction",""))')
+  read -r state transaction < <(cybex update status | python3 -c 'import json,sys;s=json.load(sys.stdin);print(s["state"],s.get("transaction",""))')
   if test "$transaction" = PREVIOUS; then sleep 2; continue; fi
   case "$state" in
-    EXPECTED) nerd update status; exit 0 ;;
-    failed|rolled-back) nerd update status; exit 1 ;;
+    EXPECTED) cybex update status; exit 0 ;;
+    failed|rolled-back) cybex update status; exit 1 ;;
   esac
   sleep 2
 done
-nerd update status
+cybex update status
 exit 1'''.replace('TIMEOUT', str(timeout)).replace('EXPECTED', '|'.join(expected)).replace('PREVIOUS', shlex.quote(previous or 'no-previous-transaction'))
     return vm.command(script, timeout=timeout + 30)
 
 
 def stage_request(vm, scope='local'):
-    previous = json.loads(vm.command('nerd update status').strip()).get('transaction')
-    vm.command('nerd update stage ' + shlex.quote(scope))
+    previous = json.loads(vm.command('cybex update status').strip()).get('transaction')
+    vm.command('cybex update stage ' + shlex.quote(scope))
     return previous
 
 
 def stage(vm, scope='local'):
     previous = stage_request(vm, scope)
     wait_state(vm, ('ready',), previous=previous)
-    vm.command('nerd update status > /run/qa-status.json')
+    vm.command('cybex update status > /run/qa-status.json')
     # Parsing directly from the serial console can include prompts; have the
     # guest produce only base64 JSON between the command's completion markers.
     import base64
@@ -439,7 +439,7 @@ def stage(vm, scope='local'):
 
 
 def apply(vm, status):
-    vm.command('nerd update apply ' + shlex.quote(status['transaction']) + ' ' + shlex.quote(status['reviewToken']))
+    vm.command('cybex update apply ' + shlex.quote(status['transaction']) + ' ' + shlex.quote(status['reviewToken']))
     wait_state(vm, ('awaiting-boot',), timeout=300)
 
 
@@ -447,26 +447,26 @@ def authenticated_boot(vm, encrypted):
     vm.reboot(encrypted)
     wait_state(vm, ('awaiting-login',), timeout=180)
     vm.login_desktop()
-    vm.command('nerdos-health desktop-required', timeout=180)
+    vm.command('cybexos-health desktop-required', timeout=180)
 
 
 def confirm(vm):
-    vm.command('nerd update confirm')
+    vm.command('cybex update confirm')
     wait_state(vm, ('done',), timeout=180)
-    vm.command('test ! -e /var/lib/nerdos/pending.json')
+    vm.command('test ! -e /var/lib/cybexos/pending.json')
 
 
 PERSONAL_MODULE = '''{ pkgs, ... }: {
   environment.systemPackages = [ pkgs.hello ];
-  environment.etc."nerdos-qualification-generation".text = "baseline";
+  environment.etc."cybexos-qualification-generation".text = "baseline";
   networking.wg-quick.interfaces.qualification = {
     autostart = false; address = [ "192.0.2.2/32" ];
-    privateKeyFile = "/var/lib/nerdos/secrets/qualification-vpn.key";
+    privateKeyFile = "/var/lib/cybexos/secrets/qualification-vpn.key";
   };
-  systemd.services.nerdos-qualification-state = {
+  systemd.services.cybexos-qualification-state = {
     wantedBy = [ "multi-user.target" ];
-    serviceConfig = { Type = "oneshot"; RemainAfterExit = true; StateDirectory = "nerdos-qualification"; };
-    script = "test -e /var/lib/nerdos-qualification/state || printf personal-state > /var/lib/nerdos-qualification/state";
+    serviceConfig = { Type = "oneshot"; RemainAfterExit = true; StateDirectory = "cybexos-qualification"; };
+    script = "test -e /var/lib/cybexos-qualification/state || printf personal-state > /var/lib/cybexos-qualification/state";
   };
 }
 '''
@@ -495,10 +495,10 @@ def qualify_lifecycle(vm, encrypted, checks=None):
     enter a Nix expression, retained evidence or host serial log.
     """
     checks = {} if checks is None else checks
-    discovery = json.loads(vm.command('nerd update check', timeout=240).strip())
+    discovery = json.loads(vm.command('cybex update check', timeout=240).strip())
     if discovery['upstream']['state'] not in ('current', 'available'):
         raise RuntimeError('Cannot qualify independent upstream discovery: ' + json.dumps(discovery))
-    if discovery['nerdos']['state'] != 'unavailable' or not discovery['nerdos'].get('error'):
+    if discovery['cybexos']['state'] != 'unavailable' or not discovery['cybexos'].get('error'):
         raise RuntimeError('This development test requires an accurately unavailable vendor channel: ' + json.dumps(discovery))
     before = json.loads(vm.command('''python3 - <<'QA'
 from pathlib import Path
@@ -507,12 +507,12 @@ path = Path('/etc/nixos/flake.lock')
 lock = json.loads(path.read_text())
 root = lock['nodes'][lock['root']]['inputs']
 print(json.dumps({'lockSha256': hashlib.sha256(path.read_bytes()).hexdigest(),
-                 **{name: lock['nodes'][root[name]]['locked'] for name in ('nixpkgs', 'nerdos')}}))
+                 **{name: lock['nodes'][root[name]]['locked'] for name in ('nixpkgs', 'cybexos')}}))
 QA
 ''').strip())
     upstream = stage(vm, 'upstream')
-    if upstream['inputs']['nerdos'] != before['nerdos']:
-        raise RuntimeError('Upstream staging changed the installed NerdOS identity')
+    if upstream['inputs']['cybexos'] != before['cybexos']:
+        raise RuntimeError('Upstream staging changed the installed Cybex OS identity')
     after_hash = vm.command("sha256sum /etc/nixos/flake.lock | cut -d ' ' -f 1").strip()
     if after_hash != before['lockSha256']:
         raise RuntimeError('Staging changed the working machine lock')
@@ -525,23 +525,23 @@ QA
     vm.command('''python3 - <<'QA'
 from pathlib import Path
 import json, os, pwd, base64
-secret = Path('/var/lib/nerdos/secrets/qualification-vpn.key')
+secret = Path('/var/lib/cybexos/secrets/qualification-vpn.key')
 secret.write_text(base64.b64encode(os.urandom(32)).decode() + '\\n'); secret.chmod(0o600)
-user = pwd.getpwnam('nerdqa'); home = Path(user.pw_dir)
-plugin = home / '.local/share/nerdos/plugins/personal.qualification'
+user = pwd.getpwnam('cybexqa'); home = Path(user.pw_dir)
+plugin = home / '.local/share/cybexos/plugins/personal.qualification'
 plugin.mkdir(parents=True)
 (plugin / 'manifest.json').write_text(json.dumps({'id':'personal.qualification','name':'Qualification', 'version':'1.0.0','apiVersion':1,'entrypoint':'Widget.qml'}))
-(plugin / 'Widget.qml').write_text('import QtQuick\\nText { required property var pluginApi; text: pluginApi.settings.label; Component.onCompleted: console.log("NERDOS_QA_PLUGIN_API:" + pluginApi.version + ":" + pluginApi.settings.label) }\\n')
-preferences = home / '.config/nerdos/shell.json'
+(plugin / 'Widget.qml').write_text('import QtQuick\\nText { required property var pluginApi; text: pluginApi.settings.label; Component.onCompleted: console.log("CYBEXOS_QA_PLUGIN_API:" + pluginApi.version + ":" + pluginApi.settings.label) }\\n')
+preferences = home / '.config/cybexos/shell.json'
 saved = json.loads(preferences.read_text()) if preferences.exists() else {}
 saved['reducedMotion'] = True
 preferences.write_text(json.dumps(saved))
 for path in [plugin, *plugin.rglob('*'), preferences]:
     os.chown(path, user.pw_uid, user.pw_gid)
 QA
-runuser -u nerdqa -- nerd plugin enable personal.qualification --width 120 --order 2
-runuser -u nerdqa -- nerd plugin set personal.qualification label '"persistent-widget"'
-runuser -u nerdqa -- sh -c 'printf personal-plugin-state > "$HOME/.local/share/nerdos/plugin-data/personal.qualification/state"'
+runuser -u cybexqa -- cybex plugin enable personal.qualification --width 120 --order 2
+runuser -u cybexqa -- cybex plugin set personal.qualification label '"persistent-widget"'
+runuser -u cybexqa -- sh -c 'printf personal-plugin-state > "$HOME/.local/share/cybexos/plugin-data/personal.qualification/state"'
 ''')
     baseline = stage(vm)
     apply(vm, baseline)
@@ -549,56 +549,56 @@ runuser -u nerdqa -- sh -c 'printf personal-plugin-state > "$HOME/.local/share/n
     confirm(vm)
     checks['personalBaseline'] = {'result': 'passed', 'transaction': baseline['transaction']}
     # Snapshot after the shell has normalized the supported preference schema.
-    vm.command('''uid=$(id -u nerdqa)
-invocation=$(runuser -u nerdqa -- env XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus systemctl --user show quickshell.service -p InvocationID --value)
-journalctl --no-pager _SYSTEMD_INVOCATION_ID=$invocation | grep -F 'NERDOS_QA_PLUGIN_API:1:persistent-widget'
-systemctl is-active nerdos-qualification-state.service
+    vm.command('''uid=$(id -u cybexqa)
+invocation=$(runuser -u cybexqa -- env XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus systemctl --user show quickshell.service -p InvocationID --value)
+journalctl --no-pager _SYSTEMD_INVOCATION_ID=$invocation | grep -F 'CYBEXOS_QA_PLUGIN_API:1:persistent-widget'
+systemctl is-active cybexos-qualification-state.service
 hello --version
-test "$(cat /etc/nerdos-qualification-generation)" = baseline
+test "$(cat /etc/cybexos-qualification-generation)" = baseline
 # The lifecycle selects /etc/nixos through an owned working-tree symlink.
 # Resolve that root before pure evaluation, matching the staged configuration.
 configuration=$(readlink -f /etc/nixos)
-test "$(nix eval --raw --no-update-lock-file "path:$configuration#nixosConfigurations.nerdos.config.networking.wg-quick.interfaces.qualification.privateKeyFile")" = /var/lib/nerdos/secrets/qualification-vpn.key
+test "$(nix eval --raw --no-update-lock-file "path:$configuration#nixosConfigurations.cybexos.config.networking.wg-quick.interfaces.qualification.privateKeyFile")" = /var/lib/cybexos/secrets/qualification-vpn.key
 python3 - <<'QA'
 from pathlib import Path
 import hashlib, json
 paths = ['/etc/nixos/local/default.nix', '/etc/nixos/local/qualification.nix',
- '/var/lib/nerdos/secrets/qualification-vpn.key', '/var/lib/nerdos-qualification/state',
- '/home/nerdqa/.config/nerdos/shell.json', '/home/nerdqa/.config/nerdos/plugins.json',
- '/home/nerdqa/.local/share/nerdos/plugins/personal.qualification/manifest.json',
- '/home/nerdqa/.local/share/nerdos/plugins/personal.qualification/Widget.qml',
- '/home/nerdqa/.local/share/nerdos/plugin-data/personal.qualification/state']
-Path('/var/lib/nerdos-qualification/hashes.json').write_text(json.dumps({p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in paths}))
+ '/var/lib/cybexos/secrets/qualification-vpn.key', '/var/lib/cybexos-qualification/state',
+ '/home/cybexqa/.config/cybexos/shell.json', '/home/cybexqa/.config/cybexos/plugins.json',
+ '/home/cybexqa/.local/share/cybexos/plugins/personal.qualification/manifest.json',
+ '/home/cybexqa/.local/share/cybexos/plugins/personal.qualification/Widget.qml',
+ '/home/cybexqa/.local/share/cybexos/plugin-data/personal.qualification/state']
+Path('/var/lib/cybexos-qualification/hashes.json').write_text(json.dumps({p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in paths}))
 QA
 ''')
     preserve = '''python3 - <<'QA'
 from pathlib import Path
 import hashlib, json
-for path, expected in json.loads(Path('/var/lib/nerdos-qualification/hashes.json').read_text()).items():
+for path, expected in json.loads(Path('/var/lib/cybexos-qualification/hashes.json').read_text()).items():
     assert hashlib.sha256(Path(path).read_bytes()).hexdigest() == expected, 'Personal file changed: ' + path
 QA
-systemctl is-active nerdos-qualification-state.service
+systemctl is-active cybexos-qualification-state.service
 hello --version
-nerdos-health desktop-required
+cybexos-health desktop-required
 '''
     for name, expression in (
         ('evaluationFailure', '{ ... }: throw "intentional qualification evaluation failure"'),
-        ('buildFailure', '{ pkgs, ... }: { environment.systemPackages = [ (pkgs.runCommand "nerdos-qualification-build-failure" {} "exit 93") ]; }')):
+        ('buildFailure', '{ pkgs, ... }: { environment.systemPackages = [ (pkgs.runCommand "cybexos-qualification-build-failure" {} "exit 93") ]; }')):
         vm.command('readlink -f /run/current-system > /run/qa-system-before; sha256sum /etc/nixos/flake.lock > /run/qa-lock-before')
         edit_import(vm, 'qualification-fault.nix', expression)
         previous = stage_request(vm)
         wait_state(vm, ('failed',), previous=previous)
-        vm.command('test "$(readlink -f /run/current-system)" = "$(cat /run/qa-system-before)"; sha256sum -c /run/qa-lock-before\ntest ! -e /var/lib/nerdos/pending.json')
+        vm.command('test "$(readlink -f /run/current-system)" = "$(cat /run/qa-system-before)"; sha256sum -c /run/qa-lock-before\ntest ! -e /var/lib/cybexos/pending.json')
         edit_import(vm, 'qualification-fault.nix')
         vm.command(preserve)
         checks[name] = {'result': 'passed'}
 
     # Kill the actual staging worker during a real build, then let the boot
     # recovery service inspect its durable status. No fabricated pending record.
-    edit_import(vm, 'qualification-fault.nix', '{ pkgs, ... }: { environment.systemPackages = [ (pkgs.runCommand "nerdos-qualification-interruption" {} "sleep 300; touch $out") ]; }')
+    edit_import(vm, 'qualification-fault.nix', '{ pkgs, ... }: { environment.systemPackages = [ (pkgs.runCommand "cybexos-qualification-interruption" {} "sleep 300; touch $out") ]; }')
     previous = stage_request(vm)
     wait_state(vm, ('building',), timeout=180, previous=previous)
-    vm.command('systemctl kill --kill-whom=all --signal=KILL nerdos-stage@local.service')
+    vm.command('systemctl kill --kill-whom=all --signal=KILL cybexos-stage@local.service')
     vm.reboot(encrypted)
     wait_state(vm, ('interrupted',), timeout=180)
     vm.login_desktop()
@@ -606,21 +606,21 @@ nerdos-health desktop-required
     vm.command(preserve)
     checks['interruptedStageRecovery'] = {'result': 'passed'}
 
-    edit_import(vm, 'qualification-candidate.nix', '{ ... }: { environment.etc."nerdos-qualification-candidate".text = "candidate"; }')
+    edit_import(vm, 'qualification-candidate.nix', '{ ... }: { environment.etc."cybexos-qualification-candidate".text = "candidate"; }')
     candidate = stage(vm)
     apply(vm, candidate)
     authenticated_boot(vm, encrypted)
     confirm(vm)
     # default.nix now intentionally includes the candidate import.
     vm.command(preserve.replace('    assert hashlib', "    if path.endswith('/local/default.nix'): continue\n    assert hashlib"))
-    vm.command('test "$(cat /etc/nerdos-qualification-candidate)" = candidate')
+    vm.command('test "$(cat /etc/cybexos-qualification-candidate)" = candidate')
     checks['localApplyBootConfirm'] = {'result': 'passed', 'transaction': candidate['transaction']}
-    vm.command('nerd update rollback ' + candidate['transaction'])
+    vm.command('cybex update rollback ' + candidate['transaction'])
     wait_state(vm, ('rolled-back',), timeout=180)
     vm.reboot(encrypted)
     vm.login_desktop()
     vm.command(preserve)
-    vm.command('test ! -e /etc/nerdos-qualification-candidate\ntest "$(cat /etc/nerdos-qualification-generation)" = baseline\ntest ! -e /var/lib/nerdos/pending.json')
+    vm.command('test ! -e /etc/cybexos-qualification-candidate\ntest "$(cat /etc/cybexos-qualification-generation)" = baseline\ntest ! -e /var/lib/cybexos/pending.json')
     checks['rollbackAndPersonalPersistence'] = {'result': 'passed'}
     return checks
 
@@ -631,7 +631,7 @@ def qualify(iso, encrypted, base, lifecycle=True, evidence=None, *, interactive=
     case=base/('encrypted' if encrypted else 'plain');case.mkdir()
     disk=case/'disk.qcow2'
     subprocess.run(['qemu-img','create','-f','qcow2',str(disk),'80G'],check=True,capture_output=True)
-    plan={'disk':'/dev/vda','serial':'NERDOS-QA-DISK','hostname':'nerdos-qa','username':'nerdqa',
+    plan={'disk':'/dev/vda','serial':'CYBEXOS-QA-DISK','hostname':'cybexos-qa','username':'cybexqa',
           'timezone':'UTC','locale':'en_US.UTF-8','keyboard':'us','encrypted':encrypted,'autoLogin':False,
           'secureBoot':False,'nvidiaOpen':True,'serialConsole':True,
           'features':{'developer':False,'proprietary':False,'steam':False,'docker':False,'connectedWidgets':False}}
@@ -643,8 +643,8 @@ def qualify(iso, encrypted, base, lifecycle=True, evidence=None, *, interactive=
     vm=VM(case,disk,iso)
     try:
         vm.start();vm.login(live=True)
-        identity=json.loads(vm.command('cat /etc/nerdos/release.json').strip())
-        source_metadata=json.loads(vm.command('nix flake metadata --json \"path:$(cat /etc/nerdos/installer-source)\"', timeout=240).strip())
+        identity=json.loads(vm.command('cat /etc/cybexos/release.json').strip())
+        source_metadata=json.loads(vm.command('nix flake metadata --json \"path:$(cat /etc/cybexos/installer-source)\"', timeout=240).strip())
         if identity['narHash'] != source_metadata['locked']['narHash']:
             raise RuntimeError('ISO release identity differs from its installer source NAR')
         evidence['isoReleaseIdentity'] = identity
@@ -654,27 +654,27 @@ def qualify(iso, encrypted, base, lifecycle=True, evidence=None, *, interactive=
             if interactive:
                 milestones['nativeGuiAssertions'] = vm.graphical_install(encrypted, applications, screenshots)
             else:
-                vm.command('systemctl stop nerdos-installer-ui.service nerdos-installerd.service\n'
-                           'for n in $(seq 1 30); do pgrep -f "nerdos-install --json-ui" >/dev/null || exit 0; sleep 1; done; exit 1', timeout=90)
-                vm.command('nerdos-install --plan-file /run/qa-plan.json --secrets-fd 3 --development-source "$(cat /etc/nerdos/installer-source)" 3< <(printf %s '+shlex.quote(secrets)+')',timeout=10800)
+                vm.command('systemctl stop cybexos-installer-ui.service cybexos-installerd.service\n'
+                           'for n in $(seq 1 30); do pgrep -f "cybexos-install --json-ui" >/dev/null || exit 0; sleep 1; done; exit 1', timeout=90)
+                vm.command('cybexos-install --plan-file /run/qa-plan.json --secrets-fd 3 --development-source "$(cat /etc/cybexos/installer-source)" 3< <(printf %s '+shlex.quote(secrets)+')',timeout=10800)
         except RuntimeError as error:
-            diagnostics = vm.command('tail -c 6000 /run/nerdos-installer.log 2>/dev/null || true')
+            diagnostics = vm.command('tail -c 6000 /run/cybexos-installer.log 2>/dev/null || true')
             raise RuntimeError(str(error) + '\nInstaller diagnostics (disposable QA guest):\n' + diagnostics) from error
         milestones['installerCompleted'] = {'result': 'passed', 'interface': 'tty1 Slint screen with real QMP keyboard and pointer input' if interactive else 'JSON plan', 'applications': applications}
         vm.process.sendline('systemctl poweroff');vm.process.expect(pexpect.EOF,timeout=90);vm.stop()
         vm.iso=None;vm.start();vm.login(encrypted=encrypted)
         milestones['installedBootAndSerialPasswordLogin'] = {'result': 'passed'}
-        vm.command('test -L /etc/nixos && test -e /etc/nerdos/runtime/quickshell/shell.qml')
-        installed_identity=json.loads(vm.command('cat /etc/nerdos/release.json').strip())
+        vm.command('test -L /etc/nixos && test -e /etc/cybexos/runtime/quickshell/shell.qml')
+        installed_identity=json.loads(vm.command('cat /etc/cybexos/release.json').strip())
         if installed_identity != identity:
             raise RuntimeError('Installed product differs from ISO source identity')
         milestones['installedSourceIdentity'] = {'result': 'passed'}
-        vm.command('nerdos-verify-encryption' if encrypted else '! nerdos-verify-encryption')
+        vm.command('cybexos-verify-encryption' if encrypted else '! cybexos-verify-encryption')
         milestones['runtimeEncryption'] = {'result': 'passed', 'encrypted': encrypted}
-        vm.command('nerdos-desktop-check')
+        vm.command('cybexos-desktop-check')
         milestones['desktopConfigurationCheck'] = {'result': 'passed'}
         vm.login_desktop()
-        vm.command('nerdos-health desktop-required',timeout=180)
+        vm.command('cybexos-health desktop-required',timeout=180)
         vm.check_desktop_defaults()
         if screenshots:
             vm.screenshot(screenshots / 'installed-desktop.png')
@@ -706,7 +706,7 @@ def main():
     result={'kind':'isolated-installation-evidence','isoSha256':hashlib.file_digest(iso.open('rb'),'sha256').hexdigest(),'checks':{}}
     if args.work_dir:
         args.work_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='nerdos-qualification-', dir=args.work_dir) as temporary:
+    with tempfile.TemporaryDirectory(prefix='cybexos-qualification-', dir=args.work_dir) as temporary:
         for encrypted in ((False,True) if args.case == 'both' else (args.case == 'encrypted',)):
             name='encrypted-install' if encrypted else 'plain-install'
             evidence = result['checks'][name] = {'result': 'running'}

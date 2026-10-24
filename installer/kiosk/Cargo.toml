@@ -1,5 +1,5 @@
 [package]
-name = "nerdos-installer"
+name = "cybexos-installer"
 version = "0.1.0"
 edition = "2021"
 # The pinned Nixpkgs builds this crate; keep dependencies within its rustc.
@@ -23,7 +23,7 @@ default = []
 preview = ["dep:image"]
 
 [[bin]]
-name = "nerdos-installer"
+name = "cybexos-installer"
 path = "src/main.rs"
 
 [[bin]]

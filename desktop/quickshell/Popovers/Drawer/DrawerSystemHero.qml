@@ -5,7 +5,7 @@ import "../../Common/SysInfoHelpers.js" as SysInfoHelpers
 import ".."
 
 // The fixed identity and health summary at the top of Overview. It stays
-// independent of drawer section settings: opening the NerdOS button always
+// independent of drawer section settings: opening the Cybex OS button always
 // answers which machine this is and how its core resources are doing.
 Rectangle {
     id: root
@@ -19,7 +19,7 @@ Rectangle {
     border.color: Theme.hairlineSoft
 
     readonly property int logoSize: Theme.scaled(56)
-    readonly property bool nerdosIdentity:
+    readonly property bool cybexosIdentity:
         SysInfo.osId.toLowerCase() === "nixos" && SysInfo.osName !== ""
     readonly property string osTitle:
         SysInfo.osName !== "" ? SysInfo.osName : "System information unavailable"
@@ -210,13 +210,13 @@ Rectangle {
 
                 BrandIcon {
                     anchors.fill: parent
-                    name: "nerdos"
-                    visible: root.nerdosIdentity
+                    name: "cybexos"
+                    visible: root.cybexosIdentity
                 }
 
                 Rectangle {
                     anchors.fill: parent
-                    visible: !root.nerdosIdentity
+                    visible: !root.cybexosIdentity
                     radius: Theme.rowRadius
                     color: Theme.chipHover
 

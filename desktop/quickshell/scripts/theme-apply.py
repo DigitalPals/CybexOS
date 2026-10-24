@@ -3,7 +3,7 @@
 
 Common/SystemTheme.qml pipes its resolved tokens (theme_tokens.py) to
 `theme-apply.py apply` whenever they change. Each target module renders its
-files into ~/.local/state/nerdos/theme and, only when one of them changed,
+files into ~/.local/state/cybexos/theme and, only when one of them changed,
 reloads its application. `--force` reloads every target regardless, for the
 `theme apply` IPC call. `render` rewrites the files from the saved tokens
 without reloading anything.

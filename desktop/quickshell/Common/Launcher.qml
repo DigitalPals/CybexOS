@@ -31,7 +31,7 @@ Singleton {
         show(targetScreen);
     }
 
-    // `nerdos-runtime ipc launcher open clipboard` (Super+Ctrl+V). Opening
+    // `cybexos-runtime ipc launcher open clipboard` (Super+Ctrl+V). Opening
     // never toggles closed: the key always shows the requested tab.
     function openProvider(providerId, targetScreen) {
         openRequest = ProviderHelpers.openTarget(providerId);

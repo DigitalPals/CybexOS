@@ -21,8 +21,8 @@ function darkTokens() {
         colors: {
             background: "#1a1917", surface: "#201e1b", surfaceRaised: "#26241f",
             bar: "#1a1917", text: "#f2f0ea", textMuted: "#b3afa4", textDim: "#97938a",
-            accent: "#d3d283", onAccent: "#1c1c12", accentText: "#d3d283",
-            accentContainer: "#7a7950", stroke: "#3a3936",
+            accent: "#60a5fa", onAccent: "#1c1c12", accentText: "#60a5fa",
+            accentContainer: "#3d5c82", stroke: "#3a3936",
             red: "#ff8f8f", amber: "#ffc26e", green: "#63d68c",
         },
         font: { ui: "JetBrainsMono Nerd Font", mono: "JetBrainsMono Nerd Font" },
@@ -37,8 +37,8 @@ function lightTokens() {
         colors: {
             background: "#eae9ef", surface: "#f1f0f5", surfaceRaised: "#f8f7fa",
             bar: "#eae9ef", text: "#1f1d2b", textMuted: "#43415a", textDim: "#535168",
-            accent: "#d3d283", onAccent: "#1c1c12", accentText: "#6b6a1c",
-            accentContainer: "#e3e2bf", stroke: "#cfced6",
+            accent: "#60a5fa", onAccent: "#1c1c12", accentText: "#355a89",
+            accentContainer: "#c6daf7", stroke: "#cfced6",
             red: "#c22f2f", amber: "#9a6414", green: "#1a7f47",
         },
         font: { ui: "Figtree", mono: "JetBrainsMono Nerd Font" },
@@ -47,7 +47,7 @@ function lightTokens() {
 }
 
 function scratch(t) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nerdos-tests.theme."));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cybexos-tests.theme."));
     t.after(() => fs.rmSync(root, { recursive: true, force: true }));
     return root;
 }
@@ -62,7 +62,7 @@ function runDriver(stateDir, args, input, options = {}) {
         HOME: options.home || stateDir,
         PATH: options.bin || path.join(stateDir, "no-commands"),
         PYTHONDONTWRITEBYTECODE: "1",
-        NERDOS_THEME_STATE_DIR: stateDir,
+        CYBEXOS_THEME_STATE_DIR: stateDir,
         ...(options.env || {}),
     };
     const result = spawnSync(python, [driver, ...args], {

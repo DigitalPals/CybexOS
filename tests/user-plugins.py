@@ -16,7 +16,7 @@ import time
 import sys
 
 
-DBUS = ["dbus-run-session", *(["--config-file", os.environ["NERDOS_DBUS_SESSION_CONFIG"]] if os.environ.get("NERDOS_DBUS_SESSION_CONFIG") else []), "--"]
+DBUS = ["dbus-run-session", *(["--config-file", os.environ["CYBEXOS_DBUS_SESSION_CONFIG"]] if os.environ.get("CYBEXOS_DBUS_SESSION_CONFIG") else []), "--"]
 
 ROOT = Path(__file__).resolve().parents[1]
 SHELL = ROOT / "desktop/quickshell"
@@ -66,18 +66,18 @@ def end_session(process):
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix="nerdos-user-widgets.") as temporary, ExitStack() as stack:
+    with tempfile.TemporaryDirectory(prefix="cybexos-user-widgets.") as temporary, ExitStack() as stack:
         base = Path(temporary)
         env = dict(os.environ, HOME=str(base / "home"),
                    XDG_CONFIG_HOME=str(base / "config"),
                    XDG_DATA_HOME=str(base / "data"), XDG_STATE_HOME=str(base / "state"),
                    XDG_RUNTIME_DIR=str(base / "run"), QT_QPA_PLATFORM="offscreen",
                    QT_QUICK_BACKEND="software")
-        for key in ("NERDOS_USER_CONFIG_ROOT", "NERDOS_PLUGIN_ROOT"):
+        for key in ("CYBEXOS_USER_CONFIG_ROOT", "CYBEXOS_PLUGIN_ROOT"):
             env.pop(key, None)
         (base / "run").mkdir(mode=0o700)
-        packages = base / "data/nerdos/plugins"
-        config = base / "config/nerdos/plugins.json"
+        packages = base / "data/cybexos/plugins"
+        config = base / "config/cybexos/plugins.json"
         for plugin_id, api in (("example.good", 1), ("example.broken", 1), ("example.future", 2)):
             directory = packages / plugin_id
             directory.mkdir(parents=True)
@@ -254,8 +254,8 @@ Label {
         assert next(p for p in info["plugins"] if p["id"] == pomodoro.name)["enabled"]
         cli("configure-widget", pomodoro.name, '{"enabled":true}')
         cli("configure-widget", spacer.name + "#one", '{"enabled":false}')
-        layout = {"left": [{"id": spacer.name, "__nerdosInstance": "one", "size": 32}],
-                  "center": [], "right": [{"id": spacer.name, "__nerdosInstance": "two", "size": 43}]}
+        layout = {"left": [{"id": spacer.name, "__cybexosInstance": "one", "size": 32}],
+                  "center": [], "right": [{"id": spacer.name, "__cybexosInstance": "two", "size": 43}]}
         cli("bar-config", json.dumps({"layout": layout, "transparent": True, "id": "ignored"}))
         info = json.loads(cli("list").stdout)
         assert "id" not in info["bar"]
@@ -266,7 +266,7 @@ Label {
         assert next(p for p in info["plugins"] if p["id"] == pomodoro.name)["enabled"]
         before_invalid = config.read_bytes()
         for name in ("one", 42, ["invalid"]):
-            layout["right"][0]["__nerdosInstance"] = name
+            layout["right"][0]["__cybexosInstance"] = name
             assert cli("bar-config", json.dumps({"layout": layout}), check=False).returncode == 2
             assert config.read_bytes() == before_invalid
         assert cli("instance", pomodoro.name, "second", check=False).returncode == 2
@@ -299,7 +299,7 @@ Label {
         # File capabilities can exceed a container's bounding set.
         # A private byte-copy runs unprivileged; headless needs no DRM access.
         sway_binary = base / "sway"
-        shutil.copyfile(os.environ.get('NERDOS_SWAY_BINARY', shutil.which("sway")), sway_binary)
+        shutil.copyfile(os.environ.get('CYBEXOS_SWAY_BINARY', shutil.which("sway")), sway_binary)
         sway_binary.chmod(0o700)
         compositor_log = stack.enter_context((base / "sway.log").open("w+"))
         compositor = subprocess.Popen([*DBUS, str(sway_binary), "-c", str(sway_config)], env=env,
@@ -325,7 +325,7 @@ Label {
         env["WAYLAND_DISPLAY"] = sockets[0].name
 
         protected = {path: path.read_bytes() for path in packages.rglob("*") if path.is_file()}
-        plugin_data = base / "data/nerdos/plugin-data/example.good/history.json"
+        plugin_data = base / "data/cybexos/plugin-data/example.good/history.json"
         plugin_data.write_text('{"userData":"preserved"}')
         protected[plugin_data] = plugin_data.read_bytes()
         protected[config] = config.read_bytes()
@@ -427,7 +427,7 @@ if __name__ == "__main__":
         # container, so run this entire disposable fixture as nobody.
         # Rootless build containers can bind a private (0750) checkout. Copy
         # this test's public fixtures rather than changing checkout permissions.
-        with tempfile.TemporaryDirectory(prefix='nerdos-plugin-source-', dir='/tmp') as temporary:
+        with tempfile.TemporaryDirectory(prefix='cybexos-plugin-source-', dir='/tmp') as temporary:
             source = Path(temporary)
             shutil.copytree(ROOT / 'desktop', source / 'desktop')
             shutil.copytree(ROOT / 'tests', source / 'tests')

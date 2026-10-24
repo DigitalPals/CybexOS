@@ -33,9 +33,9 @@ test("Brave URL-app classes resolve to installed web-app entries across browser 
         { id: "mail", url: "https://example.com/mail/?folder=inbox#top" }];
     for (const browser of ["brave", "chrome", "chromium", "msedge"])
         for (const profile of ["Default", "Profile_1"])
-            assert.equal(D.webAppEntryId(`${browser}-web.whatsapp.com__-${profile}`, apps), "nerdos-webapp-whatsapp");
-    assert.equal(D.webAppEntryId("brave-example.com__chat_-Default", apps), "nerdos-webapp-chat");
-    assert.equal(D.webAppEntryId("brave-example.com__mail_-Default", apps), "nerdos-webapp-mail");
+            assert.equal(D.webAppEntryId(`${browser}-web.whatsapp.com__-${profile}`, apps), "cybexos-webapp-whatsapp");
+    assert.equal(D.webAppEntryId("brave-example.com__chat_-Default", apps), "cybexos-webapp-chat");
+    assert.equal(D.webAppEntryId("brave-example.com__mail_-Default", apps), "cybexos-webapp-mail");
     for (const appId of ["brave", "firefox", "brave-web.whatsapp.com.evil__-Default",
         "brave-example.com__unknown-Default", "brave-web.whatsapp.com__-", "web.whatsapp.com"])
         assert.equal(D.webAppEntryId(appId, apps), "", appId);

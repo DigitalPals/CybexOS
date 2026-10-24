@@ -108,7 +108,7 @@ SettingsPage {
 
             ValueRow {
                 width: parent.width
-                label: "~/.config/nerdos/shell.json"
+                label: "~/.config/cybexos/shell.json"
                 labelMono: true
 
                 SettingsAction {

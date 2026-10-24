@@ -4,8 +4,8 @@ import Quickshell
 import Quickshell.Io
 import "AssistantHelpers.js" as AssistantHelpers
 
-// The shell's side of the NerdOS Assistant (docs/assistant.md). The
-// nerdos-assistant user service owns the agent processes and every turn, so
+// The shell's side of the Cybex OS Assistant (docs/assistant.md). The
+// cybexos-assistant user service owns the agent processes and every turn, so
 // a reload of this shell never ends one; this singleton is its client. It
 // owns what only the desktop can know: where the character stands, whether
 // its box is open, push-to-talk through Voxtype, and the one screenshot a
@@ -16,7 +16,7 @@ Singleton {
     // ---- availability ------------------------------------------------------
     readonly property bool available: Settings.assistantConfigured
     readonly property string runtimeDir:
-        (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/nerdos"
+        (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/cybexos"
     readonly property string socketPath: runtimeDir + "/assistant.sock"
     readonly property string scratchDir: runtimeDir + "/assistant"
     readonly property string home: Quickshell.env("HOME") || ""
@@ -29,7 +29,7 @@ Singleton {
     property var turn: null
     // Whether the service holds a conversation the next question continues.
     property var conversation: null
-    // The `nerd agent` default, which "auto" follows.
+    // The `cybex agent` default, which "auto" follows.
     property string preferredAgent: ""
 
     readonly property string agent: AssistantHelpers.resolveAgent(
@@ -349,7 +349,7 @@ Singleton {
                 root.notice = error ? error.message : I18n.tr("Nothing to continue yet.");
                 return;
             }
-            Quickshell.execDetached(["nerdos-apps", "terminal", "--app-id=nerdos-agent",
+            Quickshell.execDetached(["cybexos-apps", "terminal", "--app-id=cybexos-agent",
                 "--dir=" + (result.cwd || root.home), "--"].concat(result.argv));
         });
     }
@@ -360,7 +360,7 @@ Singleton {
     }
 
     function addWidget(pluginId) {
-        Quickshell.execDetached(["nerd", "plugin", "enable", pluginId]);
+        Quickshell.execDetached(["cybex", "plugin", "enable", pluginId]);
         notice = I18n.tr("Added to the bar.");
     }
 
@@ -372,7 +372,7 @@ Singleton {
             openComposer(true);
             signIn(turn ? turn.agent : agent);
         } else if (action.command)
-            Quickshell.execDetached(["nerdos-apps", "terminal", "--hold", "--"].concat(action.command));
+            Quickshell.execDetached(["cybexos-apps", "terminal", "--hold", "--"].concat(action.command));
         else if (action.unit)
             Quickshell.execDetached(["systemctl", "--user", "start", action.unit]);
         else if (action.page)
@@ -392,7 +392,7 @@ Singleton {
             }
             root.signingIn = agentId;
             root.focusRequested = false;
-            Quickshell.execDetached(["nerdos-apps", "terminal", "--hold",
+            Quickshell.execDetached(["cybexos-apps", "terminal", "--hold",
                 "--dir=" + result.cwd, "--"].concat(result.argv));
             authPoll.restart();
             authDeadline.restart();
@@ -837,10 +837,10 @@ Singleton {
         }
     }
 
-    // ---- the `nerd agent` default ----------------------------------------------
+    // ---- the `cybex agent` default ----------------------------------------------
     FileView {
         path: (Quickshell.env("XDG_CONFIG_HOME") || (root.home + "/.config"))
-            + "/nerdos/defaults/agent"
+            + "/cybexos/defaults/agent"
         printErrors: false
         watchChanges: true
         onFileChanged: reload()

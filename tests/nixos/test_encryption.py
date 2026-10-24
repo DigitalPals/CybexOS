@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 
 loader = importlib.machinery.SourceFileLoader('encryption_guard', str(
-    Path(__file__).resolve().parents[2] / 'lifecycle/bin/nerdos-verify-encryption'))
+    Path(__file__).resolve().parents[2] / 'lifecycle/bin/cybexos-verify-encryption'))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 guard = importlib.util.module_from_spec(spec)
 loader.exec_module(guard)

@@ -13,7 +13,7 @@ test("live process guard waits for IPC clients and only terminates developer ins
         ["qs ipc --any-display -p /fixture/quickshell call wallpaper list", ""],
         ["qs -d -p /fixture/quickshell", "-TERM 222\n"],
     ]) {
-        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "nerdos-qs-process-test-"));
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "cybexos-qs-process-test-"));
         try {
             fs.writeFileSync(path.join(directory, "state"), "live");
             fs.writeFileSync(path.join(directory, "signals"), "");
@@ -49,7 +49,7 @@ qs_live_reconcile_processes
 
 test("live guard inspects successive IPC clients and still requires final quiescence", () => {
     for (const mode of ["successive", "vanished", "persistent", "unknown", "managed"]) {
-        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "nerdos-qs-successors-"));
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "cybexos-qs-successors-"));
         try {
             fs.writeFileSync(path.join(directory, "pid"), "222");
             fs.writeFileSync(path.join(directory, "signals"), "");
@@ -66,7 +66,7 @@ qs_live_pid_command() {
 }
 qs_live_pid_cgroup() {
   if [[ $QS_TEST_MODE == managed ]]; then echo /fixture/quickshell.service;
-  else echo /fixture/nerdos-welcome.service; fi
+  else echo /fixture/cybexos-welcome.service; fi
 }
 id() { echo 1000; }
 ps() {
@@ -99,7 +99,7 @@ qs_live_reconcile_processes
                 assert.match(result.stderr, /extra qs PID 222: command=qs ipc/);
                 assert.match(result.stderr, /extra qs PID 333: command=qs ipc/);
                 assert.match(result.stderr, /extra qs PID 444: command=qs ipc/);
-                assert.match(result.stderr, /cgroup=\/fixture\/nerdos-welcome.service/);
+                assert.match(result.stderr, /cgroup=\/fixture\/cybexos-welcome.service/);
             } else if (mode !== "vanished") {
                 assert.match(result.stderr, /expected 111 to be the sole qs PID/);
             }

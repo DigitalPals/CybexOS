@@ -1,4 +1,4 @@
-//! The connection to `nerdos-installerd`.
+//! The connection to `cybexos-installerd`.
 //!
 //! A background thread reads newline-delimited JSON and hands each message to
 //! the Slint event loop. A separate writer keeps socket I/O off the UI thread.
@@ -19,9 +19,9 @@ use crate::protocol::{parse, Message};
 const MAX_LINE: usize = 1024 * 1024;
 
 pub fn socket_path() -> PathBuf {
-    std::env::var_os("NERDOS_INSTALLER_SOCKET")
+    std::env::var_os("CYBEXOS_INSTALLER_SOCKET")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/run/nerdos-installer/control.sock"))
+        .unwrap_or_else(|| PathBuf::from("/run/cybexos-installer/control.sock"))
 }
 
 #[derive(Clone, Default)]

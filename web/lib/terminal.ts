@@ -1,10 +1,10 @@
 import type { AppId } from './types';
 
 export const HOME_PATH = '/home/guest';
-export const README_CONTENT = `Welcome to NerdOS
+export const README_CONTENT = `Welcome to Cybex OS
 ==================
 
-NerdOS — the Opinionated System is a Hyprland desktop built around
+Cybex OS is a Hyprland desktop built around
 a fast keyboard-first workflow, Quickshell, and a coherent theme.
 
 This browser experience recreates the feel of the desktop.
@@ -19,10 +19,10 @@ Things to try
 • Write something in Omawrite. Notes stay in this browser.
 • Type help in the terminal to explore supported commands.
 
-Source: https://github.com/DigitalPals/NerdOS
+Source: https://github.com/DigitalPals/CybexOS
 `;
 
-export const SHORTCUTS_CONTENT = `NerdOS browser shortcuts
+export const SHORTCUTS_CONTENT = `Cybex OS browser shortcuts
 ========================
 
 Alt + Space               Open the launcher
@@ -85,7 +85,7 @@ export const FILE_SYSTEM: Record<string, VirtualFile[]> = {
     { name: 'moon-mountains.jpg', kind: 'image', description: 'Desktop wallpaper' },
   ],
   [`${HOME_PATH}/Code`]: [
-    { name: 'README.md', kind: 'text', description: 'Markdown document', content: '# Make it yours\n\nA workspace for your next idea.\n\nExplore the desktop, image builder, and documentation at:\nhttps://github.com/DigitalPals/NerdOS\n\nThis is a sample folder in the browser preview.\n' },
+    { name: 'README.md', kind: 'text', description: 'Markdown document', content: '# Make it yours\n\nA workspace for your next idea.\n\nExplore the desktop, image builder, and documentation at:\nhttps://github.com/DigitalPals/CybexOS\n\nThis is a sample folder in the browser preview.\n' },
   ],
 };
 
@@ -125,27 +125,27 @@ function tokenize(input: string): string[] | null {
 
 /** Deliberately fictional workstation data, shared by all system commands. */
 export const DEMO_SYSTEM = {
-  hostname: 'nerdos',
-  os: 'NixOS 26.05 x86_64 · NerdOS',
-  host: 'NerdOS Workstation (demo)',
+  hostname: 'cybexos',
+  os: 'NixOS 26.05 x86_64 · Cybex OS',
+  host: 'Cybex OS Workstation (demo)',
   kernel: '6.18.57',
   uptime: '42 mins (demo session)',
   packages: '2148 (nix), 12 (flatpak)',
   shell: 'fish 4.3',
   wm: 'Hyprland (Wayland)',
-  wmTheme: 'NerdOS · Quickshell',
+  wmTheme: 'Cybex OS · Quickshell',
   terminal: 'Kitty',
   cpu: 'AMD Ryzen 9 7950X (32) @ 5.70 GHz',
   gpu: 'AMD Radeon RX 7800 XT · 16 GiB',
   memory: '3.24 GiB / 31.19 GiB (10%)',
   disk: '64.2 GiB / 953.9 GiB (7%) · ext4',
-  theme: 'NerdOS',
+  theme: 'Cybex OS',
   font: 'JetBrains Mono · 12 pt',
 } as const;
 
-export const NERDOS_LOGO_COLORED = "   $1.################.     $2///$1.################.\n$1==#######################$2///$1####################==\n  $1####            ######$2///$1#####            ####\n  $1####            #### $2///  $1####            ####\n  $1####.          .####$2//    $1####.          .####\n  $1'##################'      '##################'\n    $1'##############'          '##############'";
+export const CYBEXOS_LOGO_COLORED = "$1⣠$1⣶$1⣶$1⣶$1⣶$1⣶$1⣶$1⡆$1 $1 $1 $1 $1 $1 $1 $1⢸$1⣿$1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1\n$1⣿$1⡏$1 $1 $1 $1 $1 $1⠈$1⢿$1⣆$1 $1 $1⢀$1⣾$1⡟$1⢸$1⣿$1⠛$1⠛$1⠛$1⠛$1⢿$1⣆$1⢰$1⣿$1⠛$1⠛$1⠛$1⠻$1⣿$1⠈$1⠛$1⢷$1⣄$1 $2⣴$2⠟$2⠁$1 $1⠛\n$1⣿$1⣇$1 $1 $1 $1 $1 $1 $1⠈$1⢿$1⣧$1⢀$1⣾$1⠏$1 $1⢸$1⣿$1 $1 $1 $1 $1⣸$1⣿$1⢸$1⣿$1⠛$1⠛$1⠛$1⠛$1⠛$1 $1 $1⣠$1⡿$1⢿$1⣦$1⡀$1 $1 $1\n$1⠘$1⠛$1⠿$1⠿$1⠿$1⠿$1⠿$1⠃$1 $1 $1⢻$1⣿$1⠏$1 $1 $1⠈$1⠛$1⠿$1⠿$1⠿$1⠿$1⠟$1⠃$1⠘$1⠛$1⠿$1⠿$1⠿$1⠿$1⠿$1⠰$1⠾$1⠋$1 $1 $1⠙$1⠿$1⠆$1 $1\n$1 $1 $1 $1 $1 $1 $1 $1 $1 $1⠿$1⠿$1⠃$1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1 $1";
 
-export const NERDOS_LOGO = NERDOS_LOGO_COLORED.replace(/\$[12]/g, '');
+export const CYBEXOS_LOGO = CYBEXOS_LOGO_COLORED.replace(/\$[12]/g, '');
 
 export const SYSTEM_DETAILS = [
   ['OS', DEMO_SYSTEM.os],
@@ -171,7 +171,7 @@ ${SYSTEM_DETAILS.map(([label, value]) => `${label.padEnd(10)} ${value}`).join('\
 
 Demo system information · sample hardware, packages, and kernel.`;
 
-const COMMANDS = ['help', 'fastfetch', 'neofetch', 'ls', 'cd', 'pwd', 'cat', 'date', 'whoami', 'hostname', 'uptime', 'free', 'df', 'uname', 'echo', 'clear', 'history', 'nerd', 'exit'];
+const COMMANDS = ['help', 'fastfetch', 'neofetch', 'ls', 'cd', 'pwd', 'cat', 'date', 'whoami', 'hostname', 'uptime', 'free', 'df', 'uname', 'echo', 'clear', 'history', 'cybex', 'exit'];
 const APP_COMMANDS = ['settings', 'files', 'notes', 'welcome', 'shortcuts', 'usage'];
 
 type ShellWord = { value: string; start: number; end: number };
@@ -215,7 +215,7 @@ export function completeInput(input: string, cwd = HOME_PATH, cursor = input.len
   const prefix = completionWords(rawPrefix)[0]?.value || '';
   let candidates: string[];
   if (wordIndex === 0) candidates = COMMANDS.filter((name) => name.startsWith(prefix));
-  else if (words[0]?.value === 'nerd' && wordIndex === 1) candidates = APP_COMMANDS.filter((name) => name.startsWith(prefix));
+  else if (words[0]?.value === 'cybex' && wordIndex === 1) candidates = APP_COMMANDS.filter((name) => name.startsWith(prefix));
   else if (['cd', 'ls', 'cat'].includes(words[0]?.value)) {
     if (prefix.startsWith('-')) return unchanged;
     const pathPrefix = prefix === '~' ? '~/' : prefix;
@@ -273,11 +273,11 @@ export function runCommand(input: string, cwd = HOME_PATH, now = new Date()): Co
   uptime             Demo session uptime
   free [-h]          Sample memory usage
   df [-h]            Sample disk usage
-  uname [-a/-r/-m]   Sample NerdOS kernel information
+  uname [-a/-r/-m]   Sample Cybex OS kernel information
   history            Show this terminal’s command history
   echo <text>        Print text
   clear              Clear the terminal
-  nerd --help       Open desktop apps
+  cybex --help       Open desktop apps
 
 Tab completion · ↑ / ↓ history · Ctrl + C cancel · Ctrl + L clear
 This terminal is simulated. Commands never run on your device.`);
@@ -323,15 +323,15 @@ This terminal is simulated. Commands never run on your device.`);
         const parent = path.slice(0, slash) || '/';
         const file = Object.hasOwn(FILE_SYSTEM, parent) ? FILE_SYSTEM[parent].find((entry) => entry.name === path.slice(slash + 1)) : undefined;
         if (!file) return `cat: ${name}: no such sample file`;
-        if (file.kind === 'note') return 'Your notes live in Omawrite. Open them with: nerd notes';
-        if (file.kind === 'image') return 'This is an image. View it in Files with: nerd files';
+        if (file.kind === 'note') return 'Your notes live in Omawrite. Open them with: cybex notes';
+        if (file.kind === 'image') return 'This is an image. View it in Files with: cybex files';
         return file.content || '';
       }).join('\n'));
     }
-    case 'nerd': {
+    case 'cybex': {
       const appNames: Record<string, AppId> = { settings: 'settings', files: 'files', notes: 'notes', welcome: 'welcome', shortcuts: 'shortcuts', usage: 'usage' };
       if (args.length === 1 && Object.hasOwn(appNames, args[0])) return { ...base, output: `Opening ${args[0]}…`, openApp: appNames[args[0]] };
-      return result('NerdOS desktop commands\n\n  nerd settings    Personalize your desktop\n  nerd files       Browse sample files\n  nerd notes       Open Omawrite\n  nerd welcome     About NerdOS\n  nerd shortcuts   Keyboard shortcuts\n  nerd usage       Codex & Claude subscription usage');
+      return result('Cybex OS desktop commands\n\n  cybex settings    Personalize your desktop\n  cybex files       Browse sample files\n  cybex notes       Open Omawrite\n  cybex welcome     About Cybex OS\n  cybex shortcuts   Keyboard shortcuts\n  cybex usage       Codex & Claude subscription usage');
     }
     case 'sudo':
     case 'apt':

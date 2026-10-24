@@ -8,7 +8,7 @@ import "Settings" as SettingsUi
 
 FloatingWindow {
     id: window
-    title: "NerdOS Software" // i18n: untranslated (compositor identity)
+    title: "Cybex OS Software" // i18n: untranslated (compositor identity)
     visible: Software.open
     color: Theme.panelSurface
     implicitWidth: 960
@@ -20,7 +20,7 @@ FloatingWindow {
         target: Software
         function onPresent() {
             window.minimized = false;
-            Hyprland.dispatch('hl.dsp.focus({ window = "title:^NerdOS Software$" })');
+            Hyprland.dispatch('hl.dsp.focus({ window = "title:^Cybex OS Software$" })');
         }
     }
     Column {

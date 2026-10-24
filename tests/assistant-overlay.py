@@ -2,9 +2,9 @@
 """Drive the real shell and assistant service with a scripted agent.
 
 The actual Quickshell engine loads the whole shell under a private headless
-Sway, the actual nerdos-assistant service runs beside it, and a fake
+Sway, the actual cybexos-assistant service runs beside it, and a fake
 `claude` speaks Claude Code's stream-json and permission protocol. Questions
-go in through the shell's `assistant` IPC target, as `nerd assistant ask`
+go in through the shell's `assistant` IPC target, as `cybex assistant ask`
 sends them; approvals are answered over the service socket, as the card's
 buttons do. What a turn left behind (Undo, a new widget) is checked on disk
 and in the service's snapshot, and the shell's log must stay free of QML
@@ -28,8 +28,8 @@ import time
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DBUS = ["dbus-run-session", *(["--config-file", os.environ["NERDOS_DBUS_SESSION_CONFIG"]]
-                              if os.environ.get("NERDOS_DBUS_SESSION_CONFIG") else []), "--"]
+DBUS = ["dbus-run-session", *(["--config-file", os.environ["CYBEXOS_DBUS_SESSION_CONFIG"]]
+                              if os.environ.get("CYBEXOS_DBUS_SESSION_CONFIG") else []), "--"]
 QML_ERRORS = re.compile(r"TypeError|ReferenceError|Binding loop|is not a type|Type \w+ unavailable"
                         r"|Cannot assign|Unable to assign|Illegal method name|Failed to load configuration")
 
@@ -80,7 +80,7 @@ while True:
         continue
     text = message["message"]["content"][0]["text"].lower()
     if "transparent" in text:
-        target = home / ".config/nerdos/shell.json"
+        target = home / ".config/cybexos/shell.json"
         emit({"type": "assistant", "message": {"content": [
             {"type": "tool_use", "id": "x", "name": "Read", "input": {"file_path": str(target)}}]}})
         if ask("r1", "Edit", {"file_path": str(target), "old_string": "a", "new_string": "b"})["behavior"] == "allow":
@@ -93,14 +93,14 @@ while True:
         time.sleep(0.2)
         reply("Removed it." if answer["behavior"] == "allow" else "Okay, I left it alone.")
     elif "widget" in text:
-        target = home / ".local/share/nerdos/plugins/personal.cputemp/manifest.json"
+        target = home / ".local/share/cybexos/plugins/personal.cputemp/manifest.json"
         if ask("r1", "Write", {"file_path": str(target), "content": "{}"})["behavior"] == "allow":
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps({"id": "personal.cputemp", "name": "CPU temperature",
                                           "version": "1.0.0", "apiVersion": 1, "entrypoint": "Widget.qml"}))
         reply("I made a CPU temperature widget. It is off until you add it to the bar.")
     else:
-        reply("I can help with NerdOS.")
+        reply("I can help with Cybex OS.")
 '''
 
 
@@ -174,8 +174,8 @@ class Session:
         self.runtime = base / "run"
         self.runtime.mkdir(mode=0o700)
         self.home = base / "home"
-        (self.home / ".config/nerdos").mkdir(parents=True)
-        self.preferences = self.home / ".config/nerdos/shell.json"
+        (self.home / ".config/cybexos").mkdir(parents=True)
+        self.preferences = self.home / ".config/cybexos/shell.json"
         self.preferences.write_text(json.dumps({"v": 30, "assistantShown": True,
                                                "assistantX": 1000, "assistantY": 120}, indent=2) + "\n")
         (self.home / 'signed-out-claude').touch()
@@ -189,7 +189,7 @@ class Session:
         fake.chmod(0o700)
         launchers = base / 'bin'
         launchers.mkdir()
-        terminal = launchers / 'nerdos-apps'
+        terminal = launchers / 'cybexos-apps'
         terminal.write_text(f'#!{sys.executable}\nimport json,os,sys\nfrom pathlib import Path\n'
             'Path(os.environ["HOME"]).joinpath("login-argv.json").write_text(json.dumps(sys.argv[1:]))\n'
             'command=sys.argv[sys.argv.index("--")+1:]\nos.execv(command[0], command)\n')
@@ -199,16 +199,16 @@ class Session:
                     "XDG_DATA_HOME": str(self.home / ".local/share"),
                     "XDG_STATE_HOME": str(self.home / ".local/state"), "QT_QPA_PLATFORM": "wayland",
                     "QT_QUICK_BACKEND": "software", "WLR_BACKENDS": "headless", "WLR_RENDERER": "pixman",
-                    "WLR_LIBINPUT_NO_DEVICES": "1", "NERDOS_ASSISTANT": "1",
-                    "NERDOS_CONNECTED_WIDGETS": "0", "NERDOS_DEVELOPER_TOOLS": "0",
-                    "QML_IMPORT_PATH": os.environ.get("NERDOS_QML_IMPORT_PATH", ""),
+                    "WLR_LIBINPUT_NO_DEVICES": "1", "CYBEXOS_ASSISTANT": "1",
+                    "CYBEXOS_CONNECTED_WIDGETS": "0", "CYBEXOS_DEVELOPER_TOOLS": "0",
+                    "QML_IMPORT_PATH": os.environ.get("CYBEXOS_QML_IMPORT_PATH", ""),
                     "PATH": str(launchers) + os.pathsep + os.environ.get('PATH', '')}
         for name in ("DISPLAY", "WAYLAND_DISPLAY"):
             self.env.pop(name, None)
         self.service_env = {"PYTHONPATH": str(ROOT / "desktop/assistant"), "PYTHONDONTWRITEBYTECODE": "1",
-                            "NERDOS_ASSISTANT_CLAUDE": str(fake),
-                            "NERDOS_ASSISTANT_CODEX": str(base / "no-codex"),
-                            "NERDOS_ASSISTANT_STATUS": str(base / "no-status.json")}
+                            "CYBEXOS_ASSISTANT_CLAUDE": str(fake),
+                            "CYBEXOS_ASSISTANT_CODEX": str(base / "no-codex"),
+                            "CYBEXOS_ASSISTANT_STATUS": str(base / "no-status.json")}
         self.processes = []
         self.pointer = None
 
@@ -247,7 +247,7 @@ class Session:
     def call(self, method, params):
         with socket.socket(socket.AF_UNIX) as client:
             client.settimeout(10)
-            client.connect(str(self.runtime / "nerdos/assistant.sock"))
+            client.connect(str(self.runtime / "cybexos/assistant.sock"))
             client.sendall((json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
                             + "\n").encode())
             buffer = b""
@@ -297,7 +297,7 @@ def main():
             stdout=subprocess.DEVNULL).returncode == 0 for name in ('qs', '.quickshell-wra')):
         print("Assistant overlay test deferred to isolated CI")
         return
-    with tempfile.TemporaryDirectory(prefix="nerdos-assistant-overlay-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-assistant-overlay-") as temporary:
         session = Session(Path(temporary))
         try:
             (session.base / "sway.conf").write_text("output HEADLESS-1 mode 1440x900\nseat seat0 fallback true\n")
@@ -309,7 +309,7 @@ def main():
                                    "the compositor", timeout=10)
             session.env["WAYLAND_DISPLAY"] = sockets[0].name
             session.pointer = VirtualPointer(session.env, 1440, 900)
-            session.start([sys.executable, "-B", "-m", "nerdos_assistant", "serve"], "service.log",
+            session.start([sys.executable, "-B", "-m", "cybexos_assistant", "serve"], "service.log",
                           session.service_env)
             session.start([*DBUS, "qs", "--no-color", "-p", str(session.shell)], "qs.log")
 
@@ -348,11 +348,11 @@ def main():
             session.ipc("ask", "Make the menubar transparent")
             turn = session.finished("Make the menubar transparent")
             assert turn["status"] == "completed" and turn["text"].startswith("The menubar"), turn
-            assert turn["undo"] == ["~/.config/nerdos/shell.json"], turn
+            assert turn["undo"] == ["~/.config/cybexos/shell.json"], turn
             assert json.loads(session.preferences.read_text())["glassEnabled"] is True
             session.wait(lambda: session.shell_state().get("turn") == "completed", "the shell's reply")
             undone = session.call("turn.undo", {"id": turn["id"]})["result"]
-            assert undone == {"restored": ["~/.config/nerdos/shell.json"], "skipped": []}, undone
+            assert undone == {"restored": ["~/.config/cybexos/shell.json"], "skipped": []}, undone
             assert "glassEnabled" not in json.loads(session.preferences.read_text())
 
             # Anything else waits for the person, and the shell shows it as waiting.

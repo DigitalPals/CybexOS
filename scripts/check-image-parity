@@ -125,20 +125,20 @@ def check(iso, flake, staging=None):
     source = Path(metadata['path'])
     identity = metadata['locked']['narHash']
     expression = '''c: {
-      desktop = toString c.nerdos.desktopPackage;
-      updater = toString c.nerdos.updaterPackage;
-      installerUi = toString c.environment.etc."nerdos/installer-ui".source;
-      installerScreen = toString c.environment.etc."nerdos/installer-ui".source.screen;
-      payloadSystemPath = toString c.nerdos.installer.payload.config.system.path;
-      payloadEtc = toString c.nerdos.installer.payload.config.system.build.etc;
+      desktop = toString c.cybexos.desktopPackage;
+      updater = toString c.cybexos.updaterPackage;
+      installerUi = toString c.environment.etc."cybexos/installer-ui".source;
+      installerScreen = toString c.environment.etc."cybexos/installer-ui".source.screen;
+      payloadSystemPath = toString c.cybexos.installer.payload.config.system.path;
+      payloadEtc = toString c.cybexos.installer.payload.config.system.build.etc;
       system = toString c.system.build.toplevel;
       etc = toString c.system.build.etc;
-      releaseFile = toString c.environment.etc."nerdos/release.json".source;
-      installerSource = c.environment.etc."nerdos/installer-source".text;
-      installerSourceFile = toString c.environment.etc."nerdos/installer-source".source;
-      installerInputs = builtins.fromJSON c.environment.etc."nerdos/installer-inputs.json".text;
-      installerInputsFile = toString c.environment.etc."nerdos/installer-inputs.json".source;
-      release = builtins.fromJSON c.environment.etc."nerdos/release.json".text;
+      releaseFile = toString c.environment.etc."cybexos/release.json".source;
+      installerSource = c.environment.etc."cybexos/installer-source".text;
+      installerSourceFile = toString c.environment.etc."cybexos/installer-source".source;
+      installerInputs = builtins.fromJSON c.environment.etc."cybexos/installer-inputs.json".text;
+      installerInputsFile = toString c.environment.etc."cybexos/installer-inputs.json".source;
+      release = builtins.fromJSON c.environment.etc."cybexos/release.json".text;
       bootProfiles = let profile = value: {
         system = toString value.system.build.toplevel;
         kernel = "/boot" + toString value.boot.kernelPackages.kernel + "/" + value.system.boot.loader.kernelFile;
@@ -163,7 +163,7 @@ def check(iso, flake, staging=None):
         if not re.fullmatch(r'/nix/store/[a-z0-9]{32}-[^/]+', value):
             raise ParityFailure('Unexpected evaluated store path for ' + name)
     checks = {}
-    with tempfile.TemporaryDirectory(prefix='nerdos-image-parity-', dir=staging) as temporary:
+    with tempfile.TemporaryDirectory(prefix='cybexos-image-parity-', dir=staging) as temporary:
         task = Path(temporary)
         squash = task / 'nix-store.squashfs'
         run('xorriso', '-osirrox', 'on', '-indev', iso, '-extract', '/nix-store.squashfs', squash)
@@ -194,19 +194,19 @@ def check(iso, flake, staging=None):
             raise ParityFailure('ISO installer refers to a different source snapshot')
         if json.loads(selected['installerInputsFile'].read_bytes()) != expected['installerInputs']:
             raise ParityFailure('ISO retained input sources differ from the tested inputs')
-        runtime = selected['desktop'] / 'share/nerdos/runtime'
+        runtime = selected['desktop'] / 'share/cybexos/runtime'
         for label, relative, installed in (
             ('quickshell', 'desktop/quickshell', runtime / 'quickshell'),
             ('hyprlandConfiguration', 'desktop/hypr', runtime / 'hypr'),
             ('wallpapers', 'assets/wallpapers', runtime / 'wallpapers'),
-            ('desktopSkill', 'agent-skills/nerdos', selected['desktop'] / 'share/nerdos/skills/nerdos'),
-            ('updaterSkill', 'agent-skills/nerdos', selected['updater'] / 'share/nerdos/skill'),
-            ('machineTemplate', 'templates/machine', selected['updater'] / 'share/nerdos/machine'),
-            ('updaterCode', 'lifecycle/nerdos', selected['updater'] / 'lib/nerdos'),
-            ('installerService', 'installer/nerdos-installerd', selected['installerUi'] / 'libexec/nerdos-installerd'),
+            ('desktopSkill', 'agent-skills/cybexos', selected['desktop'] / 'share/cybexos/skills/cybexos'),
+            ('updaterSkill', 'agent-skills/cybexos', selected['updater'] / 'share/cybexos/skill'),
+            ('machineTemplate', 'templates/machine', selected['updater'] / 'share/cybexos/machine'),
+            ('updaterCode', 'lifecycle/cybexos', selected['updater'] / 'lib/cybexos'),
+            ('installerService', 'installer/cybexos-installerd', selected['installerUi'] / 'libexec/cybexos-installerd'),
             ('installerNetworkHelper', 'desktop/quickshell/scripts/network-tool.py', selected['installerUi'] / 'libexec/network-tool.py')):
             checks[label] = compare(source / relative, installed, label, normalize=True)
-        for name, original in [(p.name, p) for p in (source / 'lifecycle/bin').iterdir() if p.is_file()] + [('nerdos-install', source / 'installer/nerdos-install')]:
+        for name, original in [(p.name, p) for p in (source / 'lifecycle/bin').iterdir() if p.is_file()] + [('cybexos-install', source / 'installer/cybexos-install')]:
             wrapped = selected['updater'] / 'bin' / ('.' + name + '-wrapped')
             checks['updaterExecutable:' + name] = compare(original, wrapped, name, normalize=True)
         for boot_path in ('/EFI/BOOT/grub.cfg', '/isolinux/isolinux.cfg'):

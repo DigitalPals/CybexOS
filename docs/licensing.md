@@ -1,22 +1,20 @@
 # Artwork and licensing
 
-NerdOS glasses, outlined wordmarks, icons, favicons and ASCII logos were supplied
-as original project artwork in October 2026. They are distributed under the
-repository MIT license. [Brand usage](../assets/brand/USAGE.md) specifies colour,
-spacing, minimum sizes and hinted small variants. [Source and deployment
-mapping](../assets/brand/README.md) identifies each deployment copy;
-`assets/brand/kit-sha256.json` records their original byte identities.
+The Cybex wordmark was supplied by the project owner in `cybex_white.zip`.
+Its outlined SVG is preserved byte-for-byte in `assets/brand/source/`.
+[Brand usage](../assets/brand/USAGE.md) describes the blue deployment palette
+and compact X mark. [Source and deployment mapping](../assets/brand/README.md)
+identifies generated variants; `assets/brand/kit-sha256.json` records their
+byte identities. The lettering has no runtime font dependency.
 
-The wordmark and descriptor use outlined Space Grotesk and JetBrains Mono
-lettering, both SIL Open Font License 1.1. Copyright/licence notices are included
-in `assets/brand/FONT-LICENSES/`. Font binaries are not bundled by the brand kit.
-The browser separately bundles Figtree/JetBrains Mono with their existing notices.
+The installer and browser separately bundle their UI fonts with the existing
+font copyright and licence notices.
 
 Existing procedural wallpaper provenance, generator digests, pinned third-party
 design references and historical patch authors remain unchanged. Third-party
 marks and notices retain their original owners. See the Quickshell
 `assets/THIRD_PARTY_LICENSES.md`, Model Usage notices and [web assets](../web/ASSETS.md).
 
-John must perform a trademark search for **NerdOS**; no clearance is asserted.
+John must perform a trademark search for **Cybex OS**; no clearance is asserted.
 The existing owner distribution review still applies to the actual release
 closure and compiled browser output.

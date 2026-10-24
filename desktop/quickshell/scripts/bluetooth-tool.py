@@ -20,7 +20,7 @@ except Exception as exc:  # ImportError, or a broken/mismatched typelib.
     print(json.dumps({'error': f'Bluetooth support is unavailable: {exc}'}), flush=True)
     sys.exit(1)
 
-AGENT_PATH = '/org/nerd/BluetoothAgent'
+AGENT_PATH = '/org/cybex/BluetoothAgent'
 DEVICE_IFACE = 'org.bluez.Device1'
 ADAPTER_IFACE = 'org.bluez.Adapter1'
 AGENT_XML = '''<node><interface name="org.bluez.Agent1">

@@ -1,6 +1,6 @@
 # Release delivery and publisher trust
 
-NerdOS uses semantic tags (`v1.2.3`, `v1.2.3-beta.1`), immutable GitHub
+Cybex OS uses semantic tags (`v1.2.3`, `v1.2.3-beta.1`), immutable GitHub
 Releases, and small signed GitHub Pages documents under `channels/stable.json`
 and `channels/beta.json`. Normal clients use public HTTPS without GitHub
 credentials. A release is always selected by exact commit and NAR content
@@ -8,11 +8,11 @@ identity, never by checking out a moving branch after discovery.
 
 The installed `release/keys/trust.json` is deliberately empty. An owner must
 supply real Ed25519 publisher public keys before production installation or
-NerdOS channel updates can work. Upstream-only updates do not use this
+Cybex OS channel updates can work. Upstream-only updates do not use this
 channel. Do not ship a generated development key as publisher trust.
 
 Keep private signing keys outside the repository and Nix store. The protected
-`nerdos-release` and `nerdos-channel` GitHub environments hold separate
+`cybexos-release` and `cybexos-channel` GitHub environments hold separate
 `RELEASE_ED25519_PRIVATE_KEY` and `CHANNEL_ED25519_PRIVATE_KEY` secrets, with
 `RELEASE_KEY_ID` and `CHANNEL_KEY_ID` environment variables. Require owner
 review, protected tags, and restricted workflow changes. Enable immutable
@@ -35,7 +35,7 @@ Actions page, or invoke it through the release workflow. It does not run
 automatically on pushes or pull requests. The release workflow still requires
 qualification before publication.
 
-Full Nix/product/image jobs require a `nerdos-isolated` self-hosted runner;
+Full Nix/product/image jobs require a `cybexos-isolated` self-hosted runner;
 standard hosted runners do not provide enough space for the complete desktop,
 build dependencies, ISO copies and installation VMs. Provision a fresh,
 single-job disposable x86_64 Linux VM with at least 256 GiB of disk, 32 GiB
@@ -102,7 +102,7 @@ trust. Increasing updater/schema requirements requires an overlap release that
 old updaters can authenticate and install.
 
 Nixpkgs supplies Quickshell, Qt, Hyprland, applications and fonts through the
-machine's stable Nixpkgs input and upstream binary cache. NerdOS supplies the
+machine's stable Nixpkgs input and upstream binary cache. Cybex OS supplies the
 desktop interface, assets, native notification-image module and extensions.
 Narrow Intel camera/OMaWrite/font source pins and the temporary Hyprland/native
 library compatibility overlay are source derivations, not another Nixpkgs
@@ -128,7 +128,7 @@ installed runtime, security and redistribution qualification.
 The maintained NetworkManager Libreswan plugin uses Nixpkgs sources and a
 scoped helper-path correction: the selected recipe points to `libexec/`, while
 Libreswan 5 installs its daemon/controller helpers in `libexec/ipsec/`.
-Build-time assertions check each replacement target. NerdOS uses the native
+Build-time assertions check each replacement target. Cybex OS uses the native
 NixOS `ipsec.service` to manage the backend; the plugin's legacy standalone
 startup expects a removed `_stackmanager` helper. A working managed service is
 therefore required and must pass installed health qualification.
@@ -138,7 +138,7 @@ the archived vpnc plugin's vulnerabilities.
 The reviewed desktop runtime series live in `desktop/runtime-compatibility.json`;
 a candidate outside that matrix fails staging until qualified.
 
-No durable NerdOS binary cache is configured. Before advertising fast public
+No durable Cybex OS binary cache is configured. Before advertising fast public
 updates, provision a public Nix cache (for example an object-store-backed Nix
 cache or Cachix), publish its independent Nix cache signing public key and
 substituter URL, and prebuild each release/architecture. Add cache trust through

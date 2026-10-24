@@ -35,10 +35,10 @@ test("Overview starts with one fixed system hero and owns its watcher", () => {
         "Overview must own the system sampler while it is visible");
 });
 
-test("the hero presents NerdOS identity, machine details, and three wide meters", () => {
+test("the hero presents Cybex OS identity, machine details, and three wide meters", () => {
     assert.match(hero,
         /readonly property int logoSize:\s*Theme\.scaled\(56\)/);
-    assert.match(hero, /BrandIcon\s*\{[\s\S]{0,120}?name:\s*"nerdos"/);
+    assert.match(hero, /BrandIcon\s*\{[\s\S]{0,120}?name:\s*"cybexos"/);
     assert.match(hero, /name:\s*"computer"/,
         "unreadable OS metadata needs a generic-computer fallback");
 

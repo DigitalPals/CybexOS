@@ -65,7 +65,7 @@ class SharedFixtures(unittest.TestCase):
                 self.assertEqual(valid, case['valid'])
 
     def test_lua_literals_are_inert_for_any_path(self):
-        value = '/run/user/1000/nerdos/x"); os.execute("id") --\\ é\n.json'
+        value = '/run/user/1000/cybexos/x"); os.execute("id") --\\ é\n.json'
         literal = helper.lua_string(value)
         self.assertRegex(literal, r'^"[A-Za-z0-9/_.\- \\]*"$')
         if shutil.which('luajit'):
@@ -75,7 +75,7 @@ class SharedFixtures(unittest.TestCase):
 
 class HelperFlow(unittest.TestCase):
     def setUp(self):
-        self.root = Path(tempfile.mkdtemp(prefix='nerdos-display-test.'))
+        self.root = Path(tempfile.mkdtemp(prefix='cybexos-display-test.'))
         self.bin = self.root / 'bin'
         self.bin.mkdir()
         (self.bin / 'hyprctl').write_text(FAKE_HYPRCTL)
@@ -98,7 +98,7 @@ class HelperFlow(unittest.TestCase):
         })
         for name in ('FAKE_EVAL', 'FAKE_RELOAD', 'FAKE_ARM_STATUS'):
             os.environ.pop(name, None)
-        self.store = self.root / 'config/nerdos/displays.json'
+        self.store = self.root / 'config/cybexos/displays.json'
 
     def tearDown(self):
         os.environ.clear()
@@ -110,7 +110,7 @@ class HelperFlow(unittest.TestCase):
         return [entry for entry in entries if program is None or entry[0] == program]
 
     def trial_files(self):
-        return sorted(path.name for path in (self.root / 'runtime/nerdos').glob('displays-trial*.json'))
+        return sorted(path.name for path in (self.root / 'runtime/cybexos').glob('displays-trial*.json'))
 
     def test_snapshot_reports_outputs_store_and_no_trial(self):
         result = helper.snapshot({})
@@ -124,7 +124,7 @@ class HelperFlow(unittest.TestCase):
         token = result['checkpoint']
         self.assertEqual(self.trial_files(), ['displays-trial-state.json', 'displays-trial.json'])
         run, = self.calls('systemd-run')
-        self.assertIn(f'--unit=nerdos-display-trial-{token}', run)
+        self.assertIn(f'--unit=cybexos-display-trial-{token}', run)
         self.assertIn(f'--on-active={helper.WATCHDOG_SECONDS}s', run)
         self.assertIn('--setenv=HYPRLAND_INSTANCE_SIGNATURE=test-instance', run)
         self.assertEqual(run[-2:], ['expire', token])
@@ -143,9 +143,9 @@ class HelperFlow(unittest.TestCase):
         self.assertEqual(json.loads(self.store.read_text()), document())
         self.assertEqual(self.store.stat().st_mode & 0o777, 0o600)
         self.assertEqual(self.trial_files(), [])
-        stops = [entry for entry in self.calls('systemctl') if entry[-1].startswith('nerdos-display-trial-')]
+        stops = [entry for entry in self.calls('systemctl') if entry[-1].startswith('cybexos-display-trial-')]
         self.assertEqual({entry[-1] for entry in stops},
-                         {f'nerdos-display-trial-{token}.timer', f'nerdos-display-trial-{token}.service'})
+                         {f'cybexos-display-trial-{token}.timer', f'cybexos-display-trial-{token}.service'})
         self.assertFalse([entry for entry in self.calls('hyprctl') if entry[1] == 'reload'])
 
     def test_rollback_and_expiry_reload_from_disk(self):
@@ -186,7 +186,7 @@ class HelperFlow(unittest.TestCase):
 
     def test_a_late_keep_is_refused_and_restores(self):
         token = helper.apply({'document': document(), 'baseDigest': 'absent'})['checkpoint']
-        state_path = self.root / 'runtime/nerdos/displays-trial-state.json'
+        state_path = self.root / 'runtime/cybexos/displays-trial-state.json'
         state = json.loads(state_path.read_text())
         state['expires'] -= helper.TRIAL_SECONDS + helper.CONFIRM_GRACE_SECONDS + 1
         state_path.write_text(json.dumps(state))

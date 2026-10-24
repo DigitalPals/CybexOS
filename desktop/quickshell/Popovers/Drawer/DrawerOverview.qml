@@ -426,7 +426,7 @@ Column {
 
             DrawerIconButton {
                 glyph: "settings"
-                accessibleName: "NerdOS Settings"
+                accessibleName: "Cybex OS Settings"
                 onClicked: {
                     Popouts.close();
                     Settings.showPanel(undefined, Popouts.hostScreenName);

@@ -26,17 +26,17 @@ let
     procps findutils gnugrep gnused gawk xdg-utils xdg-terminal-exec curl nodejs iw iproute2 brightnessctl playerctl
     networkmanager bluez upower power-profiles-daemon restic openssh age gnutar zstd util-linux kitty libsecret fwupd ];
   images = stdenv.mkDerivation {
-    pname = "nerdos-notification-images";
+    pname = "cybexos-notification-images";
     version = "1";
     src = lib.cleanSource (source + /desktop/notification-images);
     nativeBuildInputs = [ cmake ninja pkg-config qt6.wrapQtAppsHook ];
     buildInputs = [ qt6.qtbase qt6.qtdeclarative ];
-    cmakeFlags = [ "-DNOTIFICATION_IMAGES_QML_DIR=lib/qt-6/qml/NerdOS/Images" ];
+    cmakeFlags = [ "-DNOTIFICATION_IMAGES_QML_DIR=lib/qt-6/qml/CybexOS/Images" ];
     doCheck = true;
     preCheck = "export QT_QPA_PLATFORM=offscreen";
   };
 in stdenv.mkDerivation {
-  pname = "nerdos-desktop";
+  pname = "cybexos-desktop";
   version = lib.trim (builtins.readFile (source + /VERSION));
   src = source;
   nativeBuildInputs = [ makeWrapper gobject-introspection wrapGAppsNoGuiHook ];
@@ -45,26 +45,26 @@ in stdenv.mkDerivation {
   dontWrapGApps = true;
   dontBuild = true;
   installPhase = ''
-    mkdir -p $out/share/nerdos/runtime $out/bin $out/libexec $out/share/nerdos/skills
-    cp -r desktop/quickshell $out/share/nerdos/runtime/
-    cp -r desktop/hypr $out/share/nerdos/runtime/
-    cp -r desktop/defaults $out/share/nerdos/
-    cp -r desktop/fastfetch $out/share/nerdos/
-    cp -r assets/brand $out/share/nerdos/
+    mkdir -p $out/share/cybexos/runtime $out/bin $out/libexec $out/share/cybexos/skills
+    cp -r desktop/quickshell $out/share/cybexos/runtime/
+    cp -r desktop/hypr $out/share/cybexos/runtime/
+    cp -r desktop/defaults $out/share/cybexos/
+    cp -r desktop/fastfetch $out/share/cybexos/
+    cp -r assets/brand $out/share/cybexos/
     mkdir -p $out/share/icons $out/share/applications
     cp -r desktop/icons/hicolor $out/share/icons/
     cp desktop/*.desktop $out/share/applications/
-    substituteInPlace $out/share/nerdos/defaults/fastfetch.jsonc \
-      --replace-fail @NERDOS_FASTFETCH@ $out/share/nerdos/fastfetch/nerdos-large.fastfetch.txt
-    cp -r ${lazyvimStarter} $out/share/nerdos/defaults/nvim
-    cp assets/EDM115-newline2.omp.json $out/share/nerdos/defaults/prompt.json
-    cp -r assets/wallpapers $out/share/nerdos/runtime/
-    cp -r agent-skills/nerdos $out/share/nerdos/skills/
+    substituteInPlace $out/share/cybexos/defaults/fastfetch.jsonc \
+      --replace-fail @CYBEXOS_FASTFETCH@ $out/share/cybexos/fastfetch/cybexos-large.fastfetch.txt
+    cp -r ${lazyvimStarter} $out/share/cybexos/defaults/nvim
+    cp assets/EDM115-newline2.omp.json $out/share/cybexos/defaults/prompt.json
+    cp -r assets/wallpapers $out/share/cybexos/runtime/
+    cp -r agent-skills/cybexos $out/share/cybexos/skills/
     cp assets/scripts/* $out/bin/
     cp desktop/bin/* $out/bin/
-    cp nix/tests/desktop-runtime.py $out/libexec/nerdos-desktop-runtime-check
+    cp nix/tests/desktop-runtime.py $out/libexec/cybexos-desktop-runtime-check
     chmod +x $out/bin/*
-    chmod +x $out/libexec/nerdos-desktop-runtime-check
+    chmod +x $out/libexec/cybexos-desktop-runtime-check
     export PATH=${lib.makeBinPath [ python ]}:$PATH
     patchShebangs $out
   '';
@@ -82,7 +82,7 @@ in stdenv.mkDerivation {
   doInstallCheck = stdenv.buildPlatform.canExecute stdenv.hostPlatform;
   installCheckPhase = ''
     runHook preInstallCheck
-    env -i HOME="$TMPDIR" $out/libexec/nerdos-desktop-runtime-check
+    env -i HOME="$TMPDIR" $out/libexec/cybexos-desktop-runtime-check
     runHook postInstallCheck
   '';
   passthru = { inherit images python runtimeTools; };

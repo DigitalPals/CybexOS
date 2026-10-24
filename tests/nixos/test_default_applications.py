@@ -12,7 +12,7 @@ import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / 'assets/scripts/nerdos-apps'
+SCRIPT = ROOT / 'assets/scripts/cybexos-apps'
 loader = importlib.machinery.SourceFileLoader('default_applications', str(SCRIPT))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 apps = importlib.util.module_from_spec(spec); loader.exec_module(apps)
@@ -37,7 +37,7 @@ class DefaultApplicationTests(unittest.TestCase):
              'XDG_DATA_HOME':str(self.data), 'XDG_DATA_DIRS':str(self.base / 'empty'),
              'XDG_CONFIG_DIRS':str(self.base / 'empty-config'), 'XDG_CURRENT_DESKTOP':'Hyprland',
              'XDG_CACHE_HOME':str(self.base / 'cache'), 'APPLICATION_LOG':str(self.log),
-             'DBUS_SESSION_BUS_ADDRESS':'unix:path=/nonexistent-nerdos-test-bus', 'VISUAL':'', 'EDITOR':''}
+             'DBUS_SESSION_BUS_ADDRESS':'unix:path=/nonexistent-cybexos-test-bus', 'VISUAL':'', 'EDITOR':''}
         self.desktop('browser.desktop', 'Browser', 'MimeType=x-scheme-handler/http;x-scheme-handler/https;text/html;\nActions=new-private-window;\n\n[Desktop Action new-private-window]\nName=Private\nExec=' + str(self.capture) + ' --private\n')
         self.desktop('editor.desktop', 'Editor', 'MimeType=text/plain;text/html;\n')
         self.desktop('terminal.desktop', 'Terminal', 'Categories=System;TerminalEmulator;\nX-TerminalArgExec=-e\nX-TerminalArgTitle=--title=\n')
@@ -85,7 +85,7 @@ class DefaultApplicationTests(unittest.TestCase):
         state = self.run_apps('status')
         self.assertTrue(state['roles']['editor']['unavailable'])
         self.assertEqual(state['roles']['editor']['selected'], 'editor.desktop')
-        saved = json.loads((self.base / 'config/nerdos/default-applications.json').read_text())
+        saved = json.loads((self.base / 'config/cybexos/default-applications.json').read_text())
         self.assertEqual(saved['choices']['editor'], 'editor.desktop')
 
     def test_external_mime_selection_takes_precedence_over_missing_saved_choice(self):

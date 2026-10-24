@@ -1,4 +1,4 @@
-// Pure rules for the NerdOS Assistant (docs/assistant.md): where the
+// Pure rules for the Cybex OS Assistant (docs/assistant.md): where the
 // character stands, which side of it the box opens on, which agent answers,
 // and how a turn snapshot from the service reads on screen. Shared by QML and
 // Node tests, so no Qt APIs.
@@ -80,7 +80,7 @@ function dragged(dx, dy) {
     return Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD;
 }
 
-// "auto" follows the `nerd agent` default when it is one of ours and
+// "auto" follows the `cybex agent` default when it is one of ours and
 // installed, then Claude Code, then Codex. An explicit choice that is not
 // installed is still returned: the service reports it as missing, which
 // tells the person what to install.
@@ -199,7 +199,7 @@ function errorAction(kind, agent) {
     switch (kind) {
     case "auth": return { label: "Sign in", auth: true };
     case "missing": return { label: "Settings", page: "assistant" };
-    case "service": return { label: "Start the assistant", unit: "nerdos-assistant.service" };
+    case "service": return { label: "Start the assistant", unit: "cybexos-assistant.service" };
     default: return null;
     }
 }

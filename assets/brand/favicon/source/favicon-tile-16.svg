@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-labelledby="title">
-  <title id="title">NerdOS favicon 16px</title>
-  <path id="background" fill="#1A1B1E" d="M3.5 0H12.5C14.43 0 16 1.57 16 3.5V12.5C16 14.43 14.43 16 12.5 16H3.5C1.57 16 0 14.43 0 12.5V3.5C0 1.57 1.57 0 3.5 0Z"/>
-  <path id="frames" fill="#F3F2EC" d="M8 6V7H7V8H6V9H7C7 10.2 6.2 11 5 11H3C1.8 11 1 10.2 1 9V6C1 5.4 1.4 5 2 5H6C6.6 5 7 5.4 7 6H8ZM10 5H14C14.6 5 15 5.4 15 6V9C15 10.2 14.2 11 13 11H11C9.8 11 9 10.2 9 9V7H10ZM3 7V9H5V7ZM11 7V9H13V7Z"/>
-  <path id="tape" fill="#C8FF1F" d="M9 4H11V5H10V7H9V8H8V9H6V8H7V7H8V5H9Z"/>
-</svg>

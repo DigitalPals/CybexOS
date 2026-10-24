@@ -1,12 +1,12 @@
 { config, options, lib, pkgs, ... }:
 let
   inherit (lib) mkOption mkEnableOption types mkIf mkDefault;
-  cfg = config.nerdos;
+  cfg = config.cybexos;
   source = ../..;
 in {
   imports = [ ./desktop.nix ./security.nix ./hardware.nix ./networking.nix ./lifecycle.nix ./applications.nix ./software.nix ./maintenance.nix ];
-  options.nerdos = {
-    enable = mkEnableOption "the NerdOS desktop";
+  options.cybexos = {
+    enable = mkEnableOption "the Cybex OS desktop";
     installationMedium = mkOption {
       type = types.bool;
       default = false;
@@ -22,7 +22,7 @@ in {
       revision = mkOption { type = types.str; default = "uncommitted"; internal = true; };
       narHash = mkOption { type = types.str; default = "unavailable"; internal = true; };
     };
-    primaryUser = mkOption { type = types.str; default = "nerd"; };
+    primaryUser = mkOption { type = types.str; default = "cybex"; };
     installation = mkOption {
       type = types.attrsOf types.ints.positive;
       internal = true;
@@ -43,7 +43,7 @@ in {
       podman = mkOption { type = types.bool; default = true; };
       tailscale = mkOption { type = types.bool; default = true; };
       connectedWidgets = mkOption { type = types.bool; default = true; };
-      # The floating NerdOS Assistant, its service and the agent CLIs it uses
+      # The floating Cybex OS Assistant, its service and the agent CLIs it uses
       # (Codex; Claude Code also needs proprietary). Independent of developer.
       assistant = mkOption { type = types.bool; default = true; };
       localNetworkServices = mkOption { type = types.bool; default = true; };
@@ -61,34 +61,34 @@ in {
     };
     nix.channel.enable = mkDefault false;
     networking.networkmanager.enable = mkDefault true;
-    networking.hostName = mkDefault "nerdos";
+    networking.hostName = mkDefault "cybexos";
     time.timeZone = mkDefault "UTC";
     i18n.defaultLocale = mkDefault "en_US.UTF-8";
     console.keyMap = mkDefault "us";
     hardware.enableRedistributableFirmware = mkDefault true;
     boot.plymouth.enable = mkDefault true;
-    boot.plymouth.theme = mkDefault "nerdos";
+    boot.plymouth.theme = mkDefault "cybexos";
     boot.plymouth.themePackages = [ (pkgs.callPackage ../packages/plymouth.nix { inherit source; }) ];
     boot.plymouth.logo = mkDefault ../../desktop/plymouth/logo.png;
     # Label boot generations while keeping the upstream NixOS os-release ID.
-    system.nixos.label = lib.mkOverride 900 "NerdOS-${cfg.release.version}-${config.system.nixos.release}";
-    environment.etc."nerdos/release.json".text = builtins.toJSON {
+    system.nixos.label = lib.mkOverride 900 "CybexOS-${cfg.release.version}-${config.system.nixos.release}";
+    environment.etc."cybexos/release.json".text = builtins.toJSON {
       inherit (cfg.release) version revision narHash;
       configurationApi = 1; pluginApi = 1; updaterApi = 1; nixos = "26.05";
       architecture = pkgs.stdenv.hostPlatform.system;
     };
   }) (mkIf cfg.enable {
     assertions = [
-      { assertion = !cfg.autoLogin || cfg.encrypted; message = "NerdOS automatic login requires verified LUKS encryption."; }
-      { assertion = lib.elem config.system.nixos.release [ "26.05" ]; message = "This NerdOS release supports NixOS 26.05. Major upgrades require explicit qualification."; }
-      { assertion = lib.versionAtLeast config.programs.hyprland.package.version "0.56.2"; message = "The NerdOS Lua desktop needs Hyprland >=0.56.2. Externally supplied pkgs must include nerdos.overlays.default."; }
-      { assertion = lib.versionAtLeast pkgs.hypridle.version "0.1.8"; message = "NerdOS idle locking needs hypridle >=0.1.8. Externally supplied pkgs must include nerdos.overlays.default."; }
+      { assertion = !cfg.autoLogin || cfg.encrypted; message = "Cybex OS automatic login requires verified LUKS encryption."; }
+      { assertion = lib.elem config.system.nixos.release [ "26.05" ]; message = "This Cybex OS release supports NixOS 26.05. Major upgrades require explicit qualification."; }
+      { assertion = lib.versionAtLeast config.programs.hyprland.package.version "0.56.2"; message = "The Cybex OS Lua desktop needs Hyprland >=0.56.2. Externally supplied pkgs must include cybexos.overlays.default."; }
+      { assertion = lib.versionAtLeast pkgs.hypridle.version "0.1.8"; message = "Cybex OS idle locking needs hypridle >=0.1.8. Externally supplied pkgs must include cybexos.overlays.default."; }
     ];
     nixpkgs.config = mkIf (cfg.features.proprietary && options.nixpkgs.config.type.name != "unique") { allowUnfree = mkDefault true; };
     services.dbus.enable = true;
     # Stable discovery paths follow the selected generation. NixOS does not
     # otherwise link arbitrary package share directories into the system profile.
-    environment.pathsToLink = [ "/share/nerdos" ];
+    environment.pathsToLink = [ "/share/cybexos" ];
     services.fwupd.enable = mkDefault true;
     services.fstrim.enable = mkDefault true;
     services.udisks2.enable = mkDefault true;
@@ -118,6 +118,6 @@ in {
     boot.loader.efi.canTouchEfiVariables = mkDefault true;
     boot.loader.systemd-boot.configurationLimit = mkDefault 10;
     boot.initrd.systemd.enable = true;
-    boot.lanzaboote = mkIf cfg.secureBoot { enable = true; pkiBundle = "/var/lib/nerdos/secrets/secureboot"; };
+    boot.lanzaboote = mkIf cfg.secureBoot { enable = true; pkiBundle = "/var/lib/cybexos/secrets/secureboot"; };
   }) ];
 }

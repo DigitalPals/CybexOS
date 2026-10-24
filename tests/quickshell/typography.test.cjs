@@ -75,7 +75,7 @@ test("semantic typography tokens retain the intended logical-pixel scale", () =>
 
 test("menu typography keeps the bar's own compact metrics", () => {
     assert.equal(stringToken("fontSans"), "JetBrainsMono Nerd Font");
-    assert.equal(stringToken("fontIcon"), "NerdOS Tabler Outline");
+    assert.equal(stringToken("fontIcon"), "Cybex OS Tabler Outline");
     assert.deepEqual([
         intToken("chipHeight"),
         intToken("chipInnerHeight"),
@@ -96,7 +96,7 @@ test("settings-driven tokens default to the selected menu face", () => {
     assert.equal(d.barRadius, 11);
     assert.equal(d.gap, 8);
     assert.equal(d.barStyle, "hug");
-    assert.equal(d.accent, "#d3d283");
+    assert.equal(d.accent, "#60a5fa");
     const menuChoice = H.FONT_CHOICES.find(choice => choice.id === d.font);
     assert.equal(menuChoice.family, "JetBrainsMono Nerd Font");
 

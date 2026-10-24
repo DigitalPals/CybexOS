@@ -2,7 +2,7 @@ import QtQuick
 import ".."
 import "../../Common"
 
-// Shows and hides the NerdOS Assistant on this bar's display. Lit while the
+// Shows and hides the Cybex OS Assistant on this bar's display. Lit while the
 // character is out; a dot while it works or holds an unread reply, which is
 // how a turn left running with the character hidden is still visible.
 BarModule {
@@ -28,7 +28,7 @@ BarModule {
             : I18n.tr("Show the assistant")
         tooltipAlign: 1
         Accessible.role: Accessible.Button
-        Accessible.name: I18n.tr("NerdOS Assistant")
+        Accessible.name: I18n.tr("Cybex OS Assistant")
         onClicked: Assistant.toggleShown(root.host ? root.host.outputName : "")
     }
 }

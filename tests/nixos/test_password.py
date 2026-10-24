@@ -10,21 +10,21 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'lifecycle'))
-from nerdos.common import Failure
-from nerdos.credentials import validate_password
-from nerdos import password
+from cybexos.common import Failure
+from cybexos.credentials import validate_password
+from cybexos import password
 
 
 class PasswordTests(unittest.TestCase):
     def test_eight_characters_and_no_normalization(self):
-        for value in ('Nerdos8!', 'abcdefgh', '        ', 'é' * 8):
+        for value in ('Cybexos8!', 'abcdefgh', '        ', 'é' * 8):
             self.assertEqual(validate_password(value), value)
         for value in ('short', '1234567', '12345678\n', '12345678\x00', None):
             with self.subTest(value=value), self.assertRaises(Failure):
                 validate_password(value)
 
     def setUp(self):
-        self.env = patch.dict(os.environ, {'NERDOS_LIBCRYPT': os.environ.get('NERDOS_LIBCRYPT') or ctypes.util.find_library('crypt')})
+        self.env = patch.dict(os.environ, {'CYBEXOS_LIBCRYPT': os.environ.get('CYBEXOS_LIBCRYPT') or ctypes.util.find_library('crypt')})
         self.env.start(); self.addCleanup(self.env.stop)
         account = patch.object(password.pwd, 'getpwnam', return_value=SimpleNamespace(pw_uid=1000))
         account.start(); self.addCleanup(account.stop)

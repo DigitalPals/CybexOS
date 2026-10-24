@@ -13,8 +13,8 @@ Surface {
         width: parent.width
         visible: Updates.available
         text: "NixOS packages: " + (Updates.sources.upstream.state || "Checking…")
-            + "\nNerdOS: " + Updates.installedVersion + (Updates.projectVersion ? " → " + Updates.projectVersion : "")
-            + " · " + (Updates.sources.nerdos.state || "Checking…")
+            + "\nCybex OS: " + Updates.installedVersion + (Updates.projectVersion ? " → " + Updates.projectVersion : "")
+            + " · " + (Updates.sources.cybexos.state || "Checking…")
         color: Theme.textHi; wrapMode: Text.Wrap
     }
     Text { width: parent.width; visible: text !== ""; text: Updates.error; color: Theme.textHi; wrapMode: Text.Wrap; textFormat: Text.PlainText }
@@ -22,7 +22,7 @@ Surface {
         visible: Updates.available
         spacing: 8
         Repeater {
-            model: [{label:"Upstream", scope:"upstream"}, {label:"NerdOS", scope:"nerdos"}, {label:"Both", scope:"both"}]
+            model: [{label:"Upstream", scope:"upstream"}, {label:"Cybex OS", scope:"cybexos"}, {label:"Both", scope:"both"}]
             ActionButton {
                 required property var modelData
                 width: 106; height: 38

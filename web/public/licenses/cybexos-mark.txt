@@ -1,0 +1,3 @@
+Cybex OS wordmark, X icons and favicons: original project artwork supplied by
+the project owner in cybex_white.zip. Derived from the outlined SVG preserved
+in assets/brand/source/cybex_white.svg, with its original red accent or monochrome paint.

@@ -31,7 +31,7 @@ Column {
     function openMonitor() {
         Popouts.close();
         // The same command as Super+Shift+T (bindings.lua).
-        Quickshell.execDetached(["nerdos-apps", "terminal", "--", "btop"]);
+        Quickshell.execDetached(["cybexos-apps", "terminal", "--", "btop"]);
     }
 
     Item {

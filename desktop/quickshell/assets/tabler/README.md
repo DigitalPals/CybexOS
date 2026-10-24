@@ -6,7 +6,7 @@ Archive SHA-256: `0525656a825b56735c2e87e83d9906ad1e3c42f400918c5ae245217909cffd
 
 `outline.ttf` is a subset of Tabler's standard 2px stroke on its 24px design
 grid, with unchanged outlines and metrics. Its internal family is renamed
-`NerdOS Tabler Outline` to avoid collisions with installed Tabler fonts.
+`Cybex OS Tabler Outline` to avoid collisions with installed Tabler fonts.
 `Common/TablerIcons.qml` loads it locally once; no system font installation is
 required. All built-in interface icons, including selected states and playback,
 use outlines. We do not bundle the filled font or synthesize bold strokes.
@@ -35,7 +35,7 @@ the nearest upstream symbol, so partly cloudy day/night share the cloud icon.
 Regenerate from the repository root using a disposable Python environment:
 
 ```bash
-work=$(mktemp -d /tmp/nerdos-tabler.XXXXXX)
+work=$(mktemp -d /tmp/cybexos-tabler.XXXXXX)
 trap 'rm -rf -- "$work"' EXIT
 python3 -m venv "$work/venv"
 "$work/venv/bin/pip" install fonttools==4.65.0

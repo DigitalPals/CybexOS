@@ -345,7 +345,7 @@ test("recording picks hardware encoding the driver offers, else software", t => 
     vainfoStub(f, { renderD128: "encode" });
     assert.equal(encoder(f), "wf-recorder vaapi /dev/dri/renderD128");
 
-    // NerdOS's own Mesa: VA-API is there, H.264 encoding is not.
+    // Cybex OS's own Mesa: VA-API is there, H.264 encoding is not.
     f = fixture(t);
     drmTree(f, [AMD]);
     vainfoStub(f, { renderD128: "decode" });

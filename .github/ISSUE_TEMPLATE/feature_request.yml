@@ -1,12 +1,12 @@
 name: Feature request
-description: Suggest a change to the NerdOS desktop, installer, or tools.
+description: Suggest a change to the Cybex OS desktop, installer, or tools.
 title: "[Feature]: "
 labels: [enhancement]
 body:
   - type: markdown
     attributes:
       value: |
-        NerdOS is deliberately opinionated. A strong automatic default is
+        Cybex OS is deliberately opinionated. A strong automatic default is
         preferred over a new setting, and an existing surface (a keybinding,
         the launcher, or a row in an existing Settings page) over a new panel.
         Please search existing issues first.

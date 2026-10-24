@@ -86,7 +86,7 @@
 .settings-clock-preview > span { color: var(--text); font-size: 37px; font-variant-numeric: tabular-nums; letter-spacing: -1.8px; }
 .settings-clock-preview > small { color: var(--muted); font-size: 9px; }
 .settings-about-brand { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 29px 16px 35px; }
-.settings-about-brand > img { width: 240px; height: 32px; object-fit: contain; }
+.settings-about-brand > img { width: 240px; height: 57px; object-fit: contain; }
 .settings-about-brand small { color: var(--muted); font-size: 8px; letter-spacing: 1.5px; }
 .settings-about-facts > div { display: flex; align-items: center; justify-content: space-between; padding: 13px 15px; gap: 14px; font-size: 10px; }
 .settings-about-facts > div + div { border-top: 1px solid var(--line); }

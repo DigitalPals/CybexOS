@@ -365,7 +365,7 @@ Singleton {
                 if (actionProc.up)
                     actionError = "";
                 if (authPending) {
-                    Quickshell.execDetached(["notify-send", "--app-name=NerdOS",
+                    Quickshell.execDetached(["notify-send", "--app-name=Cybex OS",
                         "Connected to Tailscale", host + (ip !== "" ? " · " + ip : "")]);
                 }
                 authPending = false;

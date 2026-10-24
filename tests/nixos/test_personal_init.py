@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-loader = importlib.machinery.SourceFileLoader('personal_init_checks', str(ROOT / 'lifecycle/bin/nerdos-personal-init'))
+loader = importlib.machinery.SourceFileLoader('personal_init_checks', str(ROOT / 'lifecycle/bin/cybexos-personal-init'))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 personal = importlib.util.module_from_spec(spec)
 loader.exec_module(personal)
@@ -15,7 +15,7 @@ loader.exec_module(personal)
 
 class PersonalInitTests(unittest.TestCase):
     def setUp(self):
-        temporary = tempfile.TemporaryDirectory(prefix='nerdos-personal-init-')
+        temporary = tempfile.TemporaryDirectory(prefix='cybexos-personal-init-')
         self.addCleanup(temporary.cleanup)
         self.home = Path(temporary.name) / 'home'
         self.home.mkdir()
@@ -37,8 +37,8 @@ class PersonalInitTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(config.stat().st_mode), 0o600)
         self.assertEqual(stat.S_IMODE(config.parent.stat().st_mode), 0o700)
         for base in ('.agents', '.claude', '.codex'):
-            self.assertEqual(str((self.home / base / 'skills/nerdos').readlink()),
-                             '/run/current-system/sw/share/nerdos/skill')
+            self.assertEqual(str((self.home / base / 'skills/cybexos').readlink()),
+                             '/run/current-system/sw/share/cybexos/skill')
 
     def test_preserves_personal_configuration_and_user_authored_skills(self):
         self.seed(True)
@@ -46,7 +46,7 @@ class PersonalInitTests(unittest.TestCase):
         config.write_text('Host personal\n  HostName example.invalid\n')
         preference = self.home / '.config/voxtype/config.toml'
         preference.write_text('personal preference\n')
-        skill = self.home / '.claude/skills/nerdos'
+        skill = self.home / '.claude/skills/cybexos'
         skill.unlink()
         skill.mkdir()
         (skill / 'SKILL.md').write_text('User-authored skill\n')

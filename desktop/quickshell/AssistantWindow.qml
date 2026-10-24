@@ -8,7 +8,7 @@ import "Common"
 import "Assistant"
 import "Common/AssistantHelpers.js" as AssistantHelpers
 
-// The NerdOS Assistant on screen (docs/assistant.md): the character, and the
+// The Cybex OS Assistant on screen (docs/assistant.md): the character, and the
 // box under it — the composer, the working pill or the reply.
 //
 // One overlay surface covering the output the character is on, taking input
@@ -158,7 +158,7 @@ PanelWindow {
             rotation: root.dragging && !Theme.reducedMotion
                 ? AssistantHelpers.clamp((root.dragX - root.pressBubble.x) / 40, -8, 8) : 0
             Accessible.role: Accessible.Button
-            Accessible.name: I18n.tr("NerdOS Assistant")
+            Accessible.name: I18n.tr("Cybex OS Assistant")
             Accessible.description: Assistant.busy ? I18n.tr("Working. Click to tuck the box away.")
                 : I18n.tr("Click to ask a question. Drag to move.")
 

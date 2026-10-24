@@ -9,7 +9,7 @@ const repoDir = path.resolve(__dirname, "../..");
 const config = path.join(repoDir, "desktop/defaults/fish-config.fish");
 const hasFish = spawnSync("fish", ["--version"]).status === 0;
 
-// conf.d/50-nerdos.fish is sourced by every fish, including `fish -c` from
+// conf.d/50-cybexos.fish is sourced by every fish, including `fish -c` from
 // scripts and tools. Only the environment belongs there; the prompt, hooks
 // and aliases cost six processes per shell and serve only a terminal.
 test("the fish config keeps prompt setup out of non-interactive shells", () => {

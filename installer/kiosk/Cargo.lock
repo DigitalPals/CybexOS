@@ -2349,7 +2349,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nerdos-installer"
+name = "cybexos-installer"
 version = "0.1.0"
 dependencies = [
  "image",

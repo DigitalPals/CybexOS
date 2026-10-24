@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "id": "cybexos",
+  "name": "Cybex OS",
+  "mode": "dark",
+  "accent": "#60a5fa",
+  "author": "Cybex OS",
+  "license": "MIT",
+  "source": "https://github.com/DigitalPals/CybexOS",
+  "description": "The default look: Cybex blue over warm charcoal"
+}

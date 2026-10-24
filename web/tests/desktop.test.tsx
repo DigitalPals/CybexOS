@@ -125,7 +125,7 @@ describe('desktop applications and windows', () => {
 
     expect(command).toHaveValue('echo terminal only');
     expect(editor).toHaveValue('Leave this note unchanged.');
-    expect(localStorage.getItem('nerdos-demo-notes-v1')).toBe('Leave this note unchanged.');
+    expect(localStorage.getItem('cybexos-demo-notes-v1')).toBe('Leave this note unchanged.');
     expect(terminal).toHaveClass('active');
   });
 
@@ -176,7 +176,7 @@ describe('desktop applications and windows', () => {
   it('browses sample folders, searches and previews files, and opens notes from Files', async () => {
     const user = userEvent.setup();
     render(<Desktop />);
-    await user.click(within(screen.getByRole('region', { name: 'Welcome to NerdOS window' })).getByRole('button', { name: 'Files' }));
+    await user.click(within(screen.getByRole('region', { name: 'Welcome to Cybex OS window' })).getByRole('button', { name: 'Files' }));
     const files = screen.getByRole('region', { name: 'Files window' });
     expect(within(files).getByRole('button', { name: 'Parent folder' })).toBeDisabled();
     await user.click(within(files).getByRole('button', { name: 'Open Documents' }));
@@ -186,7 +186,7 @@ describe('desktop applications and windows', () => {
     await user.type(within(files).getByRole('textbox', { name: 'Search this folder' }), 'short');
     expect(within(files).queryByRole('button', { name: 'Open My notes.md' })).not.toBeInTheDocument();
     await user.click(within(files).getByRole('button', { name: 'Open Shortcuts.txt' }));
-    expect(within(files).getByText(/NerdOS browser shortcuts/)).toBeVisible();
+    expect(within(files).getByText(/Cybex OS browser shortcuts/)).toBeVisible();
     await user.click(within(files).getByRole('button', { name: 'Close file preview' }));
     await user.click(within(files).getByRole('button', { name: 'Clear file search' }));
     await user.click(within(files).getByRole('button', { name: 'Open My notes.md' }));
@@ -239,7 +239,7 @@ describe('desktop preferences', () => {
   it('requires an explicit reset confirmation and leaves saved notes alone', async () => {
     const user = userEvent.setup();
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...DEFAULT_PREFERENCES, theme: 'light', wallpaper: 'dusk' }));
-    localStorage.setItem('nerdos-demo-notes-v1', 'Keep my writing.');
+    localStorage.setItem('cybexos-demo-notes-v1', 'Keep my writing.');
     render(<Desktop />);
     const settings = await openSettings(user);
     const reset = within(settings).getByRole('button', { name: 'Reset preferences' });
@@ -254,14 +254,14 @@ describe('desktop preferences', () => {
 
     expect(screen.getByRole('main')).toHaveClass('theme-dark');
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual(DEFAULT_PREFERENCES);
-    expect(localStorage.getItem('nerdos-demo-notes-v1')).toBe('Keep my writing.');
+    expect(localStorage.getItem('cybexos-demo-notes-v1')).toBe('Keep my writing.');
     expect(screen.getByRole('status')).toHaveTextContent('Desktop preferences restored');
   });
 
   it('starts safely when the saved settings are corrupt', () => {
     localStorage.setItem(STORAGE_KEY, '{broken');
     render(<Desktop />);
-    expect(screen.getByRole('region', { name: 'Welcome to NerdOS window' })).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Welcome to Cybex OS window' })).toBeVisible();
     expect(screen.getByRole('main')).toHaveClass('theme-dark', 'font-mono');
     expect(screen.getByRole('main').style.getPropertyValue('--accent')).toBe(DEFAULT_PREFERENCES.accent);
   });

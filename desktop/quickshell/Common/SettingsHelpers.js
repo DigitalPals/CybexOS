@@ -7,7 +7,7 @@ var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
 
 // The edge drawer's tabs, in default strip order. Overview is the drawer's
-// front door — the NerdOS button and the session footer live there — so it
+// front door — the Cybex OS button and the session footer live there — so it
 // can be reordered but never disabled.
 var DRAWER_TAB_IDS = ["overview", "sound", "network", "bluetooth", "power",
     "notifications"];
@@ -34,12 +34,12 @@ var IDLE_SUSPEND_MINS = [0, 15, 30, 60, 120];
 // old combined centre pill; schema 11 deliberately introduces the distinct
 // `notifications` id rather than reviving that historical key. `idle` became
 // a Control Panel toggle. Schema 24 restores `control` as a configurable
-// widget, with the NerdOS button's existing rightmost placement by default.
+// widget, with the Cybex OS button's existing rightmost placement by default.
 // Schema 25 retired `usage`, the first built-in model usage widget, and its
 // drawer tab. Schema 26 builds Model Usage in as `modelusage`, vendored from
 // the digitalpals.model-usage Omarchy plugin (see ModelUsage/README.md).
 // Schema 28 adds `fusebox`, the Fusebox server widget, beside Model Usage.
-// Schema 30 adds `assistant`, the button that shows and hides the NerdOS
+// Schema 30 adds `assistant`, the button that shows and hides the Cybex OS
 // Assistant, before the notification and status widgets.
 var MODULE_IDS = [
     "ws", "media", "indicators", "clock", "weather", "notes", "modelusage", "fusebox", "updates", "gh",
@@ -50,7 +50,7 @@ var MODULE_IDS = [
 var RETIRED_MODULE_IDS = ["bell", "idle", "usage"];
 
 // Widgets for services the user signs in to. They start on only when the
-// install's connected-service feature is selected (NERDOS_CONNECTED_WIDGETS).
+// install's connected-service feature is selected (CYBEXOS_CONNECTED_WIDGETS).
 var CONNECTED_WIDGET_IDS = ["modelusage", "fusebox", "gh", "t3", "hermes"];
 
 // Model Usage's quota providers, and the ones it can estimate costs for from
@@ -200,7 +200,7 @@ var NOTE_CODEX_EFFORTS = NOTE_CODEX_EFFORT_CHOICES.map(
 var NOTE_CLAUDE_EFFORTS = NOTE_CLAUDE_EFFORT_CHOICES.map(
     function(choice) { return choice.value; });
 
-// The NerdOS Assistant (docs/assistant.md). "auto" follows the `nerd agent`
+// The Cybex OS Assistant (docs/assistant.md). "auto" follows the `cybex agent`
 // default when it is one of the two, else whichever is installed. The model
 // lists reuse the reviewed Notes catalogs; "default" leaves the choice to the
 // agent's own configuration.
@@ -406,8 +406,8 @@ function defaults() {
         barHeight: 36,
         barRadius: 11,
         font: "mono",
-        accent: "#d3d283",
-        paletteMode: "wallpaper",
+        accent: "#60a5fa",
+        paletteMode: "fixed",
         // The named theme applied last ("" for none) and its explicit
         // palette, copied in when it was applied (ThemeHelpers.js).
         theme: "",
@@ -1181,7 +1181,7 @@ function migrateMods(raw, sourceVersion, context) {
     var migrated = { left: [], center: [], right: [] };
     ["left", "center", "right"].forEach(function(col) {
         var list = Array.isArray(raw[col]) ? raw[col] : [];
-        // Before schema 24 the old control entry was ignored and the NerdOS
+        // Before schema 24 the old control entry was ignored and the Cybex OS
         // button always lived on the right. Replace stale historical entries
         // with that effective placement; later user moves/removals persist.
         if (typeof sourceVersion !== "number" || sourceVersion < 24)
@@ -1330,7 +1330,7 @@ function migrateMods(raw, sourceVersion, context) {
             migrated.right.unshift(fusebox);
     }
 
-    // Schema 30 adds the NerdOS Assistant's button immediately before the
+    // Schema 30 adds the Cybex OS Assistant's button immediately before the
     // notification and status widgets still on the right, where schema 11
     // put Notifications, so an older layout gains it without anything else
     // moving. Off-feature installs hide it through the bar's auto-rule.

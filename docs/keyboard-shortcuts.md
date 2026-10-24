@@ -6,16 +6,16 @@ the shortcut sheet. It lists the keybindings Hyprland actually has, read with
 fall out of date, and a failed read is shown as an error.
 
 A binding appears in the sheet when it has a description. Descriptions use
-the form `Group: Label`, for example `Apps: Terminal`. NerdOS's own groups
+the form `Group: Label`, for example `Apps: Terminal`. Cybex OS's own groups
 are Shell, Apps, Web apps, Development, Windows, Workspaces, Clipboard,
 Capture and Dictation, in that order. New groups follow them, and a
 description without a group is listed under Other. Several bindings with the
 same description show as alternatives, and numbered bindings such as
 `Switch to workspace 1` to `10` are shown as one row.
 
-`Super+I` (**Shell: Assistant**) talks to the NerdOS Assistant: tap it to
+`Super+I` (**Shell: Assistant**) talks to the Cybex OS Assistant: tap it to
 type a question, or hold it, speak, and release to send. See
-[NerdOS Assistant](assistant.md).
+[Cybex OS Assistant](assistant.md).
 
 `Super+Tab` (**Windows: Overview**) opens the window overview: every
 workspace's windows as live thumbnails, with arrow-key, filter and
@@ -32,14 +32,14 @@ whose keys do not fit beside its label puts them on the lines below it.
 
 ## Web apps
 
-The Web apps group opens the web apps NerdOS installs for every account:
+The Web apps group opens the web apps Cybex OS installs for every account:
 `Super+M` Slack, `Super+W` WhatsApp, `Super+Y` YouTube, `Super+Shift+P` Google
-Photos and `Super+Shift+X` X. Each binding runs `nerdos-webapp launch ID`,
+Photos and `Super+Shift+X` X. Each binding runs `cybexos-webapp launch ID`,
 which opens the site in Brave Origin's app mode when Brave Origin is installed
 and in Firefox otherwise. Remove one with **Remove web app…** in the launcher
-or `nerdos-webapp remove ID`; it is not added back by later updates, and its
+or `cybexos-webapp remove ID`; it is not added back by later updates, and its
 shortcut then shows how to reinstall it. Add other sites with **Install web
-app…** in the launcher or `nerdos-webapp install --url ADDRESS`. Installed web
+app…** in the launcher or `cybexos-webapp install --url ADDRESS`. Installed web
 apps appear in the launcher's Apps tab.
 
 ## Clipboard history
@@ -93,13 +93,13 @@ it in a notification. `Escape` cancels.
 
 ## Your own shortcuts
 
-Add personal bindings to `~/.config/nerdos/hypr/user.lua`. NerdOS loads it
+Add personal bindings to `~/.config/cybexos/hypr/user.lua`. Cybex OS loads it
 after its own configuration and never changes it. Give each binding a
 `description` so it appears in the sheet:
 
 ```lua
 local function bind(keys, dispatcher, description)
-  -- Unbinding first replaces a NerdOS binding on the same keys and keeps
+  -- Unbinding first replaces a Cybex OS binding on the same keys and keeps
   -- configuration reloads from stacking duplicates.
   hl.unbind(keys)
   return hl.bind(keys, dispatcher, { description = description })
@@ -139,7 +139,7 @@ These are in the sheet too; this is what they do.
 - **Touchpad gestures.** Swipe three fingers left or right to switch
   workspace, or up to open the overview. Turn the workspace swipe off in
   **Settings → Touchpad → Swipe between workspaces**. A gesture of your own in
-  `user.lua` on the same fingers and direction replaces the NerdOS one:
+  `user.lua` on the same fingers and direction replaces the Cybex OS one:
 
   ```lua
   hl.gesture({ fingers = 3, direction = "horizontal", action = "move" })

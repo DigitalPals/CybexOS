@@ -17,7 +17,7 @@ ShellRoot {
         interval: 1000; running: true
         onTriggered: {
             if (typeof UserPlugins.plugins !== "undefined" && typeof OmarchyPlugins.records !== "undefined") {
-                console.warn("NERDOS_DESKTOP_CHECK_PASS");
+                console.warn("CYBEXOS_DESKTOP_CHECK_PASS");
                 Quickshell.execDetached(["bash", "-c", "sleep .1; kill -TERM -- \"$1\"", "qualification", String(Quickshell.processId)]);
             }
         }

@@ -10,7 +10,7 @@ SettingsPage {
     id: page
 
     readonly property var tabMeta: ({
-        overview: { glyph: "dashboard", label: I18n.tr("Overview"), from: "the NerdOS button" },
+        overview: { glyph: "dashboard", label: I18n.tr("Overview"), from: "the Cybex OS button" },
         sound: { glyph: "volume_down", label: I18n.tr("Sound"), from: "the volume glyph" },
         network: { glyph: "wifi", label: I18n.tr("Network"), from: "the network glyphs" },
         bluetooth: { glyph: "bluetooth", label: I18n.tr("Bluetooth"), from: "the Bluetooth glyph" },

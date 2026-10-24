@@ -106,7 +106,7 @@ test("clipboard watchers restart with a bounded backoff", () => {
 test("emoji data is read only once the Emoji provider is used", () => {
     const providers = read("Common/LauncherProviders.qml");
     assert.match(providers,
-        /path:\s*root\.emojiRequested \? "\/etc\/nerdos\/emoji-test\.txt" : ""/);
+        /path:\s*root\.emojiRequested \? "\/etc\/cybexos\/emoji-test\.txt" : ""/);
     assert.match(providers,
         /activeProviderId === "emoji" && !root\.emojiRequested\) \{[\s\S]*?root\.emojiLoading = true;[\s\S]*?root\.emojiRequested = true;/);
 });

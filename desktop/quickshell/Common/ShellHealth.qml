@@ -100,7 +100,7 @@ Singleton {
 
     FileView {
         id: deploymentFile
-        path: root.stateHome + "/nerdos/quickshell-health.json"
+        path: root.stateHome + "/cybexos/quickshell-health.json"
         printErrors: false
         watchChanges: true
         onFileChanged: reload()

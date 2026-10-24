@@ -1,4 +1,4 @@
-# NerdOS installer world map: land mask, equirectangular, 2-degree cells.
+# Cybex OS installer world map: land mask, equirectangular, 2-degree cells.
 # Derived from Natural Earth 1:110m land (public domain), cell centres sampled.
 # step=2.0 top=82.0 rows=70 cols=180
 # Each line: alternating run lengths starting with water.

@@ -113,11 +113,11 @@ asd_percent() {
 # Nudge the shell's OSD. Neither backend emits anything watchable — sysfs
 # backlight attributes deliver no inotify events and a HID write emits none —
 # so the pill is shown, and the percentage re-read, over IPC instead. The
-# shell runs by path, so a bare `qs ipc call` reaches nothing; nerdos-runtime
+# shell runs by path, so a bare `qs ipc call` reaches nothing; cybexos-runtime
 # names the active runtime. Every step is pinged, never rate-limited: a skipped
 # last step would leave the pill showing the level before it.
 ping_osd() {
-  local runtime=${HOME:-}/.local/bin/nerdos-runtime
+  local runtime=${HOME:-}/.local/bin/cybexos-runtime
   [[ -x $runtime ]] && "$runtime" ipc osd brightness >/dev/null 2>&1 || true
 }
 

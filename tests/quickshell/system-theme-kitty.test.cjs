@@ -11,7 +11,7 @@ const {
 
 const repoRoot = path.resolve(__dirname, "../..");
 const vendorConf = fs.readFileSync(path.join(repoRoot, "desktop/defaults/kitty.conf"), "utf8");
-const INCLUDE = "include ~/.local/state/nerdos/theme/kitty.conf";
+const INCLUDE = "include ~/.local/state/cybexos/theme/kitty.conf";
 const COLOR_LINE = /^([a-z0-9_]+) (#[0-9a-f]{6})$/;
 const FONT_SIZE_LINE = /^font_size (\d+\.\d)$/;
 const PKILL_ARGS = "--signal USR1 --uid " + process.getuid()

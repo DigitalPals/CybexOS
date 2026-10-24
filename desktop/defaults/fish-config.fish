@@ -6,10 +6,10 @@ set -g fish_cursor_visual underscore
 
 fish_add_path --prepend ~/.local/bin ~/.npm-global/bin ~/Android/Sdk/platform-tools ~/Android/Sdk/cmdline-tools/latest/bin
 if not set -q EDITOR
-    set -gx EDITOR 'nerdos-apps edit'
+    set -gx EDITOR 'cybexos-apps edit'
 end
 if not set -q VISUAL
-    set -gx VISUAL 'nerdos-apps edit'
+    set -gx VISUAL 'cybexos-apps edit'
 end
 set -gx ANDROID_HOME "$HOME/Android/Sdk"
 set -gx ANDROID_SDK_ROOT "$ANDROID_HOME"
@@ -77,8 +77,8 @@ if status is-interactive
     alias ll='eza --icons -la'
     alias la='eza --icons -A'
     alias l='eza --icons -CF'
-    alias update='nerd update check'
-    alias a='nerd agent'
+    alias update='cybex update check'
+    alias a='cybex agent'
     # Product default for interactive Codex; `command codex` bypasses this alias.
     alias codex='codex --dangerously-bypass-approvals-and-sandbox'
     alias claude='claude --dangerously-skip-permissions'

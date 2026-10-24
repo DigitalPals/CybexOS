@@ -1,5 +1,5 @@
 //! Exercise the actual Slint tree and controller, without display devices.
-use nerdos_installer::{
+use cybexos_installer::{
     client::Client,
     protocol::{State, Static},
     ui::App,
@@ -19,7 +19,7 @@ impl Platform for Headless {
 
 fn setup() -> (
     InstallerWindow,
-    nerdos_installer::ui::Shared,
+    cybexos_installer::ui::Shared,
     Rc<MinimalSoftwareWindow>,
 ) {
     let surface = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
@@ -239,7 +239,7 @@ fn log_scrolls_with_keyboard_and_refresh_keeps_the_reading_position() {
 
 #[test]
 fn wifi_refresh_preserves_credentials_but_reordering_clears_selection() {
-    use nerdos_installer::protocol::WifiNetwork;
+    use cybexos_installer::protocol::WifiNetwork;
     use std::cell::RefCell;
     let (ui, app, surface) = setup();
     let store = ui.global::<Store>();

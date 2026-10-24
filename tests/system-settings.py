@@ -72,7 +72,7 @@ class NetworkNativeTypes(unittest.TestCase):
         connection.props.id = 'fixture'
         connection.props.uuid = 'aaaa1111-1111-4111-8111-111111111111'
         connection.props.type = '802-3-ethernet'
-        connection.props.zone = 'nerdos'
+        connection.props.zone = 'cybexos'
         self.remote.add_setting(connection)
         self.remote.add_setting(NM.SettingWired.new())
         for cls in (NM.SettingIP4Config, NM.SettingIP6Config):
@@ -83,7 +83,7 @@ class NetworkNativeTypes(unittest.TestCase):
 
     def test_preserves_unedited_routes_and_zone_without_mutating_original(self):
         clone = self.service.edited(self.remote, profile())
-        self.assertEqual(clone.get_setting_connection().props.zone, 'nerdos')
+        self.assertEqual(clone.get_setting_connection().props.zone, 'cybexos')
         self.assertEqual(clone.get_setting_ip4_config().get_num_routes(), 1)
         self.assertEqual(clone.get_setting_ip4_config().get_address(0).get_address(), '192.0.2.5')
         self.assertEqual(self.remote.get_setting_ip4_config().props.method, 'auto')

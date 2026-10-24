@@ -15,7 +15,7 @@ const repo = path.resolve(__dirname, "../..");
 function status(overrides) {
     return helpers.parseStatus(JSON.stringify(Object.assign({
         configured: true, running: false, progress: null, mediaRoot: "/run/media/tester",
-        destination: { type: "local", display: "T7 · nerdos-backup", label: "T7", path: "/run/media/tester/T7/nerdos-backup" },
+        destination: { type: "local", display: "T7 · cybexos-backup", label: "T7", path: "/run/media/tester/T7/cybexos-backup" },
         automatic: true, reachable: true, unreachableReason: "", recoveryKeyConfirmed: true,
         lastSuccess: "2026-10-13T08:00:00+00:00", lastResult: "ok", lastError: "",
         nextDue: "2026-10-14T07:00:00+00:00", stale: false
@@ -77,12 +77,12 @@ test("the status line reads as last backup, its health and the next run", () => 
 });
 
 test("destinations are validated as data before the helper sees them", () => {
-    const helper = "nerdos-backup";
+    const helper = "cybexos-backup";
     assert.equal(helpers.helperPath("/home/tester"), helper);
     assert.deepEqual(helpers.setupCommand(helper, "local", "/run/media/tester/T7", "", false),
         [helper, "setup", "local", "/run/media/tester/T7", "--json"]);
     assert.deepEqual(helpers.setupCommand(helper, "sftp", " nas ", "", true),
-        [helper, "setup", "sftp", "nas", "nerdos-backup", "--existing", "--json"]);
+        [helper, "setup", "sftp", "nas", "cybexos-backup", "--existing", "--json"]);
     for (const host of ["-oProxyCommand=x", "a b", "h;reboot", "", "[::1]"])
         assert.deepEqual(helpers.setupCommand(helper, "sftp", host, "", false), [], host);
     for (const folder of ["../x", "a/../b", "~/x", "a;b"])
@@ -94,10 +94,10 @@ test("destinations are validated as data before the helper sees them", () => {
 });
 
 test("backups and restores run as transient units that outlive Settings", () => {
-    const helper = "/h/.local/bin/nerdos-backup";
+    const helper = "/h/.local/bin/cybexos-backup";
     const now = helpers.nowCommand(helper, 1760000000000);
     assert.deepEqual(now.slice(0, 5), ["systemd-run", "--user", "--quiet", "--collect",
-        "--unit=nerdos-backup-now-1760000000000"]);
+        "--unit=cybexos-backup-now-1760000000000"]);
     assert.deepEqual(now.slice(-3), [helper, "now", "--notify"]);
     const restore = helpers.restoreCommand(helper, "a".repeat(64), "Documents/Taxes", 7);
     assert.deepEqual(restore.slice(-7), [helper, "restore", "a".repeat(64), "--path", "Documents/Taxes",
@@ -113,7 +113,7 @@ test("backups and restores run as transient units that outlive Settings", () => 
 test("helper failures are shown in its own words", () => {
     assert.equal(helpers.errorText(1, JSON.stringify({ ok: false, error: "T7 is not connected." }), ""),
         "T7 is not connected.");
-    assert.equal(helpers.errorText(1, "", "warning\nnerdos-backup: The keyring is locked.\n"),
+    assert.equal(helpers.errorText(1, "", "warning\ncybexos-backup: The keyring is locked.\n"),
         "The keyring is locked.");
     assert.equal(helpers.errorText(-1, "", ""), "The backup helper is not installed.");
     assert.equal(helpers.formatBytes(1234567), "1.2 MB");

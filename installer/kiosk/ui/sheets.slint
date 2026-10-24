@@ -309,7 +309,7 @@ component ChoiceList inherits ListArea {
                 }
                 if choice.selected: SlotIcon {
                     d: Icons.check;
-                    tint: Theme.lime;
+                    tint: Theme.accent;
                 }
             }
         }
@@ -610,7 +610,7 @@ component Option inherits Row {
         }
         if root.chosen: SlotIcon {
             d: Icons.check;
-            tint: Theme.lime;
+            tint: Theme.accent;
         }
     }
 }
@@ -693,10 +693,10 @@ export component TimezoneSheet inherits Panel {
                         border-radius: 6px;
                         border-width: Store.tz-fixed ? 0px : 1.5px;
                         border-color: Theme.line-2;
-                        background: Store.tz-fixed ? Theme.lime : transparent;
+                        background: Store.tz-fixed ? Theme.accent : transparent;
                         if Store.tz-fixed: Icon {
                             d: Icons.check;
-                            tint: Theme.lime-ink;
+                            tint: Theme.accent-ink;
                             size: 13px;
                         }
                     }
@@ -824,7 +824,7 @@ export component TimezoneSheet inherits Panel {
             height: 16px;
             spacing: 14px;
             alignment: start;
-            for legend in [{ c: #b4b7ac, t: "day" }, { c: #34363b, t: "night" }, { c: #c8ff1f, t: "selected" }]: HorizontalLayout {
+            for legend in [{ c: #b4b7ac, t: "day" }, { c: #34363b, t: "night" }, { c: #60a5fa, t: "selected" }]: HorizontalLayout {
                 spacing: 5px;
                 Rectangle {
                     width: 8px;

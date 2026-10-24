@@ -14,13 +14,13 @@ import "../Common"
 // Three things this panel used to carry live elsewhere now. The battery
 // reading belongs to its own menubar widget and BatteryPopover, which also
 // owns the power profile; Tailscale keeps its detail view, reachable from
-// `nerdos-runtime ipc popouts toggle tailscale`, but no longer holds a cell
+// `cybexos-runtime ipc popouts toggle tailscale`, but no longer holds a cell
 // here.
 // What is left is one shape per idea: a card, a full-width row, a grid tile,
 // a segmented track, separated by the SectionLabel the rest of the shell
 // already draws.
 //
-// The NerdOS button opens this dashboard; the four status widgets open their
+// The Cybex OS button opens this dashboard; the four status widgets open their
 // dedicated detail views directly.
 Surface {
     id: root
@@ -1015,7 +1015,7 @@ Surface {
             border.width: activeFocus ? 1 : 0
             border.color: Theme.accentText
             Accessible.role: Accessible.Button
-            Accessible.name: I18n.tr("Open NerdOS Settings")
+            Accessible.name: I18n.tr("Open Cybex OS Settings")
             Accessible.onPressAction: Settings.showPanel()
 
             Keys.onPressed: event => {

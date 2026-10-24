@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: Report a security vulnerability
-    url: https://github.com/DigitalPals/NerdOS/security/advisories/new
+    url: https://github.com/DigitalPals/CybexOS/security/advisories/new
     about: Report vulnerabilities privately. Never open a public issue or attach unredacted logs.
   - name: Documentation
-    url: https://github.com/DigitalPals/NerdOS#readme
+    url: https://github.com/DigitalPals/CybexOS#readme
     about: Installation, updates, recovery, and links to the guides in docs/.
   - name: Recovery guide
-    url: https://github.com/DigitalPals/NerdOS/blob/main/docs/recovery.md
+    url: https://github.com/DigitalPals/CybexOS/blob/main/docs/recovery.md
     about: Deployment recovery, rollback, persistent state, and troubleshooting.

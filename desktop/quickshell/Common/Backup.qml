@@ -4,7 +4,7 @@ import Quickshell
 import "BackupHelpers.js" as BackupHelpers
 
 // Personal-file backups for Settings → Backup & recovery. The user helper
-// nerdos-backup owns everything that matters: the configuration, the
+// cybexos-backup owns everything that matters: the configuration, the
 // keyring password, every restic run, the state file and the notifications.
 // This reads its `status --json` while the page is on screen and starts
 // the few actions the page offers. Backups and restores run as transient

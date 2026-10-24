@@ -20,7 +20,7 @@ Open Settings → Menubar → Widgets → Fusebox:
   `…/#/accounts` is accepted. User names, passwords and queries are refused.
 - **Management key**: the server's `management-key`. The field is a password
   field. Committing it hands the key to `desktop/quickshell/scripts/fusebox.py` over stdin, which
-  writes it to `~/.config/nerdos/fusebox/management.key` (mode 0600 in a 0700
+  writes it to `~/.config/cybexos/fusebox/management.key` (mode 0600 in a 0700
   directory, replaced atomically). The key is never stored in `shell.json` or
   on a command line. It is sent only to this server, as a bearer token in
   request headers, including the WebSocket upgrade, and never in a URL. The
@@ -93,7 +93,7 @@ the page.
   brings it back. A fault whose expected end changes is a new incident and
   shows again; one that clears (unseen for 15 minutes, so a Fusebox restart
   doesn't count) is forgotten and shows the next time it trips. Dismissals are
-  kept in `~/.local/state/nerdos/shell/fusebox.json`.
+  kept in `~/.local/state/cybexos/shell/fusebox.json`.
 - **Load**: one card with requests in progress, requests in the last full
   minute, failures in the last hour and the median time to first token of
   recent successful requests, over one bar per minute for the last hour,
@@ -260,14 +260,14 @@ are one-shot `desktop/quickshell/scripts/fusebox.py action|activity` requests th
 First, Normal and Last. Nothing is retried automatically.
 
 ```sh
-nerdos-runtime ipc fusebox status
-nerdos-runtime ipc fusebox refresh
-nerdos-runtime ipc fusebox configure
-nerdos-runtime ipc popouts open fusebox
+cybexos-runtime ipc fusebox status
+cybexos-runtime ipc fusebox refresh
+cybexos-runtime ipc fusebox configure
+cybexos-runtime ipc popouts open fusebox
 ```
 
 To remove the key, use the undo chip on the Management key row, or delete
-`~/.config/nerdos/fusebox/management.key`. System updates and generation
+`~/.config/cybexos/fusebox/management.key`. System updates and generation
 rollback retain this runtime credential.
 
 ## Tests

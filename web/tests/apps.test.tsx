@@ -9,23 +9,23 @@ describe('terminal interactions', () => {
     const openApp = vi.fn();
     render(<TerminalApp openApp={openApp} notify={vi.fn()} />);
     const input = screen.getByRole('textbox', { name: 'Terminal command' });
-    await user.type(input, 'nerd settings');
+    await user.type(input, 'cybex settings');
     await user.keyboard('{Alt>}{Enter}{/Alt}');
-    expect(input).toHaveValue('nerd settings');
+    expect(input).toHaveValue('cybex settings');
     expect(openApp).not.toHaveBeenCalled();
     expect(screen.getByRole('log', { name: 'Terminal output' })).not.toHaveTextContent('Opening settings…');
   });
 });
 
 describe('improved terminal', () => {
-  it('shows a readable NerdOS overview for fastfetch aliases and options', async () => {
+  it('shows a readable Cybex OS overview for fastfetch aliases and options', async () => {
     const user = userEvent.setup();
     render(<TerminalApp openApp={vi.fn()} notify={vi.fn()} />);
-    expect(screen.getByRole('region', { name: 'NerdOS system overview' })).toHaveTextContent('NixOS 26.05 x86_64');
-    expect(screen.getByRole('region', { name: 'NerdOS system overview' })).toHaveTextContent('Hyprland (Wayland)');
+    expect(screen.getByRole('region', { name: 'Cybex OS system overview' })).toHaveTextContent('NixOS 26.05 x86_64');
+    expect(screen.getByRole('region', { name: 'Cybex OS system overview' })).toHaveTextContent('Hyprland (Wayland)');
     const input = screen.getByRole('textbox', { name: 'Terminal command' });
-    await user.type(input, '  neofetch --logo nerdos  {Enter}');
-    const overviews = screen.getAllByRole('region', { name: 'NerdOS system overview' });
+    await user.type(input, '  neofetch --logo cybexos  {Enter}');
+    const overviews = screen.getAllByRole('region', { name: 'Cybex OS system overview' });
     expect(overviews).toHaveLength(2);
     expect(overviews[1]).toHaveTextContent('Demo system information');
     expect(overviews[1]).toHaveTextContent('Kitty');
@@ -64,9 +64,9 @@ describe('improved terminal', () => {
     await user.keyboard('{Tab}');
     expect(screen.getByRole('status', { name: 'Completion suggestions' })).toHaveTextContent('clear');
     await user.clear(input);
-    await user.type(input, 'n');
+    await user.type(input, 'c');
     await user.keyboard('{Tab}');
-    expect(screen.getByRole('status', { name: 'Completion suggestions' })).toHaveTextContent('nerd');
+    expect(screen.getByRole('status', { name: 'Completion suggestions' })).toHaveTextContent('cybex');
   });
 
   it('cancels drafts, clears the line, and clears output without executing a desktop intent', async () => {
@@ -74,11 +74,11 @@ describe('improved terminal', () => {
     const openApp = vi.fn();
     render(<TerminalApp openApp={openApp} notify={vi.fn()} />);
     const input = screen.getByRole('textbox', { name: 'Terminal command' });
-    await user.type(input, 'nerd settings');
+    await user.type(input, 'cybex settings');
     await user.keyboard('{Control>}c{/Control}');
     expect(input).toHaveValue('');
     expect(openApp).not.toHaveBeenCalled();
-    expect(screen.getByRole('log')).toHaveTextContent('nerd settings^C');
+    expect(screen.getByRole('log')).toHaveTextContent('cybex settings^C');
     await user.type(input, 'echo draft');
     await user.keyboard('{Control>}u{/Control}');
     expect(input).toHaveValue('');

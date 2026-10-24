@@ -14,7 +14,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
-LAUNCHER = ROOT / "assets/scripts/nerdos-agent"
+LAUNCHER = ROOT / "assets/scripts/cybexos-agent"
 
 
 def executable(path: Path, content: str) -> None:
@@ -107,7 +107,7 @@ def run_picker_in_pty(environment: dict[str, str], cwd: Path) -> tuple[int, str]
 def main() -> None:
     assert LAUNCHER.is_file()
 
-    with tempfile.TemporaryDirectory(prefix="nerdos-default-agent.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-default-agent.") as temporary:
         root = Path(temporary)
         home = root / "home"
         binaries = root / "bin"
@@ -118,12 +118,12 @@ def main() -> None:
         binaries.mkdir()
         working.mkdir()
 
-        for name in ("opencode", "claude", "codex", "nerdos-apps"):
+        for name in ("opencode", "claude", "codex", "cybexos-apps"):
             fake_capture(binaries / name)
-        executable(binaries / "nerd", "#!/usr/bin/env bash\nexit 99\n")
+        executable(binaries / "cybex", "#!/usr/bin/env bash\nexit 99\n")
 
         environment = test_environment(home, binaries, log)
-        preference = home / "xdg-config/nerdos/defaults/agent"
+        preference = home / "xdg-config/cybexos/defaults/agent"
 
         result = run_launcher(environment, "set", "opencode", cwd=working)
         assert result.returncode == 0, result.stderr
@@ -182,13 +182,13 @@ def main() -> None:
         result = run_launcher(environment, "--window", "--pick", cwd=working)
         assert result.returncode == 0, result.stderr
         window = captured(log)
-        assert window["program"] == "nerdos-apps"
+        assert window["program"] == "cybexos-apps"
         assert window["argv"] == [
             "terminal",
-            "--app-id=nerdos-agent",
+            "--app-id=cybexos-agent",
             "--dir=" + str(home / "Code"),
             "--",
-            str(binaries / "nerd"),
+            str(binaries / "cybex"),
             "agent",
             "--window-child",
             "--pick",
@@ -199,7 +199,7 @@ def main() -> None:
         assert not preference.exists()
         result = run_launcher(environment, cwd=working)
         assert result.returncode == 1
-        assert "run 'nerd agent set' in a terminal" in result.stderr
+        assert "run 'cybex agent set' in a terminal" in result.stderr
 
         preference.parent.mkdir(parents=True, exist_ok=True)
         preference.write_text("codex\nclaude\n")

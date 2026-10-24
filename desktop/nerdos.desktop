@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=NerdOS
-Comment=Personalize your Opinionated System
-Exec=nerdos-runtime ipc settings open appearance
-Icon=nerdos
-Terminal=false
-Type=Application
-Categories=Settings;System;
-Keywords=NerdOS;desktop;settings;

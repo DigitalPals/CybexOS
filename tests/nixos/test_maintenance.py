@@ -5,8 +5,8 @@ import unittest
 from unittest.mock import patch
 
 import test_lifecycle as lifecycle
-from nerdos.common import Failure, atomic, locked, read
-from nerdos.maintenance import DEFAULT_POLICY, Maintenance, policy, prepare
+from cybexos.common import Failure, atomic, locked, read
+from cybexos.maintenance import DEFAULT_POLICY, Maintenance, policy, prepare
 
 
 class MaintenanceTests(unittest.TestCase):
@@ -150,7 +150,7 @@ class MaintenanceTests(unittest.TestCase):
         self.setup_retention()
         original = self.engine.run
         def run(*args, **kwargs):
-            if args[0] == 'nerdos-health': raise Failure('A required hardware service failed')
+            if args[0] == 'cybexos-health': raise Failure('A required hardware service failed')
             return original(*args, **kwargs)
         run.log = None; self.engine.run = run
         with self.assertRaisesRegex(Failure, 'hardware'): self.maintenance.preview()
@@ -184,7 +184,7 @@ class MaintenanceTests(unittest.TestCase):
         self.assertIn(('nix-store', '--gc'), self.runner.calls)
 
     def test_status_distinguishes_personal_preferences_from_effective_cleanup_policy(self):
-        from nerdos.maintenance import public_status
+        from cybexos.maintenance import public_status
         self.setup_retention()
         desired = DEFAULT_POLICY | {'keepDays':90}
         atomic(self.config / 'local/maintenance.json', {'schema':1, 'policy':desired})
@@ -200,7 +200,7 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual(result['policy'], DEFAULT_POLICY)
 
     def test_stopped_workers_release_the_ui_and_expose_durable_cleanup_recovery(self):
-        from nerdos.maintenance import public_status
+        from cybexos.maintenance import public_status
         from subprocess import CompletedProcess
         self.setup_retention()
         atomic(self.config / 'local/maintenance.json', {'schema':1, 'policy':DEFAULT_POLICY})
@@ -208,16 +208,16 @@ class MaintenanceTests(unittest.TestCase):
             with self.subTest(requestId=identifier, recovery=recovery):
                 atomic(self.engine.state / 'maintenance-status.json',
                        {'state':'cleaning', 'requestId':identifier, 'reviewToken':'stale',
-                        'workerUnit':'nerdos-recover.service' if recovery else None})
+                        'workerUnit':'cybexos-recover.service' if recovery else None})
                 atomic(self.maintenance.pending, {'phase':'gc'})
-                with patch('nerdos.maintenance.subprocess.run', return_value=CompletedProcess([], 0, 'ActiveState=failed\n')) as worker:
+                with patch('cybexos.maintenance.subprocess.run', return_value=CompletedProcess([], 0, 'ActiveState=failed\n')) as worker:
                     result = public_status(self.engine.state, self.cleanup_policy, self.base, self.config)
                 self.assertEqual(result['state'], 'failed')
                 self.assertTrue(result['recoveryPending'])
                 self.assertIsNone(result['reviewToken'])
-                expected = ('nerdos-recover.service' if recovery else
-                            f'nerdos-maintenance@{identifier}.service' if identifier else 'nerdos-maintenance-auto.service')
+                expected = ('cybexos-recover.service' if recovery else
+                            f'cybexos-maintenance@{identifier}.service' if identifier else 'cybexos-maintenance-auto.service')
                 self.assertIn(expected, worker.call_args.args[0])
-                with patch('nerdos.maintenance.subprocess.run', return_value=CompletedProcess([], 0, 'ActiveState=activating\n')):
+                with patch('cybexos.maintenance.subprocess.run', return_value=CompletedProcess([], 0, 'ActiveState=activating\n')):
                     active = public_status(self.engine.state, self.cleanup_policy, self.base, self.config)
                 self.assertEqual(active['state'], 'cleaning')

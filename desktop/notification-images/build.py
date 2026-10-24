@@ -12,11 +12,11 @@ import tempfile
 
 SOURCES = ('CMakeLists.txt', 'LICENSE', 'build.py', 'imagefingerprints.cpp',
            'imagefingerprints.h', 'plugin.cpp', 'plugins.qmltypes', 'qmldir', 'tests.cpp')
-MODULE = 'usr/lib64/qt6/qml/NerdOS/Images'
+MODULE = 'usr/lib64/qt6/qml/CybexOS/Images'
 ARTIFACTS = tuple(f'{MODULE}/{name}' for name in
-                  ('libnerdosnotificationimagesplugin.so', 'qmldir', 'plugins.qmltypes')) + (
-                      'usr/share/licenses/nerdos-notification-images/LICENSE',)
-MANIFEST = 'usr/share/nerdos/notification-images/build.json'
+                  ('libcybexosnotificationimagesplugin.so', 'qmldir', 'plugins.qmltypes')) + (
+                      'usr/share/licenses/cybexos-notification-images/LICENSE',)
+MANIFEST = 'usr/share/cybexos/notification-images/build.json'
 
 
 def sha256(path):
@@ -39,7 +39,7 @@ def install(source, root):
             return previous
     except (OSError, ValueError, KeyError, TypeError):
         pass
-    with tempfile.TemporaryDirectory(prefix='nerdos-notification-images-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='cybexos-notification-images-') as temporary:
         build = Path(temporary) / 'build'
         staged = Path(temporary) / 'root'
         subprocess.run(['cmake', '-S', str(source), '-B', str(build),

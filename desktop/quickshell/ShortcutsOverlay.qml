@@ -377,7 +377,7 @@ PanelWindow {
                     width: parent.width
                     visible: Session.shortcutGroups.length > 0
                     wrapMode: Text.Wrap
-                    text: I18n.tr("Bindings you add in ~/.config/nerdos/hypr/user.lua appear here when they have a description.")
+                    text: I18n.tr("Bindings you add in ~/.config/cybexos/hypr/user.lua appear here when they have a description.")
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
                     color: Theme.textFaint

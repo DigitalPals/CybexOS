@@ -1586,7 +1586,7 @@ SettingsPage {
 
             SettingsHint {
                 width: parent.width
-                text: I18n.tr("Preview upstream packages, NerdOS, or both in Updates. Review the complete build before applying. Personal inputs and Flatpak applications are managed separately.")
+                text: I18n.tr("Preview upstream packages, Cybex OS, or both in Updates. Review the complete build before applying. Personal inputs and Flatpak applications are managed separately.")
             }
 
         }

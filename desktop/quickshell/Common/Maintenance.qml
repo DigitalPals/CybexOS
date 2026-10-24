@@ -12,12 +12,12 @@ Singleton {
     readonly property bool busy: requester.busy || pending || ["checking", "cleaning"].includes(snapshot.state)
     readonly property bool ready: !busy && snapshot.state === "ready" && !!snapshot.reviewToken
     readonly property string error: requestError || requester.error || poll.error || snapshot.error || ""
-    function refresh() { poll.run(["nerd", "maintenance", "status"]); }
-    function request(args) { requestError = ""; requester.run(["nerd", "maintenance"].concat(args)); }
+    function refresh() { poll.run(["cybex", "maintenance", "status"]); }
+    function request(args) { requestError = ""; requester.run(["cybex", "maintenance"].concat(args)); }
     function preview() { request(["preview"]); }
     function clean() { if (ready) request(["clean", snapshot.reviewId, snapshot.reviewToken]); }
     function pin(id, enabled) { request(["pin", id, enabled ? "true" : "false"]); }
-    function changePolicy(value, previous) { requestError = ""; requester.run(["nerd", "maintenance", "policy", JSON.stringify({previous:previous, policy:value})]); }
+    function changePolicy(value, previous) { requestError = ""; requester.run(["cybex", "maintenance", "policy", JSON.stringify({previous:previous, policy:value})]); }
     function bytes(value) {
         const gib = Number(value || 0) / 1073741824;
         return gib >= 1 ? gib.toFixed(1) + " GiB" : (Number(value || 0) / 1048576).toFixed(1) + " MiB";
@@ -40,6 +40,6 @@ Singleton {
             if (["done", "failed"].includes(value.state)) { root.pending = false; root.refresh(); }
         }
     }
-    Timer { interval: 1500; repeat: true; running: root.pending; onTriggered: requestStatus.run(["nerd", "maintenance", "request", root.requestId]) }
+    Timer { interval: 1500; repeat: true; running: root.pending; onTriggered: requestStatus.run(["cybex", "maintenance", "request", root.requestId]) }
     Timer { interval: 1500; repeat: true; running: root.watched || root.pending; onTriggered: root.refresh() }
 }

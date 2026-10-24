@@ -1,11 +1,11 @@
-# NerdOS Assistant
+# Cybex OS Assistant
 
 The assistant is a round character that floats above every window. Ask it
-about NerdOS by typing or by holding a key and talking; it answers in a small
+about Cybex OS by typing or by holding a key and talking; it answers in a small
 box under itself. It can change desktop preferences, create personal widgets,
 prepare system changes for review, write small programs and answer general
 questions. The work is done by the coding agent the person already uses:
-Claude Code or Codex. NerdOS never stores their credentials.
+Claude Code or Codex. Cybex OS never stores their credentials.
 
 The assistant is summoned, never proactive. It does not watch the screen,
 listen or speak unless asked to for one question.
@@ -21,7 +21,7 @@ listen or speak unless asked to for one question.
   Settings → Assistant also shows sign-in status. Automatic selection prefers
   an installed, signed-in agent.
 - **Show or hide** the character from its menubar button (the sparkles beside
-  the notifications) or with `nerd assistant toggle`. The button shows `…`
+  the notifications) or with `cybex assistant toggle`. The button shows `…`
   while a question is being worked on, `!` while one needs your answer and a
   dot for a reply you have not seen. Drag the character anywhere, including to
   another display. It stays where it was left, across sessions, and keeps out
@@ -34,14 +34,14 @@ listen or speak unless asked to for one question.
   computer. `Esc` or the cancel button discards a recording.
 - **While it works** the character shows a spinning arc and a short line about
   the current step. Clicking the character while it works tucks the box away;
-  a lime dot appears when the reply is ready.
+  a blue dot appears when the reply is ready.
 - **Replies** stay under the character until closed. Copy, Reply (continue the
   conversation), Speak, Undo (when it changed preferences or files), and
   Continue in a terminal (opens the same Claude Code or Codex session in
   Kitty, for longer coding work) appear under a reply.
-- **From a terminal**, `nerd assistant ask "…"` asks the same assistant and
+- **From a terminal**, `cybex assistant ask "…"` asks the same assistant and
   prints the reply; anything it needs approved still appears on screen.
-  `nerd assistant status` prints the service's state as JSON.
+  `cybex assistant status` prints the service's state as JSON.
 - **Screen context**, when enabled in Settings → Assistant, adds a screen
   button to the box. It attaches one screenshot of the display the character is
   on, taken with the character hidden, to that one question. The image is
@@ -50,16 +50,16 @@ listen or speak unless asked to for one question.
 ## What it may do without asking
 
 Every tool call the agent makes passes through the assistant's approval policy
-(`desktop/assistant/nerdos_assistant/policy.py`):
+(`desktop/assistant/cybexos_assistant/policy.py`):
 
 | Action | Decision |
 | --- | --- |
 | Reading files, searching, web search and fetch | Allowed |
-| Read-only commands (`ls`, `cat`, `rg`, `jq`, `hyprctl -j …`, `nerd update status`, `nerd plugin list`, `systemctl --user status`, …) | Allowed |
-| Editing desktop preferences (`~/.config/nerdos/…`) and personal plugins (`~/.local/share/nerdos/plugins/…`) | Allowed; the reply offers **Undo** |
-| Staging a system change (`nerd update stage local`, `nerd software stage …`) | Allowed; administrator authentication is still requested by polkit |
-| Applying a staged change (`nerd update apply …`) | A review card with the actual package changes; **Apply…** then asks for the administrator password |
-| Vendor files (`/nix/store`, `/etc/nerdos`, `/run/current-system`) | Refused |
+| Read-only commands (`ls`, `cat`, `rg`, `jq`, `hyprctl -j …`, `cybex update status`, `cybex plugin list`, `systemctl --user status`, …) | Allowed |
+| Editing desktop preferences (`~/.config/cybexos/…`) and personal plugins (`~/.local/share/cybexos/plugins/…`) | Allowed; the reply offers **Undo** |
+| Staging a system change (`cybex update stage local`, `cybex software stage …`) | Allowed; administrator authentication is still requested by polkit |
+| Applying a staged change (`cybex update apply …`) | A review card with the actual package changes; **Apply…** then asks for the administrator password |
+| Vendor files (`/nix/store`, `/etc/cybexos`, `/run/current-system`) | Refused |
 | `nixos-rebuild`, `sudo`, rebooting or powering off | Refused |
 | Any other command or file edit | An approval card: Allow once, Allow for this conversation, or Deny |
 
@@ -69,15 +69,15 @@ Code. Codex runs with a read-only sandbox and asks for every write or
 escalation, which reaches the same cards.
 
 New widgets are created disabled. When a reply created one, **Add to bar**
-enables it with `nerd plugin enable`.
+enables it with `cybex plugin enable`.
 
 ## Settings
 
-Settings → Assistant, stored in `~/.config/nerdos/shell.json`:
+Settings → Assistant, stored in `~/.config/cybexos/shell.json`:
 
 | Key | Values | Default |
 | --- | --- | --- |
-| `assistantAgent` | `auto`, `claude`, `codex` | `auto` (the `nerd agent` default when it is Claude Code or Codex, else whichever is installed) |
+| `assistantAgent` | `auto`, `claude`, `codex` | `auto` (the `cybex agent` default when it is Claude Code or Codex, else whichever is installed) |
 | `assistantClaudeModel` | `default`, `fable`, `sonnet`, `opus` | `default` |
 | `assistantCodexModel` | `default`, `gpt-5.6-luna`, `gpt-5.6-terra`, `gpt-5.6-sol` | `default` |
 | `assistantSpeak` | spoken replies | `false` |
@@ -88,28 +88,17 @@ Settings → Assistant, stored in `~/.config/nerdos/shell.json`:
 
 ### The character
 
-`mascot` is the NerdOS glasses as a character, with eyes behind the lenses.
-`mark` shows the unchanged logo, and only the ring around it shows what the
-assistant is doing.
+`mascot` uses the Cybex X from the supplied wordmark on a charcoal disc. It
+follows focus gently and responds to voice level; `mark` keeps it still.
+Both use the same logo geometry and a blue activity ring. Amber marks a
+question waiting for an answer. Reduced-motion settings suppress movement.
 
-The brand guide (`assets/brand/USAGE.md` §8) forbids eyes or faces in the
-logo's lenses, and it still applies: the mascot is a separate character, not a
-variant of the logo, and is used only as the assistant on screen. Its rules:
-
-- It is drawn from the master symbol's own geometry and colours
-  (`assets/brand/symbol/svg/nerdos-symbol-on-dark.svg`) on a charcoal disc; the
-  frames, the tape and its angle never change.
-- The eyes are plain off-white pills behind the lenses, cropped by the frames.
-  They may move, blink, close to a curve when happy or asleep, and widen when
-  listening. No pupils, mouths, eyebrows, reflections or extra colours.
-- Lime stays on the tape and the activity ring; amber marks only a question
-  waiting for an answer.
-- Wherever the logo appears as the logo (the menubar's Control Center button,
-  the boot splash, documents), it is the unchanged mark.
+The menubar, boot splash and documents use the corresponding logo assets
+from [the brand directory](../assets/brand/README.md).
 
 ## Installation
 
-`nerdos.features.assistant` (default on) installs the service, Codex, and
+`cybexos.features.assistant` (default on) installs the service, Codex, and
 Claude Code when proprietary applications are selected too. It does not need
 the developer tooling feature. Voxtype, Pipewire and speech-dispatcher are part
 of every installation. Turning the feature off removes the menubar button,
@@ -117,8 +106,8 @@ the shortcut and the service; nothing in `shell.json` is lost.
 
 ## Architecture
 
-- `desktop/assistant/nerdos_assistant/` — the `nerdos-assistant` service, a
-  user unit (`nerdos-assistant.service`). It owns the agent processes so a
+- `desktop/assistant/cybexos_assistant/` — the `cybexos-assistant` service, a
+  user unit (`cybexos-assistant.service`). It owns the agent processes so a
   Quickshell restart, including one caused by the assistant's own changes,
   does not end a turn. Only the standard library is used.
   - `server.py` — the socket and the session state.
@@ -142,13 +131,13 @@ the shortcut and the service; nothing in `shell.json` is lost.
   surface, the character, the composer, the working pill and the reply card.
 - `desktop/quickshell/Bar/Modules/Assistant.qml` — the menubar button.
 
-State lives in `~/.local/state/nerdos/assistant/state.json` (the current
+State lives in `~/.local/state/cybexos/assistant/state.json` (the current
 conversation id per agent and the last finished reply). Screenshots live in
-`$XDG_RUNTIME_DIR/nerdos/assistant/` only for the question that used them.
+`$XDG_RUNTIME_DIR/cybexos/assistant/` only for the question that used them.
 
 ### Protocol
 
-`$XDG_RUNTIME_DIR/nerdos/assistant.sock` (directory `0700`) carries JSON-RPC 2.0,
+`$XDG_RUNTIME_DIR/cybexos/assistant.sock` (directory `0700`) carries JSON-RPC 2.0,
 one UTF-8 JSON object per line. Every connected client receives every
 notification. Lines are limited to 4 MiB.
 
@@ -203,7 +192,7 @@ A turn snapshot:
                   "ready": true}],
   "startedAt": 1761223000000,
   "finishedAt": 0,
-  "undo": ["~/.config/nerdos/shell.json"],
+  "undo": ["~/.config/cybexos/shell.json"],
   "plugins": [{"id": "personal.cputemp", "name": "CPU temperature"}],
   "staged": "8f3a2c…",
   "screenshot": false,
@@ -215,7 +204,7 @@ A turn snapshot:
 transaction built and checked. Errors: `-32001` busy, `-32002` no such
 pending approval or nothing to undo, `-32003` nothing to resume, `-32602`
 invalid params (including a screenshot outside
-`$XDG_RUNTIME_DIR/nerdos/assistant/`, which the service creates `0700` and
+`$XDG_RUNTIME_DIR/cybexos/assistant/`, which the service creates `0700` and
 empties when it starts), `-32601` unknown method.
 
 The service never replays a request after a reconnect; the shell sends

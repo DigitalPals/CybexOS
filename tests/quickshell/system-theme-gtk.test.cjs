@@ -42,7 +42,7 @@ test("render records the dark and light settings deterministically", () => {
     const dark = renderTarget("gtk", darkTokens());
     assert.deepEqual(Object.keys(dark), ["gtk.json"]);
     assert.deepEqual(JSON.parse(dark["gtk.json"]), {
-        "accent-color": "yellow", "color-scheme": "prefer-dark", "gtk-theme": "adw-gtk3-dark",
+        "accent-color": "blue", "color-scheme": "prefer-dark", "gtk-theme": "adw-gtk3-dark",
         "text-scaling-factor": "1.00",
     });
     assert.ok(dark["gtk.json"].endsWith("}\n"));
@@ -50,7 +50,7 @@ test("render records the dark and light settings deterministically", () => {
 
     const light = JSON.parse(renderTarget("gtk", lightTokens())["gtk.json"]);
     assert.deepEqual(light, {
-        "accent-color": "yellow", "color-scheme": "prefer-light", "gtk-theme": "adw-gtk3",
+        "accent-color": "blue", "color-scheme": "prefer-light", "gtk-theme": "adw-gtk3",
         "text-scaling-factor": "1.00",
     });
 });
@@ -93,7 +93,7 @@ test("apply sets exactly the interface keys, once per change", t => {
         `gsettings list-keys ${SCHEMA}`,
         `gsettings set ${SCHEMA} color-scheme prefer-dark`,
         `gsettings set ${SCHEMA} gtk-theme adw-gtk3-dark`,
-        `gsettings set ${SCHEMA} accent-color yellow`,
+        `gsettings set ${SCHEMA} accent-color blue`,
     ]);
 
     // Unchanged tokens leave gsettings alone; only --force reapplies them.

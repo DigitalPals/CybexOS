@@ -1,12 +1,12 @@
 { config, options, lib, pkgs, modulesPath, ... }:
 # The installation ISO boots straight into the installer: no desktop session,
-# display manager or live account. tty1 shows nerdos-installer, a Slint kiosk
+# display manager or live account. tty1 shows cybexos-installer, a Slint kiosk
 # drawn with the software renderer directly to KMS/DRM; it runs unprivileged
-# in a logind seat session and owns no state. nerdos-installerd (root) keeps
-# the draft and drives the one disk-writing worker, nerdos-install, whose
+# in a logind seat session and owns no state. cybexos-installerd (root) keeps
+# the draft and drives the one disk-writing worker, cybexos-install, whose
 # protocol and checks are shared with the terminal and automated installers.
 let
-  cfg = config.nerdos.installer;
+  cfg = config.cybexos.installer;
   installer = pkgs.callPackage ../packages/installer.nix { source = ../..; };
   updater = installer.passthru.updater;
   payload = cfg.payload;
@@ -24,37 +24,37 @@ let
     # The option's apply merges every firmware package into one tree.
     hardware.firmware
   ]);
-  reservedNames = lib.optionals (payload != null) (lib.subtractLists [ payload.config.nerdos.primaryUser ]
+  reservedNames = lib.optionals (payload != null) (lib.subtractLists [ payload.config.cybexos.primaryUser ]
     (lib.unique (builtins.attrNames payload.config.users.users ++ builtins.attrNames payload.config.users.groups)));
-  text = lib.getExe' updater "nerdos-install";
+  text = lib.getExe' updater "cybexos-install";
 in {
   imports = [ (modulesPath + "/installer/cd-dvd/installation-cd-minimal.nix") ./iso-boot.nix ];
 
-  options.nerdos.installer.payload = lib.mkOption {
+  options.cybexos.installer.payload = lib.mkOption {
     type = lib.types.nullOr lib.types.raw;
     default = null;
     internal = true;
-    description = "An evaluated default NerdOS system whose store paths the medium carries for installation.";
+    description = "An evaluated default Cybex OS system whose store paths the medium carries for installation.";
   };
 
   config = {
-    nerdos.installationMedium = true;
+    cybexos.installationMedium = true;
 
-    environment.etc."nerdos/installer".text = "fresh-install-only\n";
+    environment.etc."cybexos/installer".text = "fresh-install-only\n";
     # Interpolation retains the store dependency. toString would leave a dangling
     # path on the live medium and make the offline source unavailable.
-    environment.etc."nerdos/installer-source".text = "${../..}";
-    environment.etc."nerdos/installer-ui".source = installer;
-    environment.etc."nerdos/installer-defaults.json".text = builtins.toJSON
-      (lib.mapAttrs (_: option: option.default) options.nerdos.features);
-    environment.etc."nerdos/installer-region.json".text = builtins.toJSON {
+    environment.etc."cybexos/installer-source".text = "${../..}";
+    environment.etc."cybexos/installer-ui".source = installer;
+    environment.etc."cybexos/installer-defaults.json".text = builtins.toJSON
+      (lib.mapAttrs (_: option: option.default) options.cybexos.features);
+    environment.etc."cybexos/installer-region.json".text = builtins.toJSON {
       timezone = config.time.timeZone;
       locale = config.i18n.defaultLocale;
       keyboard = config.console.keyMap;
       desktopKeyboard = config.services.xserver.xkb.layout;
     };
-    environment.etc."nerdos/installer-layout.json".text = builtins.toJSON config.nerdos.installation;
-    environment.etc."nerdos/installer-reserved-names.json".text = builtins.toJSON reservedNames;
+    environment.etc."cybexos/installer-layout.json".text = builtins.toJSON config.cybexos.installation;
+    environment.etc."cybexos/installer-reserved-names.json".text = builtins.toJSON reservedNames;
     environment.systemPackages = [ installer updater pkgs.nixos-install-tools pkgs.pciutils ];
     isoImage.storeContents = payloadContents;
 
@@ -66,8 +66,8 @@ in {
     services.openssh.enable = lib.mkForce false;
     services.getty.autologinUser = lib.mkForce "root";
     services.getty.helpLine = lib.mkForce ''
-      NerdOS installer recovery shell. Alt+F1 returns to the installer screen.
-      nmtui configures the network. The installation log is /run/nerdos-installer.log.
+      Cybex OS installer recovery shell. Alt+F1 returns to the installer screen.
+      nmtui configures the network. The installation log is /run/cybexos-installer.log.
       For the text installer, choose "Use the text installer" in the screen's
       menu, or start the ISO's text-mode entry.
     '';
@@ -77,7 +77,7 @@ in {
     documentation.info.enable = lib.mkForce false;
     documentation.doc.enable = lib.mkForce false;
     system.installer.channel.enable = false;
-    networking.hostName = lib.mkForce "nerdos-installer";
+    networking.hostName = lib.mkForce "cybexos-installer";
     services.logind.settings.Login = {
       IdleAction = "ignore";
       HandleLidSwitch = "ignore";
@@ -86,21 +86,21 @@ in {
     };
 
     # ── the installer screen and its state service ──────────────────────────
-    users.groups.nerdos-installer = { };
-    users.users.nerdos-installer = {
+    users.groups.cybexos-installer = { };
+    users.users.cybexos-installer = {
       isSystemUser = true;
-      group = "nerdos-installer";
-      description = "NerdOS installer screen";
+      group = "cybexos-installer";
+      description = "Cybex OS installer screen";
       extraGroups = [ "video" "input" ];
     };
-    systemd.tmpfiles.rules = [ "d /run/nerdos-installer 0750 root nerdos-installer -" ];
+    systemd.tmpfiles.rules = [ "d /run/cybexos-installer 0750 root cybexos-installer -" ];
     # tty1 belongs to the installer screen (or the text installer). NixOS
     # otherwise wants autovt@tty1 (getty@tty1) at boot; a Wants-only conflict
     # in the boot transaction makes systemd drop one side arbitrarily, before
     # any kernel command line condition is checked. logind still starts
     # autovt@ttyN for the other VTs, including the tty2 recovery shell.
     systemd.targets.getty.wants = lib.mkForce [ ];
-    security.pam.services.nerdos-installer.text = ''
+    security.pam.services.cybexos-installer.text = ''
       auth    required pam_unix.so nullok
       account required pam_unix.so
       session required pam_unix.so
@@ -108,14 +108,14 @@ in {
       session required ${config.systemd.package}/lib/security/pam_systemd.so
     '';
 
-    systemd.services.nerdos-installerd = {
-      description = "NerdOS installer state service";
+    systemd.services.cybexos-installerd = {
+      description = "Cybex OS installer state service";
       wantedBy = [ "multi-user.target" ];
       after = [ "systemd-tmpfiles-setup.service" "NetworkManager.service" ];
       wants = [ "NetworkManager.service" ];
-      unitConfig.ConditionKernelCommandLine = "!nerdos.text";
+      unitConfig.ConditionKernelCommandLine = "!cybexos.text";
       serviceConfig = {
-        ExecStart = lib.getExe' installer "nerdos-installerd";
+        ExecStart = lib.getExe' installer "cybexos-installerd";
         Restart = "on-failure";
         RestartSec = "1s";
         # The worker must outlive a daemon restart; it is cancelled explicitly
@@ -129,19 +129,19 @@ in {
       };
     };
 
-    systemd.services.nerdos-installer-ui = {
-      description = "NerdOS installer screen";
+    systemd.services.cybexos-installer-ui = {
+      description = "Cybex OS installer screen";
       wantedBy = [ "multi-user.target" ];
-      wants = [ "nerdos-installerd.service" ];
-      after = [ "nerdos-installerd.service" "systemd-user-sessions.service" "plymouth-quit-wait.service" "systemd-logind.service" ];
+      wants = [ "cybexos-installerd.service" ];
+      after = [ "cybexos-installerd.service" "systemd-user-sessions.service" "plymouth-quit-wait.service" "systemd-logind.service" ];
       unitConfig = {
-        ConditionKernelCommandLine = "!nerdos.text";
+        ConditionKernelCommandLine = "!cybexos.text";
         # A keyboard change restarts the screen; it must never give up.
         StartLimitIntervalSec = 0;
       };
       serviceConfig = {
-        User = "nerdos-installer";
-        PAMName = "nerdos-installer";
+        User = "cybexos-installer";
+        PAMName = "cybexos-installer";
         TTYPath = "/dev/tty1";
         TTYReset = true;
         TTYVHangup = true;
@@ -155,7 +155,7 @@ in {
         # Native display drivers can still be binding when boot finishes.
         ExecStartPre = "+${config.systemd.package}/bin/udevadm settle --timeout=15";
         ExecStart = lib.getExe installer;
-        EnvironmentFile = "-/run/nerdos-installer/keyboard.env";
+        EnvironmentFile = "-/run/cybexos-installer/keyboard.env";
         Environment = [ "XDG_SESSION_TYPE=wayland" "XDG_SESSION_CLASS=user" ];
         Restart = "always";
         RestartSec = "300ms";
@@ -164,15 +164,15 @@ in {
       };
     };
 
-    # The text installer: the boot menu's text entry (nerdos.text), or the
+    # The text installer: the boot menu's text entry (cybexos.text), or the
     # screen's menu, or automatically when no display device works. At boot
     # the kernel command line alone selects either side; no boot-time unit
     # conflicts with another (see getty.wants above).
-    systemd.services.nerdos-installer-text = {
-      description = "NerdOS text installer";
+    systemd.services.cybexos-installer-text = {
+      description = "Cybex OS text installer";
       wantedBy = [ "multi-user.target" ];
       after = [ "NetworkManager.service" "plymouth-quit-wait.service" ];
-      unitConfig.ConditionKernelCommandLine = "nerdos.text";
+      unitConfig.ConditionKernelCommandLine = "cybexos.text";
       environment.TERM = "linux";
       serviceConfig = {
         ExecStart = "${text} --terminal";
@@ -186,10 +186,10 @@ in {
       };
     };
     # The screen's menu starts the text installer without the kernel flag.
-    systemd.services.nerdos-installer-text-switch = {
-      description = "Switch tty1 to the NerdOS text installer";
-      conflicts = [ "getty@tty1.service" "nerdos-installer-ui.service" "nerdos-installerd.service" ];
-      after = [ "nerdos-installer-ui.service" "nerdos-installerd.service" ];
+    systemd.services.cybexos-installer-text-switch = {
+      description = "Switch tty1 to the Cybex OS text installer";
+      conflicts = [ "getty@tty1.service" "cybexos-installer-ui.service" "cybexos-installerd.service" ];
+      after = [ "cybexos-installer-ui.service" "cybexos-installerd.service" ];
       environment.TERM = "linux";
       serviceConfig = {
         ExecStart = "${text} --terminal";
@@ -231,12 +231,12 @@ in {
       (isYes "DRM_SIMPLEDRM")
     ];
     isoImage = {
-      volumeID = "NERDOS_INSTALL";
+      volumeID = "CYBEXOS_INSTALL";
       makeEfiBootable = true;
       makeUsbBootable = true;
       prependToMenuLabel = "Install ";
       appendToMenuLabel = "";
-      grubTheme = pkgs.runCommand "nerdos-iso-boot-theme" {} ''
+      grubTheme = pkgs.runCommand "cybexos-iso-boot-theme" {} ''
         mkdir -p $out
         cp ${../../desktop/boot/theme.txt} $out/theme.txt
         cp ${../../desktop/plymouth/logo.png} $out/logo.png
@@ -245,7 +245,7 @@ in {
       splashImage = ../../desktop/boot/splash.png;
       efiSplashImage = ../../desktop/boot/splash.png;
     };
-    image.baseName = lib.mkForce "nerdos-${config.nerdos.release.version}-${pkgs.stdenv.hostPlatform.system}";
+    image.baseName = lib.mkForce "cybexos-${config.cybexos.release.version}-${pkgs.stdenv.hostPlatform.system}";
     system.stateVersion = "26.05";
   };
 }

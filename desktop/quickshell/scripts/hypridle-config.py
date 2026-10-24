@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render the hypridle configuration from the shell's idle settings.
 
-nerdos-runtime runs this when hypridle starts without a user-owned
+cybexos-runtime runs this when hypridle starts without a user-owned
 hypridle.conf. With default settings the output is byte-for-byte the vendor
 hypridle.conf, which remains the fallback if this script fails.
 
@@ -25,7 +25,7 @@ CHOICES = {
     "idleSuspendMins": (0, 15, 30, 60, 120),
 }
 
-LOCK = "systemctl --user start nerdos-session-lock.service"
+LOCK = "systemctl --user start cybexos-session-lock.service"
 DPMS_OFF = "hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = \"off\" }))'"
 DPMS_ON = "hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = \"on\" }))'"
 # hypridle runs condition_cmd first and, when it fails, skips on-timeout and

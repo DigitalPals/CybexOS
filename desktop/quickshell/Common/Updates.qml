@@ -7,20 +7,20 @@ import Quickshell.Io
 // owns or interrupts the systemd worker. Every apply names the reviewed build.
 Singleton {
     id: root
-    property var sources: ({upstream:{}, nerdos:{}})
+    property var sources: ({upstream:{}, cybexos:{}})
     property var deployment: ({state:"idle"})
     readonly property bool available: sources.available !== false && deployment.available !== false
     readonly property bool busy: checker.running
     readonly property bool runActive: ["discovering", "building", "validating", "activating", "recovering"].includes(deployment.state)
     readonly property string runState: runActive ? "running" : deployment.state === "done" ? "done"
         : ["failed", "interrupted", "rolled-back", "recovery-failed"].includes(deployment.state) ? "failed" : "idle"
-    readonly property string error: [sources.upstream.error || "", sources.nerdos.error || "", deployment.error || ""].filter(x => x).join("\n")
+    readonly property string error: [sources.upstream.error || "", sources.cybexos.error || "", deployment.error || ""].filter(x => x).join("\n")
     readonly property string packageError: sources.upstream.error || ""
     readonly property int upstreamCount: sources.upstream.state === "available" ? 1 : 0
-    readonly property bool projectAvailable: sources.nerdos.state === "available"
-    readonly property string projectVersion: sources.nerdos.available || ""
-    readonly property string installedVersion: sources.nerdos.installed || deployment.installedVersion || ""
-    readonly property string projectNotes: deployment.notes || sources.nerdos.notes || ""
+    readonly property bool projectAvailable: sources.cybexos.state === "available"
+    readonly property string projectVersion: sources.cybexos.available || ""
+    readonly property string installedVersion: sources.cybexos.installed || deployment.installedVersion || ""
+    readonly property string projectNotes: deployment.notes || sources.cybexos.notes || ""
     readonly property int total: upstreamCount + (projectAvailable ? 1 : 0)
     readonly property string summary: !available ? (sources.reason || deployment.phase || "System updates are available after installation.")
         : busy ? "Checking update sources…" : runActive ? runPhaseLabel
@@ -40,20 +40,20 @@ Singleton {
 
     function parse(text) { try { return JSON.parse(text); } catch (_) { return null; } }
     function check() { if (!checker.running) checker.running = true; }
-    function request(args) { if (available && !requester.running) { requester.command = ["nerd", "update"].concat(args); requester.running = true; } }
+    function request(args) { if (available && !requester.running) { requester.command = ["cybex", "update"].concat(args); requester.running = true; } }
     function stage(scope) { request(["stage", scope]); }
     function run() { stage("both"); }
     function apply() { if (ready) request(["apply", deployment.transaction, deployment.reviewToken]); }
     function rollback() { request(["rollback"]); }
     function confirm() { request(["confirm"]); }
     function dismissRun() { check(); }
-    function openLog() { if (deployment.transaction) Quickshell.execDetached(["nerdos-apps", "terminal", "--hold", "--", "nerd", "update", "log", deployment.transaction]); }
-    function openRecoveryPoints() { Quickshell.execDetached(["nerdos-apps", "terminal", "--hold", "--", "nerd", "update", "history"]); }
-    function openFirmware() { Quickshell.execDetached(["nerdos-apps", "terminal", "--hold", "--", "nerdos-firmware-update", "interactive"]); }
+    function openLog() { if (deployment.transaction) Quickshell.execDetached(["cybexos-apps", "terminal", "--hold", "--", "cybex", "update", "log", deployment.transaction]); }
+    function openRecoveryPoints() { Quickshell.execDetached(["cybexos-apps", "terminal", "--hold", "--", "cybex", "update", "history"]); }
+    function openFirmware() { Quickshell.execDetached(["cybexos-apps", "terminal", "--hold", "--", "cybexos-firmware-update", "interactive"]); }
 
     Process {
         id: checker
-        command: ["nerd", "update", "check"]
+        command: ["cybex", "update", "check"]
         stdout: StdioCollector { onStreamFinished: { const result = root.parse(text); if (result) { root.sources = result; root.checkedAt = new Date(); } } }
         stderr: StdioCollector { onStreamFinished: { if (text.trim()) console.warn("Update check: " + text.trim()); } }
     }
@@ -64,7 +64,7 @@ Singleton {
     }
     Process {
         id: poll
-        command: ["nerd", "update", "status"]
+        command: ["cybex", "update", "status"]
         stdout: StdioCollector { onStreamFinished: { const result = root.parse(text); if (result) root.deployment = result; } }
     }
     Timer { interval: 2000; repeat: true; running: true; triggeredOnStart: true; onTriggered: { if (!poll.running) poll.running = true; } }

@@ -61,8 +61,8 @@ local function shell_quote(value) return "'" .. value:gsub("'", "'\\''") .. "'" 
 -- entirely in-process. A random per-directory temporary prefix prevents the
 -- predictable .tmp symlink problem. The 0700 owner-checked directory is the
 -- privacy boundary; no claim is made about a particular inherited file umask.
-local directories = rawget(_G, "__nerdos_workspace_directories") or {}
-_G.__nerdos_workspace_directories = directories
+local directories = rawget(_G, "__cybexos_workspace_directories") or {}
+_G.__cybexos_workspace_directories = directories
 local PREPARE = [[
 import os, secrets, stat, sys
 path = sys.argv[1]

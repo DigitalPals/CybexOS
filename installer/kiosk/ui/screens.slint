@@ -164,7 +164,7 @@ export component WelcomeScreen inherits Rectangle {
             alignment: start;
             Kicker {
                 text: "FRESH INSTALLATION · " + Store.version;
-                color: Theme.lime;
+                color: Theme.accent;
             }
             Rectangle { height: 14px; }
             Heading { text: "Let's make this\ncomputer yours."; }
@@ -297,7 +297,7 @@ component DiskCard inherits Rectangle {
     border-radius: 18px;
     background: Theme.card;
     border-width: 1.5px;
-    border-color: root.data.selected ? Theme.lime : touch.has-hover && root.data.available ? Theme.line-2 : Theme.line;
+    border-color: root.data.selected ? Theme.accent : touch.has-hover && root.data.available ? Theme.line-2 : Theme.line;
     opacity: root.data.available ? 1 : 0.55;
     if root.data.selected: Rectangle {
         x: -4px;
@@ -306,7 +306,7 @@ component DiskCard inherits Rectangle {
         height: parent.height + 8px;
         border-radius: 22px;
         border-width: 3px;
-        border-color: #c8ff1f1a;
+        border-color: #60a5fa1a;
     }
     Rectangle {
         x: 22px;
@@ -370,10 +370,10 @@ component DiskCard inherits Rectangle {
         border-radius: 12px;
         border-width: root.data.selected ? 0px : 1.5px;
         border-color: Theme.line-2;
-        background: root.data.selected ? Theme.lime : transparent;
+        background: root.data.selected ? Theme.accent : transparent;
         if root.data.selected: Icon {
             d: Icons.check;
-            tint: Theme.lime-ink;
+            tint: Theme.accent-ink;
             size: 14px;
         }
     }
@@ -381,7 +381,7 @@ component DiskCard inherits Rectangle {
         x: -3px; y: -3px;
         width: parent.width + 6px; height: parent.height + 6px;
         border-radius: 20px;
-        border-width: 2px; border-color: Theme.lime;
+        border-width: 2px; border-color: Theme.accent;
     }
     disk-focus := FocusScope {
         enabled: root.data.available && Store.sheet == "";
@@ -425,7 +425,7 @@ export component DiskScreen inherits Rectangle {
         Text {
             x: 64px;
             y: 100px;
-            text: "Where should NerdOS live?";
+            text: "Where should Cybex OS live?";
             font-size: 40px;
             font-weight: 700;
             letter-spacing: -1px;
@@ -435,7 +435,7 @@ export component DiskScreen inherits Rectangle {
             x: 64px;
             y: 156px;
             width: 700px;
-            text: "NerdOS uses the whole disk. You'll review everything before anything is erased.";
+            text: "Cybex OS uses the whole disk. You'll review everything before anything is erased.";
         }
         VerticalLayout {
             x: 64px;
@@ -514,7 +514,7 @@ export component DiskScreen inherits Rectangle {
                             color: Theme.ink;
                         }
                         Text {
-                            text: Store.encrypted ? "Recommended. Your password unlocks NerdOS at startup. Without encryption, anyone holding the disk can read your files." : "Off: anyone holding this disk can read your files. Your password is still required to sign in.";
+                            text: Store.encrypted ? "Recommended. Your password unlocks Cybex OS at startup. Without encryption, anyone holding the disk can read your files." : "Off: anyone holding this disk can read your files. Your password is still required to sign in.";
                             font-size: 14px;
                             color: Store.encrypted ? Theme.fog : Theme.amber;
                             wrap: word-wrap;
@@ -685,7 +685,7 @@ export component AccountScreen inherits Rectangle {
             spacing: 4px;
             for level in [1, 2, 3, 4]: Rectangle {
                 border-radius: 2px;
-                background: Store.strength >= level ? (Store.strength == 1 ? Theme.amber : Theme.lime) : Theme.line-2;
+                background: Store.strength >= level ? (Store.strength == 1 ? Theme.amber : Theme.accent) : Theme.line-2;
             }
         }
         Help {
@@ -1030,7 +1030,7 @@ export component InstallingScreen inherits Rectangle {
         alignment: start;
         Kicker {
             text: "INSTALLING · STEP " + max(1, Store.stage) + " OF " + Store.stage-count;
-            color: Theme.lime;
+            color: Theme.accent;
         }
         Rectangle { height: 14px; }
         Heading { text: "Your desktop is\non its way."; }
@@ -1042,7 +1042,7 @@ export component InstallingScreen inherits Rectangle {
             spacing: 6px;
             for index in Store.stage-count: Rectangle {
                 border-radius: 3px;
-                background: index + 1 < Store.stage ? Theme.lime : index + 1 == Store.stage ? #c8ff1f73 : Theme.line-2;
+                background: index + 1 < Store.stage ? Theme.accent : index + 1 == Store.stage ? #60a5fa73 : Theme.line-2;
             }
         }
         Rectangle { height: 10px; }
@@ -1140,7 +1140,7 @@ component NextCard inherits Card {
             font-family: Theme.mono;
             font-weight: 700;
             font-size: 13px;
-            color: Theme.lime;
+            color: Theme.accent;
         }
         Text {
             text: root.title;
@@ -1179,7 +1179,7 @@ export component DoneScreen inherits Rectangle {
         y: 280px;
         width: parent.width;
         horizontal-alignment: center;
-        text: "NerdOS " + Store.version + " is installed on " + Store.done-host + ".";
+        text: "Cybex OS " + Store.version + " is installed on " + Store.done-host + ".";
     }
     HorizontalLayout {
         x: 190px;
@@ -1280,13 +1280,13 @@ export component StoppedScreen inherits Rectangle {
                     width: 26px;
                     height: 26px;
                     border-radius: 13px;
-                    background: Theme.lime-soft;
+                    background: Theme.accent-soft;
                     Text {
                         text: i + 1;
                         font-family: Theme.mono;
                         font-weight: 700;
                         font-size: 13px;
-                        color: Theme.lime;
+                        color: Theme.accent;
                     }
                 }
             }

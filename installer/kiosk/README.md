@@ -1,11 +1,11 @@
-# nerdos-installer
+# cybexos-installer
 
 The installation ISO's screen on tty1: one Rust binary that draws with Slint's
 software renderer straight to KMS/DRM and reads keyboard, mouse and touch
 through libinput, in a logind seat session as the unprivileged
-`nerdos-installer` user. It needs no compositor, browser, Qt or GPU userspace.
-It owns no installation logic: `../nerdos-installerd` keeps the draft and drives
-the one disk-writing worker, `../nerdos-install`. See
+`cybexos-installer` user. It needs no compositor, browser, Qt or GPU userspace.
+It owns no installation logic: `../cybexos-installerd` keeps the draft and drives
+the one disk-writing worker, `../cybexos-install`. See
 [docs/installation.md](../../docs/installation.md) for the behaviour.
 
 The approach follows the Tiaris installer kiosk: native Slint over KMS, a
@@ -27,7 +27,7 @@ libseat backend through logind rather than direct device access as root.
 | `src/names.rs` | the username and computer-name filter (`[a-z][a-z0-9-]{0,30}`) |
 | `src/zones.rs` | time zone search, live local time and the next clock change from TZif data |
 | `src/map.rs` | the dot-matrix world map with day and night shading |
-| `src/protocol.rs`, `src/client.rs` | `nerdos.installer-state.v1` messages and the socket client |
+| `src/protocol.rs`, `src/client.rs` | `cybexos.installer-state.v1` messages and the socket client |
 | `src/zoom.rs`, `src/main.rs` | display zoom, KMS start-up, restarts and the text fallback |
 | `src/preview.rs` | `installer-preview`: headless PNG renders of every screen |
 
@@ -39,7 +39,7 @@ Fontconfig, libinput, libxkbcommon, udev and libseat development files:
 ```sh
 nix-shell -p cargo rustc pkg-config fontconfig libinput libxkbcommon udev seatd
 cargo test
-../nerdos-installerd --dump-static > /tmp/static.json   # PYTHONPATH=../../lifecycle
+../cybexos-installerd --dump-static > /tmp/static.json   # PYTHONPATH=../../lifecycle
 cargo run --features preview --bin installer-preview -- /tmp/static.json /tmp/renders
 ```
 
@@ -49,12 +49,12 @@ screens. The time zone tests read the host's TZif files (`TZDIR`).
 
 ## Runtime contract
 
-- Socket: `NERDOS_INSTALLER_SOCKET`, default `/run/nerdos-installer/control.sock`.
+- Socket: `CYBEXOS_INSTALLER_SOCKET`, default `/run/cybexos-installer/control.sock`.
   On every connection the screen sends `{"action":"hello","client":"screen"}`;
   snapshots count the attached screens in `screens`, which automation waits for.
-- Zoom: `NERDOS_INSTALLER_ZOOM` (a number, or `auto`) and
-  `NERDOS_INSTALLER_RESOLUTION` (`WIDTHxHEIGHT`); `SLINT_SCALE_FACTOR` wins.
-- Keyboard: `XKB_DEFAULT_LAYOUT`, from `/run/nerdos-installer/keyboard.env`.
+- Zoom: `CYBEXOS_INSTALLER_ZOOM` (a number, or `auto`) and
+  `CYBEXOS_INSTALLER_RESOLUTION` (`WIDTHxHEIGHT`); `SLINT_SCALE_FACTOR` wins.
+- Keyboard: `XKB_DEFAULT_LAYOUT`, from `/run/cybexos-installer/keyboard.env`.
   Slint's KMS backend compiles the keymap once, so a layout change restarts the
   screen (exit 0; the unit restarts it).
 - Exit 75: no usable display after four attempts; the daemon was asked to put
@@ -95,7 +95,7 @@ screens. The time zone tests read the host's TZif files (`TZDIR`).
 | `assets/fonts/SpaceGrotesk-{Regular,Medium,Bold}.ttf` | [floriankarsten/space-grotesk](https://github.com/floriankarsten/space-grotesk) `fonts/ttf/static/`, master on 2026-10-23 | SIL OFL 1.1, `assets/fonts/OFL-SpaceGrotesk.txt` |
 | `assets/fonts/JetBrainsMono-{Regular,Medium,SemiBold,Bold}.ttf` | [JetBrains/JetBrainsMono](https://github.com/JetBrains/JetBrainsMono) tag v2.304, `fonts/ttf/` | SIL OFL 1.1, `assets/fonts/OFL-JetBrainsMono.txt` |
 | `assets/landmask.txt` | Derived from [Natural Earth](https://www.naturalearthdata.com/) 1:110m land (`ne_110m_land.geojson`), sampled at 2° cell centres | Public domain |
-| `assets/logo.svg`, `assets/symbol.svg` | Copies of `assets/brand/logo/svg/nerdos-logo-on-dark.svg` and `assets/brand/symbol/svg/nerdos-symbol-on-dark.svg` | Repository MIT licence |
+| `assets/logo.svg`, `assets/symbol.svg` | Copies of `assets/brand/logo/svg/cybexos-logo-on-dark.svg` and `assets/brand/symbol/svg/cybexos-symbol-on-dark.svg` | Repository MIT licence |
 
 Font SHA-256 at import: SpaceGrotesk-Regular
 `5ede28c4425f3fe4830c8f4754b39e9a87a93d0c3baa5e0a9924532aaa8a98bd`, Medium

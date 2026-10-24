@@ -3,7 +3,7 @@
 The public QML singletons and bridge protocol remain compatible. Internally,
 transport lifetime, domain state and view code have separate owners:
 
-- **Hermes:** `nerdos_hermes/protocol.py` owns errors, wire frames and limits;
+- **Hermes:** `cybexos_hermes/protocol.py` owns errors, wire frames and limits;
   `auth.py` owns origin-scoped HTTP credentials and authenticated transport;
   `registry.py` owns atomic conversation metadata; `gateway.py` owns bounded
   local-client delivery and the reconnecting local upstream. `hermes_bridge.py`
@@ -33,7 +33,7 @@ transport lifetime, domain state and view code have separate owners:
   `FuseboxHelpers.js` owns the dashboard-equivalent rules. Popovers and
   Settings retain presentation only.
 - **Updates:** `desktop/quickshell/Common/Updates.qml` invokes the supported
-  `nerd update` CLI and polls durable transaction status. The privileged updater
+  `cybex update` CLI and polls durable transaction status. The privileged updater
   owns staging and activation; reloading the shell does not interrupt its
   systemd worker. Apply requests name the reviewed transaction and token.
   Independent source errors remain visible instead of implying that an

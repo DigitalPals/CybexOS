@@ -79,7 +79,7 @@ test("the hotspot's shared profile is neither a DNS target nor a known network",
     const wired = { connectionType: "802-3-ethernet", ipv4Method: "auto", ipv4Dns: ["1.1.1.1", "1.0.0.1"],
         ipv6Dns: ["2606:4700:4700::1111", "2606:4700:4700::1001"], ipv4IgnoreAutoDns: true,
         ipv6IgnoreAutoDns: true };
-    const hotspot = { connectionType: "802-11-wireless", ipv4Method: "shared", name: "NerdOS hotspot",
+    const hotspot = { connectionType: "802-11-wireless", ipv4Method: "shared", name: "Cybex OS hotspot",
         ssid: "Studio", uuid: "u-hotspot" };
     assert.equal(H.sharedProfile(hotspot), true);
     assert.equal(H.dnsState([wired, hotspot]).provider, "Cloudflare", "the hotspot does not make DNS Mixed");

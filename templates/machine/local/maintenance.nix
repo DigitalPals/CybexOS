@@ -2,5 +2,5 @@
 let choices = builtins.fromJSON (builtins.readFile ./maintenance.json);
 in {
   assertions = [{ assertion = choices.schema == 1; message = "Unsupported personal cleanup declaration"; }];
-  nerdos.maintenance = choices.policy;
+  cybexos.maintenance = choices.policy;
 }

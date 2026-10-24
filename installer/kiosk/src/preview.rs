@@ -3,7 +3,7 @@
 //!
 //!   installer-preview <static.json> <out-dir> [WIDTHxHEIGHT] [scale] [scenario…]
 //!
-//! `static.json` comes from `nerdos-installerd --dump-static`. The renders use
+//! `static.json` comes from `cybexos-installerd --dump-static`. The renders use
 //! the real controller, Slint UI and software renderer with fixture snapshots
 //! at a fixed moment; nothing contacts the daemon. Compare them with the design
 //! reference in installer/ui-reference/.
@@ -11,10 +11,10 @@
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use nerdos_installer::client::Client;
-use nerdos_installer::protocol::{parse, Message};
-use nerdos_installer::ui::App;
-use nerdos_installer::{InstallerWindow, Store};
+use cybexos_installer::client::Client;
+use cybexos_installer::protocol::{parse, Message};
+use cybexos_installer::ui::App;
+use cybexos_installer::{InstallerWindow, Store};
 use serde_json::{json, Value};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
 use slint::platform::{Platform, WindowAdapter, WindowEvent};
@@ -35,9 +35,9 @@ impl Platform for Headless {
 
 fn base_state() -> Value {
     json!({
-        "type": "state", "schema": "nerdos.installer-state.v1", "phase": "setup",
+        "type": "state", "schema": "cybexos.installer-state.v1", "phase": "setup",
         "message": "", "error": "", "stage": 0, "stages": 6, "elapsed": 0,
-        "release": "Authenticated NerdOS 1.0.0-beta.2 • beta channel • exact revision 9dce94a", "development": false,
+        "release": "Authenticated Cybex OS 1.0.0-beta.2 • beta channel • exact revision 9dce94a", "development": false,
         "disks": [
             {"path": "/dev/nvme0n1", "serial": "S6Z1NJ0W812345L", "model": "Samsung SSD 990 PRO 1TB", "size": 1000204886016u64,
              "available": true, "reason": "", "filesystems": ["ntfs", "vfat"], "bus": "NVMe"},
@@ -48,7 +48,7 @@ fn base_state() -> Value {
         ],
         "hardware": {"nvidia": true},
         "network": {"busy": false, "error": "", "message": "Internet connection ready.", "connected": true, "kind": "ethernet",
-                    "interface": "enp5s0", "name": "NerdOS Wired", "address": "192.168.1.42", "ethernetCable": true,
+                    "interface": "enp5s0", "name": "Cybex OS Wired", "address": "192.168.1.42", "ethernetCable": true,
                     "wifi": {"interface": "wlp0s20f3", "networks": [
                         {"ssid": "Lovelace-5G", "signal": 92, "security": "WPA2", "connected": false},
                         {"ssid": "Lovelace", "signal": 70, "security": "WPA2", "connected": false},
@@ -127,7 +127,7 @@ fn scenarios() -> Vec<(&'static str, Value, Setup)> {
         ("12-installing", json!({"phase": "installing", "stage": 4, "elapsed": 754, "diskTouched": true,
             "message": "Building and downloading packages"}), none),
         ("13-done", json!({"phase": "complete", "stage": 6, "diskTouched": true,
-            "result": {"username": "ada", "hostname": "ada-nerdos", "encrypted": true}}), none),
+            "result": {"username": "ada", "hostname": "ada-cybexos", "encrypted": true}}), none),
         ("14-stopped-secure-boot", json!({"phase": "error", "firmware": {"uefi": true, "secureBoot": true},
             "error": "Secure Boot is enabled. A signed installer and locally enrolled signing keys are required; it will not be disabled."}), none),
         ("15-failed", json!({"phase": "error", "diskTouched": true,
@@ -141,9 +141,9 @@ fn scenarios() -> Vec<(&'static str, Value, Setup)> {
         ("19-log", json!({"phase": "installing", "stage": 4, "elapsed": 754, "diskTouched": true}), |store| {
             store.invoke_open_sheet(SharedString::from("log"));
             store.set_details(SharedString::from(
-                "2026-10-23 19:14:02 UTC · Configured DNS servers: 127.0.0.53\n2026-10-23 19:14:03 UTC · Verified HTTPS access to https://cache.nixos.org/nix-cache-info.\n$ sgdisk --zap-all /dev/nvme0n1\n$ cryptsetup luksFormat --type luks2 --batch-mode --key-file - /dev/nvme0n1p2\n$ mkfs.ext4 -L nerdos-root /dev/mapper/nerdos-install-root\n$ nixos-install --root /run/nerdos-install-q3k/target --flake path:/run/…#nerdos --no-root-passwd --no-channel-copy\ncopying path '/nix/store/7xk…-linux-7.2.4' from 'auto'...\ncopying path '/nix/store/m2c…-hyprland-0.56.2' from 'auto'...\ncopying path '/nix/store/s9a…-steam-1.0.0.85' from 'https://cache.nixos.org'...",
+                "2026-10-23 19:14:02 UTC · Configured DNS servers: 127.0.0.53\n2026-10-23 19:14:03 UTC · Verified HTTPS access to https://cache.nixos.org/nix-cache-info.\n$ sgdisk --zap-all /dev/nvme0n1\n$ cryptsetup luksFormat --type luks2 --batch-mode --key-file - /dev/nvme0n1p2\n$ mkfs.ext4 -L cybexos-root /dev/mapper/cybexos-install-root\n$ nixos-install --root /run/cybexos-install-q3k/target --flake path:/run/…#cybexos --no-root-passwd --no-channel-copy\ncopying path '/nix/store/7xk…-linux-7.2.4' from 'auto'...\ncopying path '/nix/store/m2c…-hyprland-0.56.2' from 'auto'...\ncopying path '/nix/store/s9a…-steam-1.0.0.85' from 'https://cache.nixos.org'...",
             ));
-            store.set_details_note(SharedString::from("Private log /run/nerdos-installer.log. Passwords never appear here."));
+            store.set_details_note(SharedString::from("Private log /run/cybexos-installer.log. Passwords never appear here."));
         }),
         ("20-apps", json!({"phase": "review"}), |store| store.invoke_open_sheet(SharedString::from("apps"))),
         ("21-reconnecting", json!({}), |store| store.set_connected(false)),
@@ -175,7 +175,7 @@ fn main() {
     ui.show().expect("show");
     let app = App::new(&ui, Client::offline());
     app.borrow_mut().set_preview_time(MOMENT);
-    App::message(&app, parse(&statics).expect("static message: run nerdos-installerd --dump-static"));
+    App::message(&app, parse(&statics).expect("static message: run cybexos-installerd --dump-static"));
 
     for (name, patch, setup) in scenarios() {
         if !only.is_empty() && !only.iter().any(|o| name.contains(o.as_str())) {

@@ -10,16 +10,16 @@ const { shellDir, load } = require("./shell.cjs");
 const H = load("SettingsHelpers.js");
 const repoRoot = path.resolve(__dirname, "../..");
 const generator = path.join(shellDir, "scripts/hypridle-config.py");
-const resolver = path.join(repoRoot, "assets/scripts/nerdos-runtime");
+const resolver = path.join(repoRoot, "assets/scripts/cybexos-runtime");
 const template = path.join(repoRoot, "desktop/hypr/hypridle.conf");
-const action = "nerdos-session-action";
+const action = "cybexos-session-action";
 
 function read(relative) {
     return untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));
 }
 
 function scratch(t) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nerdos-idle."));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cybexos-idle."));
     t.after(() => fs.rmSync(root, { recursive: true, force: true }));
     return root;
 }
@@ -90,7 +90,7 @@ test("chosen timeouts render in seconds and Never drops the listener", t => {
     assert.deepEqual(listeners(output).find(row => row.timeout === 1800), {
         timeout: 1800, condition: `${action} on-battery`, retry: "60",
         onTimeout: `${action} idle-suspend on-battery`, onResume: "" });
-    assert.match(output, /lock_cmd = systemctl --user start nerdos-session-lock\.service/);
+    assert.match(output, /lock_cmd = systemctl --user start cybexos-session-lock\.service/);
     // Suspend waits for the lock screen whatever the timeouts are.
     const general = output.slice(0, output.indexOf("\n}\n") + 3);
     assert.match(general, /^general \{\n[\s\S]*\n  inhibit_sleep = 3\n\}\n$/);
@@ -127,7 +127,7 @@ test("a locked screen goes dark a minute after the last input", t => {
 
     const late = listeners(render(t, { idleLockMins: 1, idleScreenOffMins: 5 }));
     assert.deepEqual(late.map(row => row.timeout), [60, 60, 120, 300, 1800]);
-    assert.equal(late[0].onTimeout, "systemctl --user start nerdos-session-lock.service");
+    assert.equal(late[0].onTimeout, "systemctl --user start cybexos-session-lock.service");
 });
 
 function resolverFixture(t) {
@@ -135,8 +135,8 @@ function resolverFixture(t) {
     const config = path.join(root, "config");
     const data = path.join(root, "data");
     const run = path.join(root, "run");
-    const runtime = path.join(data, "nerdos/runtime");
-    fs.mkdirSync(path.join(config, "nerdos/hypr"), { recursive: true });
+    const runtime = path.join(data, "cybexos/runtime");
+    fs.mkdirSync(path.join(config, "cybexos/hypr"), { recursive: true });
     fs.mkdirSync(path.join(runtime, "hypr"), { recursive: true });
     fs.mkdirSync(path.join(runtime, "quickshell/scripts"), { recursive: true });
     fs.mkdirSync(run, { mode: 0o700 });
@@ -144,11 +144,11 @@ function resolverFixture(t) {
     fs.copyFileSync(generator, path.join(runtime, "quickshell/scripts/hypridle-config.py"));
     const hypridle = path.join(root, "hypridle");
     fs.writeFileSync(hypridle, "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\"\n", { mode: 0o755 });
-    const script = path.join(root, "nerdos-runtime");
+    const script = path.join(root, "cybexos-runtime");
     fs.writeFileSync(script, untranslated(fs.readFileSync(resolver, "utf8"))
-        .replace("runtime_root=/etc/nerdos/runtime", `runtime_root=${runtime}`).replace("exec hypridle", `exec ${hypridle}`));
+        .replace("runtime_root=/etc/cybexos/runtime", `runtime_root=${runtime}`).replace("exec hypridle", `exec ${hypridle}`));
     return {
-        config: path.join(config, "nerdos"),
+        config: path.join(config, "cybexos"),
         runtime,
         run,
         exec() {
@@ -167,7 +167,7 @@ test("the runtime resolver starts hypridle with the rendered shell timeouts", t 
     const f = resolverFixture(t);
     fs.writeFileSync(path.join(f.config, "shell.json"), JSON.stringify({ idleLockMins: 15 }));
     const started = f.exec();
-    assert.equal(started.config, path.join(f.run, "nerdos/hypridle.conf"));
+    assert.equal(started.config, path.join(f.run, "cybexos/hypridle.conf"));
     assert.match(untranslated(fs.readFileSync(started.config, "utf8")), /timeout = 900\n/);
 });
 
@@ -183,7 +183,7 @@ test("a user hypridle.conf wins and a failed render falls back to the vendor fil
     const fallback = f.exec();
     assert.equal(fallback.config, path.join(f.runtime, "hypr/hypridle.conf"));
     assert.match(fallback.stderr, /using defaults/);
-    assert.deepEqual(fs.readdirSync(path.join(f.run, "nerdos")), []);
+    assert.deepEqual(fs.readdirSync(path.join(f.run, "cybexos")), []);
 });
 
 test("saved idle changes restart hypridle and the power drawer links to them", () => {

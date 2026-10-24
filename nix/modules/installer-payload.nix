@@ -4,12 +4,12 @@
 # builds the real machine from its own configuration and copies whatever it
 # shares with this system from the medium instead of downloading it.
 { ... }: {
-  nerdos = {
+  cybexos = {
     enable = true;
     encrypted = true;
     features = { proprietary = false; steam = false; };
   };
-  fileSystems."/" = { device = "/dev/mapper/nerdos-install-root"; fsType = "ext4"; };
-  fileSystems."/boot" = { device = "/dev/disk/by-label/NERDOS_EFI"; fsType = "vfat"; };
+  fileSystems."/" = { device = "/dev/mapper/cybexos-install-root"; fsType = "ext4"; };
+  fileSystems."/boot" = { device = "/dev/disk/by-label/CYBEXOS_EFI"; fsType = "vfat"; };
   system.stateVersion = "26.05";
 }

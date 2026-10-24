@@ -24,12 +24,12 @@ do
     end
   end
 end
-M.path = config .. "/nerdos/workspaces.json"
-M.assignments_path = state_home .. "/nerdos/workspace-assignments.json"
-M.snapshot_path = runtime and runtime .. "/nerdos/workspaces.json" or nil
-M.session_path = runtime and runtime .. "/nerdos/workspace-session.json" or nil
-local MINIMIZED = "special:nerdos-minimized"
-local MIN_TAG = "nerdos-minimized-"
+M.path = config .. "/cybexos/workspaces.json"
+M.assignments_path = state_home .. "/cybexos/workspace-assignments.json"
+M.snapshot_path = runtime and runtime .. "/cybexos/workspaces.json" or nil
+M.session_path = runtime and runtime .. "/cybexos/workspace-session.json" or nil
+local MINIMIZED = "special:cybexos-minimized"
+local MIN_TAG = "cybexos-minimized-"
 local valid_layout = { dwindle = true, scrolling = true, floating = true }
 local function id(value) return data.integer(value, 1, model.MAX_ID) end
 local function address(value)
@@ -57,21 +57,21 @@ preferences = preferences or { v = 1, mode = "shared", defaultLayout = "dwindle"
   titlebarsEnabled = true, layouts = {} }
 local assignments, assignment_error = data.read(M.assignments_path, model.validate)
 assignments = assignments or { v = 1, assignments = data.array() }
-local previous = rawget(_G, "__nerdos_workspaces")
+local previous = rawget(_G, "__cybexos_workspaces")
 if previous and previous.retire then previous.retire() end
 local state = { subscriptions = {}, rules = {}, current = {}, identities = {}, minimized = {},
   busy = false, pending = nil, retired = false, error = preference_error or assignment_error or "",
   capabilities = { scrolling = false, titlebars = false } }
-_G.__nerdos_workspaces = state
+_G.__cybexos_workspaces = state
 -- Plugin loads are declarations: Hyprland clears its configured plugin list
 -- on each config parse, then reloads if that list changed. Always declare an
 -- installed optional plugin, even when currently disabled or already loaded.
 -- Runtime refreshes only toggle rendering; they never load/unload a plugin.
 do
-  local file = io.open("/etc/nerdos/titlebars.so", "rb")
+  local file = io.open("/etc/cybexos/titlebars.so", "rb")
   if file then
     file:close()
-    local ok, err = pcall(hl.plugin.load, "/etc/nerdos/titlebars.so")
+    local ok, err = pcall(hl.plugin.load, "/etc/cybexos/titlebars.so")
     if not ok then state.error = "titlebar plugin unavailable: " .. tostring(err) end
   end
 end
@@ -196,7 +196,7 @@ local function save_session()
 end
 local function minimized_origin(window)
   for _, tag in ipairs(window.tags or {}) do
-    local saved = tag:match("^nerdos%-minimized%-(%d+)$")
+    local saved = tag:match("^cybexos%-minimized%-(%d+)$")
     if saved and id(tonumber(saved)) then return tonumber(saved) end
   end
 end
@@ -242,7 +242,7 @@ local function titlebars()
   -- This dynamic effect exists only after the plugin registers it. Exact
   -- known GTK application classes are a policy, not generic CSD detection.
   if plugin and not state.titlebar_csd_rule then
-    state.titlebar_csd_rule = hl.window_rule({ name = "nerdos-titlebars-known-csd",
+    state.titlebar_csd_rule = hl.window_rule({ name = "cybexos-titlebars-known-csd",
       match = { class = "^(org[.]gnome[.]Nautilus|org[.]gnome[.]TextEditor)$" }, ["hyprbars:no_bar"] = true })
   elseif not plugin and state.titlebar_csd_rule then
     state.titlebar_csd_rule:set_enabled(false)
@@ -258,7 +258,7 @@ local function titlebars()
   -- current layouts. Configure once even when hidden to verify usable APIs.
   local rendering = preferences.titlebarsEnabled and wanted
   if not state.titlebar_theme then
-    local theme_dir = os.getenv("NERDOS_THEME_STATE_DIR") or state_home .. "/nerdos/theme"
+    local theme_dir = os.getenv("CYBEXOS_THEME_STATE_DIR") or state_home .. "/cybexos/theme"
     state.titlebar_theme = data.read(theme_dir .. "/tokens.json", function(document)
       assert(data.object(document) and document.v == 1 and data.object(document.colors) and data.object(document.font))
       for _, key in ipairs({ "surfaceRaised", "text" }) do
@@ -270,7 +270,7 @@ local function titlebars()
         size = data.integer(document.font.size, 6, 96) and document.font.size or 14 }
     end) or {}
   end
-  local colors = rawget(_G, "__nerdos_titlebar_colors") or state.titlebar_theme
+  local colors = rawget(_G, "__cybexos_titlebar_colors") or state.titlebar_theme
   local background, foreground = colors.background or "rgb(292b31)", colors.foreground or "rgb(e4e4e7)"
   local signature = data.encode(colors)
   local theme_changed = signature ~= state.titlebars_signature
@@ -363,13 +363,13 @@ local function write_snapshot()
   end
 end
 local function sync_policy()
-  _G.__nerdos_workspace_mode = preferences.mode
-  local shared = rawget(_G, "__nerdos_workspace_policy")
+  _G.__cybexos_workspace_mode = preferences.mode
+  local shared = rawget(_G, "__cybexos_workspace_policy")
   if shared and shared.apply then shared.apply() end
   -- Replace only the registered vendor swipe, preserving Touchpad opt-outs
   -- and any user.lua gesture that already retired it. Native workspace swipes
   -- cannot traverse our explicit local ID list (which need not be contiguous).
-  local gestures = rawget(_G, "__nerdos_gestures")
+  local gestures = rawget(_G, "__cybexos_gestures")
   if gestures and gestures.remove and state.gesture_mode ~= preferences.mode and type(hl.gesture) == "function" then
     state.gesture_mode = preferences.mode
     if gestures.remove("workspace") then

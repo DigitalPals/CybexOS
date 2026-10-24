@@ -15,11 +15,11 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: nerdos-channel-promotion
+  group: cybexos-channel-promotion
   cancel-in-progress: false
 jobs:
   promote:
-    environment: nerdos-channel
+    environment: cybexos-channel
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -63,8 +63,8 @@ jobs:
           printf '%s\n' "$SIGNING_KEY" > channel-key
           python3 release/manage.py channel downloaded/manifest.json "$CHANNEL" "$SEQUENCE" "site/channels/$CHANNEL.json" --trust release/keys/trust.json "${previous[@]}"
           python3 release/manage.py sign "site/channels/$CHANNEL.json" channel-key "$KEY_ID" --trust release/keys/trust.json --purpose channel
-          git -C site config user.name nerdos-release
-          git -C site config user.email release@nerdos.invalid
+          git -C site config user.name cybexos-release
+          git -C site config user.email release@cybexos.invalid
           git -C site add channels
           git -C site commit -m "Promote $CHANNEL to $TAG"
           git -C site push origin gh-pages

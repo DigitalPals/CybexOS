@@ -21,7 +21,7 @@ BarModule {
             anchors.verticalCenter: parent.verticalCenter
             width: Theme.barIconSize
             height: Theme.barIconSize
-            name: "nerdos"
+            name: "cybexos"
             highlighted: controlButton.held || controlButton.hovered
         }
     }

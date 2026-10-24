@@ -1,6 +1,6 @@
 { lib, hyprland, hyprlandPlugins, fetchurl, cmake, binutils }:
 hyprlandPlugins.mkHyprlandPlugin {
-  pluginName = "nerdos-titlebars";
+  pluginName = "cybexos-titlebars";
   version = "0.2.2";
   inherit hyprland;
   src = fetchurl {
@@ -17,7 +17,7 @@ hyprlandPlugins.mkHyprlandPlugin {
     test -e "$compositor" || compositor=${hyprland}/bin/Hyprland
     build_id=$(readelf -n "$compositor" | sed -n 's/.*Build ID: //p')
     test -n "$build_id"
-    cmakeFlagsArray+=("-DNERDOS_HYPRLAND_BUILD_ID=$build_id")
+    cmakeFlagsArray+=("-DCYBEXOS_HYPRLAND_BUILD_ID=$build_id")
   '';
   meta = { license = [ lib.licenses.mit lib.licenses.bsd3 ]; };
 }

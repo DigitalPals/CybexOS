@@ -1,3 +1,5 @@
+> Historical report for the reverted NerdOS rename. Current identity and validation are in [branding.md](branding.md). The evidence below describes the earlier revision.
+
 # Rename to NerdOS
 
 NerdOS is the Opinionated System at **nerdos.org**, formerly CybexOS.

@@ -2,12 +2,12 @@
 // pasted into its Source field. plugins.omarchy.org hands out a shell
 // command ("omarchy plugin add https://github.com/acme/weather.git
 // --enable"), so the field accepts that as well as a bare Git URL or local
-// path: a leading prompt and the "omarchy|nerd plugin add|install" words go,
+// path: a leading prompt and the "omarchy|cybex plugin add|install" words go,
 // flags go, quotes around the source go. New plugins still start switched
 // off here; --enable is dropped rather than honoured. Returns "" when
 // nothing usable is left. Pure — no Qt APIs — so it runs under Node in tests.
 
-var COMMAND = /^(?:[$#>]\s*)?(?:omarchy|nerd)\s+plugins?\s+(?:add|install)(?:\s+|$)/i;
+var COMMAND = /^(?:[$#>]\s*)?(?:omarchy|cybex)\s+plugins?\s+(?:add|install)(?:\s+|$)/i;
 
 function unquote(token) {
     var match = /^(["'])(.*)\1$/.exec(token);

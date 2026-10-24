@@ -4,7 +4,7 @@ import "../Common"
 import "../Common/AssistantHelpers.js" as AssistantHelpers
 
 // One thing the agent wants to do that the policy would not decide alone
-// (desktop/assistant/nerdos_assistant/policy.py): a command, an edit outside
+// (desktop/assistant/cybexos_assistant/policy.py): a command, an edit outside
 // the desktop's own preferences, or applying a staged system change. The
 // agent waits until this card is answered. Applying a staged change shows
 // the actual package changes; polkit then asks for the password.

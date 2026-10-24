@@ -160,8 +160,8 @@ test("dock items are keyed by app and act through the Dock singleton", () => {
 test("running web apps reuse their launcher's icon, name and pinned group", () => {
     const entries = {
         "brave": { id: "brave", name: "Brave", icon: "brave" },
-        "nerdos-webapp-whatsapp": { id: "nerdos-webapp-whatsapp", name: "WhatsApp",
-            icon: "/home/alice/.local/share/nerdos/webapps/whatsapp/icon.png" }
+        "cybexos-webapp-whatsapp": { id: "cybexos-webapp-whatsapp", name: "WhatsApp",
+            icon: "/home/alice/.local/share/cybexos/webapps/whatsapp/icon.png" }
     };
     const context = {
         DockHelpers: load("DockHelpers.js"),
@@ -177,7 +177,7 @@ test("running web apps reuse their launcher's icon, name and pinned group", () =
     const appId = "brave-web.whatsapp.com__-Default";
     const entryId = context.entryIdFor(appId);
     const apps = context.DockHelpers.groupApps([{ address: "w1", appId, entryId }],
-        ["nerdos-webapp-whatsapp"], []);
+        ["cybexos-webapp-whatsapp"], []);
     assert.equal(apps.length, 1, "a running web app joins its pin rather than adding a fallback item");
     assert.equal(apps[0].running, true);
     assert.equal(context.titleFor(apps[0]), "WhatsApp");
@@ -187,7 +187,7 @@ test("running web apps reuse their launcher's icon, name and pinned group", () =
     assert.equal(context.entryIdFor(appId), "brave", "removed desktop entries fall back to the native resolver");
     assert.match(dock, /onDesktopAppsChanged: \{ webAppRefresh\.restart\(\)/,
         "install/remove causes a fresh registry read");
-    assert.match(dock, /command: \["nerdos-webapp", "list", "--json"\]/);
+    assert.match(dock, /command: \["cybexos-webapp", "list", "--json"\]/);
 });
 
 test("the dock's all-layout preference and auto-hide sit in the Bar page and are searchable", () => {
@@ -234,7 +234,7 @@ test("ending a process is confirmed, signals by start time, and escalates only w
         "the row button only asks; the confirmation acts");
     assert.match(processes, /ProcessList\.confirmEnd\(\);\s*else\s*ProcessList\.forceQuit\(\);/);
     assert.match(processes, /"Open system monitor"/);
-    assert.match(processes, /Quickshell\.execDetached\(\["nerdos-apps", "terminal", "--", "btop"\]\)/);
+    assert.match(processes, /Quickshell\.execDetached\(\["cybexos-apps", "terminal", "--", "btop"\]\)/);
     assert.match(bindings, /hl\.dsp\.exec_cmd\(terminal \.\. " btop"\)/,
         "the row opens what Super+Shift+T opens");
 });

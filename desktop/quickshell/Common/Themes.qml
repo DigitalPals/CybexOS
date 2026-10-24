@@ -7,7 +7,7 @@ import "ThemeHelpers.js" as ThemeHelpers
 
 // Named appearance themes (docs/shell-appearance.md#themes). The theme files,
 // their validation, wallpaper copying and the mapping of a theme to settings
-// live in scripts/theme-packs.py, which `nerd theme` runs too; this lists
+// live in scripts/theme-packs.py, which `cybex theme` runs too; this lists
 // themes for Settings → Appearance and applies one as a single undoable
 // settings change. Nothing is read until Appearance opens or IPC asks; from
 // then on a theme folder added or removed by hand appears without a restart.
@@ -15,9 +15,9 @@ Singleton {
     id: root
 
     readonly property string script: Quickshell.shellDir + "/scripts/theme-packs.py"
-    // nerdos-runtime exports the user theme root to the shell.
-    readonly property string userRoot: Quickshell.env("NERDOS_THEME_ROOT")
-        || Quickshell.env("HOME") + "/.local/share/nerdos/themes"
+    // cybexos-runtime exports the user theme root to the shell.
+    readonly property string userRoot: Quickshell.env("CYBEXOS_THEME_ROOT")
+        || Quickshell.env("HOME") + "/.local/share/cybexos/themes"
     property var entries: []
     property bool loaded: false
     // The last failure, for the Theme row's hint.
@@ -69,7 +69,7 @@ Singleton {
         resolveRequest.running = true;
     }
 
-    // `theme use` IPC: a payload `nerd theme apply` resolved. The shell checks
+    // `theme use` IPC: a payload `cybex theme apply` resolved. The shell checks
     // it against its own schema before anything changes. Returns "ok" or
     // "error: <reason>".
     function use(text) {

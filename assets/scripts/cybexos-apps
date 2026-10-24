@@ -1,0 +1,264 @@
+#!/usr/bin/env python3
+"""Personal default applications and argv-safe desktop launch entry points."""
+import argparse
+import configparser
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+import tempfile
+
+ROLES = {'browser': ['x-scheme-handler/http', 'x-scheme-handler/https', 'text/html'],
+         'editor': ['text/plain'], 'pdf': ['application/pdf'],
+         'image': ['image/png', 'image/jpeg', 'image/webp'],
+         'video': ['video/mp4', 'video/webm', 'video/x-matroska'], 'terminal': []}
+
+
+def libraries():
+    import gi
+    gi.require_version('Gio', '2.0')
+    from gi.repository import Gio, GLib
+    try:
+        gi.require_version('GioUnix', '2.0')
+        from gi.repository import GioUnix
+        desktop = GioUnix.DesktopAppInfo
+    except (ValueError, ImportError):
+        desktop = Gio.DesktopAppInfo
+    return Gio, GLib, desktop
+
+
+def config_root():
+    return Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config')))
+
+
+def load_choices():
+    path = config_root() / 'cybexos/default-applications.json'
+    try:
+        value = json.loads(path.read_text())
+    except FileNotFoundError:
+        return {}
+    if value.get('schema') != 1 or not isinstance(value.get('choices'), dict):
+        raise ValueError('Unsupported default-application preferences. Preserve the existing file.')
+    return value['choices']
+
+
+def write(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink():
+        raise ValueError('The preference file is linked. Edit its source explicitly.')
+    fd, temporary = tempfile.mkstemp(prefix='.applications-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            stream.write(text); stream.flush(); os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def compatible(app, role):
+    if role == 'browser':
+        return app.supports_uris() and bool(set(app.get_supported_types() or []) & set(ROLES['browser'][:2]))
+    if role == 'terminal':
+        return 'TerminalEmulator' in (app.get_categories() or '').split(';')
+    return bool(set(app.get_supported_types() or []) & set(ROLES[role]))
+
+
+def desktop_app(identifier):
+    _, _, Desktop = libraries()
+    try:
+        return Desktop.new(identifier)
+    except TypeError:  # PyGObject reports a NULL constructor as TypeError.
+        return None
+
+
+def current(role):
+    Gio, _, Desktop = libraries()
+    if role == 'terminal':
+        result = subprocess.run(['xdg-terminal-exec', '--print-id'], text=True, capture_output=True, timeout=10)
+        return desktop_app(result.stdout.strip().split(':')[0]) if result.returncode == 0 else None
+    return Gio.AppInfo.get_default_for_type(ROLES[role][0], False)
+
+
+def declared_choice(role):
+    desktops = [d.lower() for d in os.environ.get('XDG_CURRENT_DESKTOP', '').split(':') if d]
+    config_dirs = [config_root(), *map(Path, os.environ.get('XDG_CONFIG_DIRS', '/etc/xdg').split(':'))]
+    if role == 'terminal':
+        for folder in config_dirs:
+            for name in [*(d + '-xdg-terminals.list' for d in desktops), 'xdg-terminals.list']:
+                path = folder / name
+                if path.is_file():
+                    entries = [line.strip() for line in path.read_text().splitlines() if line.strip() and not line.startswith('#')]
+                    if entries: return entries[0].split(':')[0]
+        return ''
+    data_dirs = [Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share'))),
+                 *map(Path, os.environ.get('XDG_DATA_DIRS', '/usr/local/share:/usr/share').split(':'))]
+    for folder in [*config_dirs, *(d / 'applications' for d in data_dirs)]:
+        for name in [*(d + '-mimeapps.list' for d in desktops), 'mimeapps.list']:
+            document = configparser.ConfigParser(interpolation=None, strict=False)
+            document.read(folder / name)
+            value = document.get('Default Applications', ROLES[role][0], fallback='')
+            if value: return value.split(';')[0].strip()
+    return ''
+
+
+def status():
+    Gio, _, Desktop = libraries()
+    saved = load_choices()
+    applications = [a for a in Gio.AppInfo.get_all() if isinstance(a, Desktop) and a.should_show()]
+    result = {}
+    for role in ROLES:
+        actual = current(role)
+        missing = saved.get(role) and declared_choice(role) == saved[role] and desktop_app(saved[role]) is None
+        chosen = saved[role] if missing else actual.get_id() if actual else ''
+        choices = [{'value': a.get_id(), 'label': a.get_display_name()} for a in applications if compatible(a, role)]
+        choices.sort(key=lambda a: a['label'].casefold())
+        if chosen and not any(c['value'] == chosen for c in choices):
+            choices.insert(0, {'value': chosen, 'label': chosen + (' · unavailable' if missing else '')})
+        result[role] = {'selected': chosen, 'effective': actual.get_id() if actual else '',
+                        'unavailable': bool(missing), 'choices': choices}
+    return {'roles': result}
+
+
+def select(role, identifier):
+    _, _, Desktop = libraries()
+    app = desktop_app(identifier)
+    if not app or not compatible(app, role):
+        raise ValueError('Choose an installed application that supports this use.')
+    saved = load_choices()
+    preference = config_root() / 'cybexos/default-applications.json'
+    if preference.is_symlink():
+        raise ValueError('The preference file is linked. Edit its source explicitly.')
+    if role == 'terminal':
+        # Respect the most-specific personal terminal file when it exists.
+        candidates = [config_root() / (d.lower() + '-xdg-terminals.list')
+                      for d in os.environ.get('XDG_CURRENT_DESKTOP', '').split(':') if d]
+        path = next((p for p in candidates if p.exists()), config_root() / 'xdg-terminals.list')
+        old = path.read_text().splitlines() if path.exists() else []
+        write(path, identifier + '\n' + '\n'.join(line for line in old if line.strip() != identifier) + '\n')
+    else:
+        for mime in ROLES[role]:
+            if not app.set_as_default_for_type(mime):
+                raise ValueError('The application association could not be saved.')
+    write(preference, json.dumps({'schema': 1, 'choices': saved | {role: identifier}}, indent=2) + '\n')
+    return status()
+
+
+def notify(title, message):
+    try:
+        subprocess.run(['notify-send', title, message], timeout=5, check=False, capture_output=True)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def warn_fallback(role):
+    _, _, Desktop = libraries()
+    saved = load_choices().get(role)
+    if saved and declared_choice(role) == saved and desktop_app(saved) is None:
+        notify('Default application unavailable',
+               'Using an available application. Your saved choice is unchanged; review Settings → Applications.')
+
+
+def terminal(arguments):
+    warn_fallback('terminal')
+    os.execvp('xdg-terminal-exec', ['xdg-terminal-exec', *arguments])
+
+
+def browser(arguments, private=False):
+    warn_fallback('browser')
+    app = current('browser')
+    if not app:
+        raise ValueError('Choose an installed browser in Settings → Applications.')
+    if private:
+        actions = app.list_actions() if hasattr(app, 'list_actions') else []
+        action = next((a for a in ('new-private-window', 'new-incognito', 'NewPrivateWindow', 'Incognito') if a in actions), None)
+        if not action:
+            raise ValueError('The selected browser does not advertise a private-window action.')
+        if arguments:
+            raise ValueError('Private launch does not accept addresses.')
+        app.launch_action(action, None)
+    else:
+        if arguments: app.launch_uris(arguments, None)
+        else: app.launch([], None)
+
+
+def webapp(url):
+    app = current('browser')
+    if app and any(name in (app.get_id() or '').lower() for name in ('brave', 'chromium', 'chrome', 'msedge')):
+        warn_fallback('browser')
+        subprocess.Popen([*editor_argv(app, []), '--app=' + url], start_new_session=True)
+    else:
+        browser([url])
+
+
+def editor_argv(app, files):
+    _, GLib, _ = libraries()
+    _, command = GLib.shell_parse_argv(app.get_commandline())
+    result = []
+    for token in command:
+        if token in ('%F', '%f', '%U', '%u'):
+            values = [Path(f).absolute().as_uri() for f in files] if token in ('%U', '%u') else files
+            result.extend(values if token in ('%F', '%U') else values[:1])
+        elif token == '%i':
+            icon = app.get_string('Icon')
+            if icon: result.extend(['--icon', icon])
+        elif token == '%c': result.append(app.get_display_name())
+        elif token == '%k': result.append(app.get_filename())
+        elif '%' not in token.replace('%%', ''): result.append(token.replace('%%', '%'))
+        else: raise ValueError('The selected editor has an unsupported desktop command.')
+    if not any(code in command for code in ('%F', '%f', '%U', '%u')):
+        result.extend(files)
+    return result
+
+
+def edit(files):
+    # Explicit user shell overrides have precedence. No shell evaluates them.
+    for name in ('VISUAL', 'EDITOR'):
+        value = os.environ.get(name)
+        if value:
+            command = shlex.split(value)
+            if command and Path(command[0]).name != 'cybexos-apps':
+                os.execvp(command[0], [*command, *files])
+    warn_fallback('editor')
+    app = current('editor')
+    if not app:
+        raise ValueError('Choose an installed text editor in Settings → Applications.')
+    if app.get_boolean('Terminal'):
+        terminal(['--', *editor_argv(app, files)])
+    else:
+        Gio, _, _ = libraries()
+        app.launch([Gio.File.new_for_commandline_arg(f) for f in files], None)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest='action', required=True)
+    sub.add_parser('status')
+    choose = sub.add_parser('set'); choose.add_argument('role', choices=ROLES); choose.add_argument('desktop_id')
+    term = sub.add_parser('terminal'); term.add_argument('arguments', nargs=argparse.REMAINDER)
+    web = sub.add_parser('browser'); web.add_argument('--private', action='store_true'); web.add_argument('addresses', nargs='*')
+    site = sub.add_parser('webapp'); site.add_argument('url')
+    editor = sub.add_parser('edit'); editor.add_argument('files', nargs='*')
+    # Terminal options belong to xdg-terminal-exec, including leading options.
+    if len(sys.argv) > 1 and sys.argv[1] == 'terminal':
+        terminal(sys.argv[2:]); return
+    args = parser.parse_args()
+    if args.action == 'status': print(json.dumps(status()))
+    elif args.action == 'set': print(json.dumps(select(args.role, args.desktop_id)))
+    elif args.action == 'terminal': terminal(args.arguments)
+    elif args.action == 'browser': browser(args.addresses, args.private)
+    elif args.action == 'edit': edit(args.files)
+    elif args.action == 'webapp': webapp(args.url)
+
+
+if __name__ == '__main__':
+    try: main()
+    except Exception as error:
+        # GIO diagnostics and application arguments can contain private URLs.
+        message = str(error) if isinstance(error, ValueError) else 'The application request failed. Check the selected application and retry.'
+        if len(sys.argv) > 1 and sys.argv[1] not in ('status', 'set'):
+            notify('Application could not be opened', message)
+        print(json.dumps({'error': message}), file=sys.stderr)
+        sys.exit(1)

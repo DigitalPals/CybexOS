@@ -1,4 +1,4 @@
-// NerdOS installer screen: one window, drawn by Slint's software renderer
+// Cybex OS installer screen: one window, drawn by Slint's software renderer
 // straight to KMS/DRM. The 1280×800 canvas is zoomed to the panel by the Rust
 // side and centred when the panel's aspect ratio differs. Flat by design: no
 // blur, no shadows, no animation beyond a 1 Hz activity tick.
@@ -41,11 +41,11 @@ component Steps inherits HorizontalLayout {
                     height: 24px;
                     border-radius: 12px;
                     border-width: i + 1 < root.current ? 0px : 1.5px;
-                    border-color: i + 1 == root.current ? Theme.lime : Theme.line-2;
-                    background: i + 1 < root.current ? Theme.lime-tint : transparent;
+                    border-color: i + 1 == root.current ? Theme.accent : Theme.line-2;
+                    background: i + 1 < root.current ? Theme.accent-tint : transparent;
                     if i + 1 < root.current: Icon {
                         d: Icons.check;
-                        tint: Theme.lime;
+                        tint: Theme.accent;
                         size: 13px;
                     }
                     if i + 1 >= root.current: Text {
@@ -53,7 +53,7 @@ component Steps inherits HorizontalLayout {
                         font-family: Theme.mono;
                         font-weight: 700;
                         font-size: 12px;
-                        color: i + 1 == root.current ? Theme.lime : Theme.faint;
+                        color: i + 1 == root.current ? Theme.accent : Theme.faint;
                     }
                 }
             }
@@ -76,7 +76,7 @@ component TopBar inherits Rectangle {
     Image {
         x: 40px;
         width: 165px;
-        height: 22px;
+        height: 39px;
         source: @image-url("../assets/logo.svg");
         image-fit: contain;
     }
@@ -131,7 +131,7 @@ component TopBar inherits Rectangle {
 }
 
 export component InstallerWindow inherits Window {
-    title: "Install NerdOS";
+    title: "Install Cybex OS";
     background: Theme.bg;
     default-font-family: Theme.sans;
     default-font-size: 16px;
@@ -179,7 +179,7 @@ export component InstallerWindow inherits Window {
             background: Theme.ink;
             toast-text := Text {
                 text: Store.toast;
-                color: Theme.lime-ink;
+                color: Theme.accent-ink;
                 font-size: 15px;
                 font-weight: 500;
             }

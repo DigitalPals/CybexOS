@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""nerdos-backup against stubbed restic, secret-tool and desktop commands.
+"""cybexos-backup against stubbed restic, secret-tool and desktop commands.
 
 The gate never touches a keyring. Most tests use stubs on PATH, which
 record every call, so these fixtures pin what the helper asks of them: the
@@ -30,8 +30,8 @@ from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
-HELPER = ROOT / "assets/scripts/nerdos-backup"
-LOADER = importlib.machinery.SourceFileLoader("nerdos_backup", str(HELPER))
+HELPER = ROOT / "assets/scripts/cybexos-backup"
+LOADER = importlib.machinery.SourceFileLoader("cybexos_backup", str(HELPER))
 SPEC = importlib.util.spec_from_loader(LOADER.name, LOADER)
 backup = importlib.util.module_from_spec(SPEC)
 LOADER.exec_module(backup)
@@ -162,7 +162,7 @@ UTC = timezone.utc
 
 class Fixture(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix="nerdos-backup.")
+        self.temporary = tempfile.TemporaryDirectory(prefix="cybexos-backup.")
         self.root = Path(self.temporary.name)
         self.home = self.root / "home/tester"
         self.home.mkdir(parents=True)
@@ -210,7 +210,7 @@ class Fixture(unittest.TestCase):
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err), \
                 patch.object(sys, "stdin", io.StringIO(stdin)):
             try:
-                status = backup.main(list(argv), program="nerdos-backup")
+                status = backup.main(list(argv), program="cybexos-backup")
             except SystemExit as error:
                 status = error.code
         return status, out.getvalue(), err.getvalue()
@@ -248,14 +248,14 @@ class Setup(Fixture):
     def test_a_new_repository_gets_a_keyring_password_and_a_separate_recovery_key(self):
         result = self.set_up_drive()
         config = self.config()
-        repository = self.drive / "nerdos-backup"
+        repository = self.drive / "cybexos-backup"
         self.assertEqual(config["repository"], str(repository))
         self.assertTrue((repository / "config").is_file())
         key = result["recoveryKey"]
         self.assertRegex(key, r"^([0-9A-HJKMNP-TV-Z]{5}-){5}[0-9A-HJKMNP-TV-Z]{5}$")
         self.assertFalse(config["recoveryKeyConfirmed"])
         self.assertTrue(config["automatic"])
-        stored = (self.root / "keyring" / f"application_nerdos-backup_repository_{config['keyId']}").read_text()
+        stored = (self.root / "keyring" / f"application_cybexos-backup_repository_{config['keyId']}").read_text()
         self.assertGreaterEqual(len(stored), 40, "a strong random password")
         self.assertNotEqual(stored, key)
         init, = self.restic_calls("init")
@@ -273,7 +273,7 @@ class Setup(Fixture):
         self.assertEqual(status, 0)
         self.assertTrue(self.config()["recoveryKeyConfirmed"])
         # A session that predates the timer gets it now, not at the next login.
-        self.assertIn("systemctl --user start --no-block nerdos-backup.timer", self.calls())
+        self.assertIn("systemctl --user start --no-block cybexos-backup.timer", self.calls())
 
     def test_existing_backups_need_their_recovery_key_and_get_a_new_keyring_password(self):
         key = self.set_up_drive()["recoveryKey"]
@@ -322,7 +322,7 @@ class Setup(Fixture):
                 {"init": {"status": 1, "stderr": "Fatal: unable to open config file: permission denied"}})}):
             status, out, _ = self.main("setup", "local", str(self.drive), "--json")
         self.assertEqual(status, 1)
-        self.assertEqual(json.loads(out)["error"], "NerdOS cannot write to the backup destination.")
+        self.assertEqual(json.loads(out)["error"], "Cybex OS cannot write to the backup destination.")
         self.assertFalse(self.context.config_path.exists())
         self.assertEqual(list((self.root / "keyring").iterdir()), [])
 
@@ -335,7 +335,7 @@ class Setup(Fixture):
         status, _, err = self.main("setup", "local", str(other), "--json")
         self.assertEqual(status, 0, err)
         names = [path.name for path in (self.root / "keyring").iterdir()]
-        self.assertEqual(names, [f"application_nerdos-backup_repository_{self.config()['keyId']}"])
+        self.assertEqual(names, [f"application_cybexos-backup_repository_{self.config()['keyId']}"])
         self.assertNotIn(old, names[0])
 
     def test_recovery_key_rotation_removes_the_previous_key(self):
@@ -353,7 +353,7 @@ class Setup(Fixture):
 @unittest.skipUnless(shutil.which("restic"), "real restic is not installed")
 class ResticDataPolicy(unittest.TestCase):
     def test_real_snapshot_restores_saves_volumes_and_exports_but_skips_downloads(self):
-        with tempfile.TemporaryDirectory(prefix="nerdos-backup-data-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="cybexos-backup-data-") as temporary:
             root = Path(temporary)
             home = root / "home"
             home.mkdir()
@@ -365,8 +365,8 @@ class ResticDataPolicy(unittest.TestCase):
                         ".local/share/containers/storage/volumes/game/_data/save",
                         ".local/share/docker/volumes/database/_data/personal",
                         ".config/containers/storage.conf", ".config/docker/daemon.json",
-                        ".local/share/nerdos/plugin-data/mine/data",
-                        ".local/share/nerdos/plugins/mine/Widget.qml"]
+                        ".local/share/cybexos/plugin-data/mine/data",
+                        ".local/share/cybexos/plugins/mine/Widget.qml"]
             excluded = [".cache/throwaway", ".local/share/Trash/files/deleted",
                         ".local/share/containers/storage/overlay/layer/diff/image",
                         ".local/share/docker/overlay2/layer/diff/image",
@@ -428,11 +428,11 @@ class ResticDataPolicy(unittest.TestCase):
             nobody = pwd.getpwnam("nobody")
             # Nix dev shells give root a private TMPDIR. The uid-dropped child
             # needs a traversable parent without changing that directory's mode.
-            with tempfile.TemporaryDirectory(prefix="nerdos-backup-unprivileged-", dir="/tmp") as temporary:
+            with tempfile.TemporaryDirectory(prefix="cybexos-backup-unprivileged-", dir="/tmp") as temporary:
                 fixture = Path(temporary)
                 fixture.chmod(0o755)
                 for source, relative in ((Path(__file__), "tests/nixos/test_backup.py"),
-                                         (HELPER, "assets/scripts/nerdos-backup")):
+                                         (HELPER, "assets/scripts/cybexos-backup")):
                     target = fixture / relative
                     target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(source, target)
@@ -456,7 +456,7 @@ class ResticDataPolicy(unittest.TestCase):
             return
 
         self.assertNotEqual(os.geteuid(), 0)
-        with tempfile.TemporaryDirectory(prefix="nerdos-backup-private-volume-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="cybexos-backup-private-volume-") as temporary:
             root = Path(temporary)
             home = root / "home"
             home.mkdir()
@@ -538,12 +538,12 @@ class BackingUp(Fixture):
         for expected in (home + "/.cache", home + "/.local/share/Trash",
                          home + "/.local/share/Steam/steamapps/common",
                          home + "/.local/share/containers/storage/overlay",
-                         home + "/.config/**/Cache", "node_modules", str(self.drive / "nerdos-backup")):
+                         home + "/.config/**/Cache", "node_modules", str(self.drive / "cybexos-backup")):
             self.assertIn(expected, excludes)
         for flag in ("--exclude-caches", "--one-file-system", "--skip-if-unchanged"):
             self.assertIn(flag, argv)
         self.assertEqual(argv[argv.index("--exclude-file") + 1], str(self.context.user_excludes))
-        self.assertEqual(argv[argv.index("--tag") + 1], "nerdos")
+        self.assertEqual(argv[argv.index("--tag") + 1], "cybexos")
         state = self.state()
         self.assertEqual(state["lastResult"], "ok")
         self.assertEqual(state["lastSummary"]["files"], 3)

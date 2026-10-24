@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "desktop/quickshell/ModelUsage"
 TESTS = ROOT / "tests/model-usage"
 INTEGRATION = ROOT / "scripts/model-usage/integration.patch"
-# Kept across syncs: NerdOS's own notes on the vendored copy.
+# Kept across syncs: Cybex OS's own notes on the vendored copy.
 LOCAL = {"README.md"}
 
 

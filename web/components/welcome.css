@@ -13,7 +13,7 @@
 }
 
 .welcome-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
-.welcome-wordmark { display: block; width: 225px; height: 30px; object-fit: contain; }
+.welcome-wordmark { display: block; width: 225px; height: 53px; object-fit: contain; }
 .welcome-section-label { margin: 0; color: #80808a; font-size: 12px; font-weight: 600; letter-spacing: 1.6px; text-transform: uppercase; }
 .welcome-header .welcome-section-label { text-align: right; }
 .welcome-intro { margin: 44px 0 34px; }
@@ -26,10 +26,10 @@
 .welcome-wallpaper::before { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, transparent 42%, #0009 100%); }
 .welcome-wallpaper::after { content: ''; position: absolute; inset: 0; border: 1px solid #ffffff13; border-radius: inherit; pointer-events: none; }
 .welcome-wallpaper:hover::after { border-color: #ffffff80; background: #ffffff08; }
-.welcome-wallpaper[aria-pressed='true']::after { border: 3px solid #C8FF1F; }
+.welcome-wallpaper[aria-pressed='true']::after { border: 3px solid #60A5FA; }
 .welcome-app button:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
 .welcome-wallpaper-name { position: absolute; bottom: 13px; left: 16px; font-size: 13px; font-weight: 500; color: #fff; text-shadow: 0 1px 5px #0008; }
-.welcome-wallpaper-check { position: absolute; top: 10px; right: 10px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: #C8FF1F; color: #1A1B1E; }
+.welcome-wallpaper-check { position: absolute; top: 10px; right: 10px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: #60A5FA; color: #1A1B1E; }
 .welcome-explore { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; margin: 20px 0 26px; }
 .welcome-explore button { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 6px 3px; border-radius: 5px; color: #80808a; font-size: 13px; }
 .welcome-explore button:hover { color: #f4f4f5; }
@@ -43,9 +43,9 @@
 .welcome-actions { display: flex; gap: 12px; flex-shrink: 0; }
 .welcome-action { display: flex; justify-content: center; align-items: center; gap: 10px; min-height: 48px; padding: 0 26px; background: #17171a; border-radius: 12px; color: #f4f4f5; font-size: 15px; font-weight: 600; }
 .welcome-action:hover { background: #202024; }
-.welcome-action-primary { background: #C8FF1F; color: #1A1B1E; }
-.welcome-action-primary:hover { background: #D7FF57; }
-.welcome-action-primary:active { background: #A6D900; }
+.welcome-action-primary { background: #60A5FA; color: #1A1B1E; }
+.welcome-action-primary:hover { background: #93C5FD; }
+.welcome-action-primary:active { background: #3B82F6; }
 
 @container desktop-window (max-width: 760px) {
   .welcome-app { padding: 32px; }
@@ -56,7 +56,7 @@
 
 @container desktop-window (max-width: 480px) {
   .welcome-app { padding: 24px; }
-  .welcome-wordmark { width: 180px; height: 24px; }
+  .welcome-wordmark { width: 180px; height: 43px; }
   .welcome-header .welcome-section-label { font-size: 10px; letter-spacing: 1.1px; }
   .welcome-intro { margin: 30px 0 26px; }
   .welcome-intro h1 { font-size: 32px; }

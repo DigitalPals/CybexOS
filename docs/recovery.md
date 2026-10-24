@@ -15,14 +15,14 @@ NixOS service-warning exit 4 is checked through the declared health services;
 unrelated failed units do not prevent restoration. Genuine activation errors
 still fail closed. A busy recovery unit defers to the supervised operation that
 holds the lock, and rollback disarms a rejected trial before updating boot files.
-An interruption at application boundaries is recovered by `nerdos-recover`,
+An interruption at application boundaries is recovered by `cybexos-recover`,
 which stays completed for the rest of that boot so activation cannot start a
 second recovery worker. Interrupted staging is reported and can be staged again.
 
-`nerd update status` reports `recovery-failed` if restoration itself fails.
+`cybex update status` reports `recovery-failed` if restoration itself fails.
 The durable pending record remains, and further previews are blocked. Inspect
-`nerd update log ID` for private build, activation and restoration output;
-correct the reported cause, then run `nerd update rollback ID` to retry the
+`cybex update log ID` for private build, activation and restoration output;
+correct the reported cause, then run `cybex update rollback ID` to retry the
 retained restoration. The desktop keeps its Rollback and private-log controls
 available. Rebooting into the retained known-good boot entry also resumes
 recovery. A failed restoration never reports the previous generation as
@@ -34,17 +34,17 @@ The previous generation stays the persistent systemd-boot default. The candidate
 is a one-shot trial, selected once. A failed boot requires a user-selected reset
 or reboot; the next boot returns to the previous default. There is no unattended
 reboot or hardware watchdog reset. A successful fresh boot and authenticated
-Hyprland/Quickshell login must pass `nerd update confirm` before the candidate
+Hyprland/Quickshell login must pass `cybex update confirm` before the candidate
 becomes the persistent default. Failed systems are quarantined against normal
-reapplication. `nerd update history` and `nerd update rollback [ID]` expose the
+reapplication. `cybex update history` and `cybex update rollback [ID]` expose the
 retained identities and restore coherent system/updater configuration.
 
 System health requires the boot target, NetworkManager and login manager to be
 active. When Libreswan is enabled, its managed `ipsec.service` must also be
 active so Cisco IPsec connections have their required daemon. Add critical
 personal services in `/etc/nixos/local/*.nix`, for example
-`nerdos.updates.additionalHealthServices = [ "personal.service" ];`.
-The shared modules generate `/etc/nerdos/health-services.json` for the updater;
+`cybexos.updates.additionalHealthServices = [ "personal.service" ];`.
+The shared modules generate `/etc/cybexos/health-services.json` for the updater;
 disabled optional services are not required. Failed checks identify the unit
 and retain the pending recovery record instead of accepting the deployment.
 Selected XPS hardware also requires its haptic daemon and, in an authenticated
@@ -54,7 +54,7 @@ trial acceptance. These service checks do not prove processed frames, privacy,
 image quality or suspend/resume; those still require physical qualification.
 
 From live media, unlock/mount the target filesystem and ESP, inspect
-`/var/lib/nerdos/transactions` and its deployment records, and select the
+`/var/lib/cybexos/transactions` and its deployment records, and select the
 retained previous system using its `switch-to-configuration boot` inside
 `nixos-enter`. Restore `/etc/nixos` to that record's retained configuration as
 well. This is an offline repair requiring explicit administrator intent, not a
@@ -99,9 +99,9 @@ pruning, boot-entry regeneration, root release and Nix garbage collection.
 Boot entries are regenerated from the confirmed running system before old
 kernels can be collected; its confirmed boot selection is restored. Secure Boot
 configuration is unchanged. An interruption keeps the journal and blocks new
-deployments. **Resume cleanup**, `nerd maintenance resume`, or boot recovery
+deployments. **Resume cleanup**, `cybex maintenance resume`, or boot recovery
 continues idempotently from the initiating confirmed system. Inspect the private
-`/var/lib/nerdos/maintenance.log` and the supervised system service on failure.
+`/var/lib/cybexos/maintenance.log` and the supervised system service on failure.
 Settings detects a stopped worker and offers recovery from the durable journal,
 including after reopening the desktop.
 
@@ -111,9 +111,9 @@ machine-owned `local/maintenance.json` through a staged preview and apply. An
 explicit personal opt-out remains respected. The persistent weekly timer runs
 with idle I/O priority and randomized delay. It
 obeys retention/pins and skips active updates, an unconfirmed boot or unresolved
-recovery. Generic Nix automatic GC remains disabled by default so the NerdOS
+recovery. Generic Nix automatic GC remains disabled by default so the Cybex OS
 retention policy owns automatic cleanup. Physical boot/recovery qualification
 is a separate launch requirement.
 
-For scripting, use `nerd maintenance status`, `preview`, `clean REVIEW TOKEN`,
+For scripting, use `cybex maintenance status`, `preview`, `clean REVIEW TOKEN`,
 `pin DEPLOYMENT true|false`, `policy JSON`, `request ID`, and `resume`.

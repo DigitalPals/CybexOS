@@ -1,6 +1,6 @@
 """The installer screen's state service, driven over its real Unix socket.
 
-A scripted stand-in for `nerdos-install --json-ui` records every request, so
+A scripted stand-in for `cybexos-install --json-ui` records every request, so
 these tests check what the daemon sends to the one disk-writing worker: the
 reviewed plan, the token-bound install request, and nothing else.
 """
@@ -19,7 +19,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'lifecycle'))
-loader = importlib.machinery.SourceFileLoader('nerdos_installerd', str(ROOT / 'installer/nerdos-installerd'))
+loader = importlib.machinery.SourceFileLoader('cybexos_installerd', str(ROOT / 'installer/cybexos-installerd'))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 daemon = importlib.util.module_from_spec(spec)
 loader.exec_module(daemon)
@@ -57,7 +57,7 @@ for line in sys.stdin:
         emit(event='started')
         for stage in range(1, 7):
             emit(event='stage', stage=stage, total=6, message='Stage %d' % stage)
-        emit(event='complete', username='ada', encrypted=True, hostname='ada-nerdos')
+        emit(event='complete', username='ada', encrypted=True, hostname='ada-cybexos')
         break
     elif action == 'cancel':
         emit(event='cancelled'); break
@@ -98,14 +98,15 @@ class TimezoneTableTests(unittest.TestCase):
         for name in ('Ada', '1ada', 'ada.l', '', 'a' * 32):
             self.assertIn('lowercase', daemon.username_problem(name, reserved))
         self.assertIn('reserved', daemon.username_problem('messagebus', reserved))
-        self.assertEqual(daemon.hostname_for('ada'), 'ada-nerdos')
+        self.assertEqual(daemon.hostname_for('ada'), 'ada-cybexos')
+        self.assertEqual(daemon.hostname_for('a' * 31), 'a' * 23 + '-cybexos')
         self.assertEqual(daemon.full_name_problem('José García'), '')
         self.assertNotEqual(daemon.full_name_problem('a:b'), '')
 
     def test_network_summary_prefers_wired_and_deduplicates_networks(self):
         summary = daemon.summarize_network({'devices': [
             {'interface': 'wlp1', 'type': 'wifi', 'connected': True, 'ssid': 'Home', 'ipv4': '10.0.0.5', 'stateCode': 100},
-            {'interface': 'enp2', 'type': 'ethernet', 'connected': True, 'connection': 'NerdOS Wired', 'ipv4': '10.0.0.6', 'stateCode': 100}],
+            {'interface': 'enp2', 'type': 'ethernet', 'connected': True, 'connection': 'Cybex OS Wired', 'ipv4': '10.0.0.6', 'stateCode': 100}],
             'wifi': {'interface': 'wlp1', 'networks': [
                 {'ssid': 'Home', 'signal': 40, 'security': 'WPA2', 'connected': True},
                 {'ssid': 'Home', 'signal': 80, 'security': 'WPA2'},
@@ -127,7 +128,7 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
         (etc / 'installer-reserved-names.json').write_text(json.dumps(['messagebus', 'nobody']))
         (etc / 'installer-region.json').write_text(json.dumps({'timezone': 'UTC', 'locale': 'en_US.UTF-8', 'desktopKeyboard': 'us'}))
         (etc / 'release.json').write_text(json.dumps({'version': '1.0.0-test'}))
-        worker = binary / 'nerdos-install'
+        worker = binary / 'cybexos-install'
         worker.write_text(WORKER.replace('PYTHON', sys.executable))
         worker.chmod(0o755)
         self.log = self.root / 'worker.log'
@@ -144,7 +145,7 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
             patch.object(daemon, 'graphics_names', return_value=['QA GPU']),
             patch.dict(os.environ, {'PATH': f'{binary}{os.pathsep}{os.environ.get("PATH", "")}',
                                     'FAKE_WORKER_LOG': str(self.log), 'TZDIR': str(zoneinfo(self.root / 'zoneinfo')),
-                                    'NERDOS_INSTALLER_GROUP': 'nonexistent-group'}),
+                                    'CYBEXOS_INSTALLER_GROUP': 'nonexistent-group'}),
         ]
         for fixture in fixtures:
             fixture.start()
@@ -242,7 +243,7 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
         plan = self.requests()[-1]['plan']
         self.assertEqual(plan['username'], 'ada')
         self.assertEqual(plan['fullName'], 'Ada Lovelace')
-        self.assertEqual(plan['hostname'], 'ada-nerdos')
+        self.assertEqual(plan['hostname'], 'ada-cybexos')
         self.assertEqual((plan['keyboard'], plan['desktopKeyboard']), ('uk', 'gb'))
         self.assertEqual(plan['timezone'], 'Europe/Amsterdam')
         self.assertFalse(plan['autoLogin'])
@@ -259,7 +260,7 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
 
         await self.send(action='install')
         done = await self.until(lambda m: m['type'] == 'state' and m['phase'] == 'complete')
-        self.assertEqual(done['result'], {'username': 'ada', 'hostname': 'ada-nerdos', 'encrypted': True})
+        self.assertEqual(done['result'], {'username': 'ada', 'hostname': 'ada-cybexos', 'encrypted': True})
         self.assertTrue(done['diskTouched'])
         install = self.requests()[-1]
         self.assertEqual(install, {'action': 'install', 'token': 'token-2', 'confirmed': True, 'secrets': {'password': PASSWORD}})

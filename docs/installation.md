@@ -1,13 +1,13 @@
 # Fresh installation
 
-Boot a completed NerdOS x86_64 ISO in UEFI mode. The ISO starts only the
+Boot a completed Cybex OS x86_64 ISO in UEFI mode. The ISO starts only the
 installer: there is no live desktop, display manager, live account or sudo. The
 boot menu offers:
 
-- **Install NerdOS VERSION**, the default.
-- **Install NerdOS VERSION - safe graphics**: `nomodeset`, so the screen draws on
+- **Install Cybex OS VERSION**, the default.
+- **Install Cybex OS VERSION - safe graphics**: `nomodeset`, so the screen draws on
   the firmware framebuffer (simpledrm) when a native display driver fails.
-- **Install NerdOS VERSION - text mode**: the terminal installer on tty1.
+- **Install Cybex OS VERSION - text mode**: the terminal installer on tty1.
 - **Verbose boot diagnostics**: the default installer with kernel messages.
 
 Every entry starts the same fresh installer; none starts a disk operation by
@@ -18,21 +18,21 @@ boot does not establish a successful iVentoy boot.
 
 ## The installer screen
 
-tty1 shows `nerdos-installer`, a Rust and Slint kiosk drawn by Slint's software
+tty1 shows `cybexos-installer`, a Rust and Slint kiosk drawn by Slint's software
 renderer straight to KMS/DRM, with keyboard, mouse and touch input through
 libinput. It needs no compositor, browser, Qt or GPU userspace, so one image
 draws through amdgpu, i915/xe, nouveau, virtio-gpu or the firmware framebuffer,
 and the medium carries no separate NVIDIA kernel. The 1280×800 design canvas is
 zoomed to the largest connected mode (1920×1200 → 1.5, 2880×1800 → 2.25) and
-centred. It runs as the unprivileged `nerdos-installer` user in a logind session
+centred. It runs as the unprivileged `cybexos-installer` user in a logind session
 on seat0, the same unit shape as NixOS's `services.cage`. If no display device
 works after a few attempts, it switches tty1 to the text installer.
 
-The screen owns no state. `nerdos-installerd` (root) keeps the non-secret draft,
+The screen owns no state. `cybexos-installerd` (root) keeps the non-secret draft,
 Wi-Fi, time zone detection, the keyboard layout and diagnostics, and drives the
-one disk-writing worker, `nerdos-install --json-ui`, over its private protocol.
-The screen receives bounded JSON snapshots (`nerdos.installer-state.v1`) over
-`/run/nerdos-installer/control.sock` (mode 0660, group `nerdos-installer`). A
+one disk-writing worker, `cybexos-install --json-ui`, over its private protocol.
+The screen receives bounded JSON snapshots (`cybexos.installer-state.v1`) over
+`/run/cybexos-installer/control.sock` (mode 0660, group `cybexos-installer`). A
 screen restart, whether for a keyboard change, a crash or Ctrl+Alt+Backspace
 (which Slint's KMS backend treats as quit), resumes on the same step. The service
 unit uses `KillMode=process`, and the worker keeps installing if its output is
@@ -59,7 +59,7 @@ The flow is **Welcome → Disk → You → Review → Installing → Done**:
   plan with a fresh token and rechecks the disk's identity before writing.
 - **Installing** reports the worker's six real stages and the elapsed time,
   without an invented percentage or estimate. **Show installation details**
-  opens the most recent 256 KiB of the private log `/run/nerdos-installer.log`,
+  opens the most recent 256 KiB of the private log `/run/cybexos-installer.log`,
   refreshed every two seconds; it can be saved to another USB stick (the medium
   itself is read-only). Arrow keys, Page Up/Down, Home and End scroll the log.
   Refresh keeps your reading position; End resumes following new output. The
@@ -81,10 +81,10 @@ any other character, and a leading digit or hyphen, is refused with a one-line
 reason. A name typed under **Your name** suggests the username until you edit
 it. Reserved names are refused before review: `root`, `nixos`, and every user and
 group name of the installed product, recorded on the medium in
-`/etc/nerdos/installer-reserved-names.json`. The worker validates again. The
+`/etc/cybexos/installer-reserved-names.json`. The worker validates again. The
 optional name becomes the account's description; it may not contain colons,
 commas, backslashes, double quotes, dollar signs, backticks or control
-characters. The computer name follows `USERNAME-nerdos` until edited and has the
+characters. The computer name follows `USERNAME-cybexos` until edited and has the
 same character rules.
 
 One password of at least eight characters, without character-class rules, sets
@@ -94,7 +94,7 @@ its private stdin; it never appears in a snapshot, the draft, a log or an
 argument. First desktop login requires the password; automatic login is a
 later, explicit machine choice and requires verified encryption.
 
-Changing the keyboard writes `/run/nerdos-installer/keyboard.env` and loads the
+Changing the keyboard writes `/run/cybexos-installer/keyboard.env` and loads the
 matching console keymap; the screen restarts with the new layout, because
 Slint's KMS backend reads the XKB layout when it starts, and clears any typed
 password so it is retyped with the layout that will unlock the disk.
@@ -132,10 +132,10 @@ systems; signing in to Tailscale can add MagicDNS. See Tailscale's
 ### Recovery and other interfaces
 
 The serial console and tty2 are root shells on the physical medium; there is no
-SSH, live account or sudo. `nmtui` configures the network. `nerdos-install
+SSH, live account or sudo. `nmtui` configures the network. `cybexos-install
 --terminal` is the same installer as text; the text-mode boot entry runs it on
 tty1, and the screen's menu switches tty1 to it after cancelling the idle
-graphical worker. `nerd install`, `./install` and `./bootstrap` enter the same
+graphical worker. `cybex install`, `./install` and `./bootstrap` enter the same
 fresh installer and refuse outside the installation medium. Only one installer
 can run at a time.
 
@@ -155,7 +155,7 @@ authentication always needs the internet.
 `installer-preview` renders every screen with the real UI and software renderer:
 
 ```sh
-installer/nerdos-installerd --dump-static > static.json   # with lifecycle/ on PYTHONPATH
+installer/cybexos-installerd --dump-static > static.json   # with lifecycle/ on PYTHONPATH
 cd installer/kiosk && cargo run --features preview --bin installer-preview -- ../../static.json /tmp/renders
 ```
 
@@ -172,7 +172,7 @@ The ISO retains its tested flake input sources. A fresh machine's first lock
 starts with that exact Nixpkgs revision and content hash, retaining the selected
 stable branch as its upstream update source. Installation never resolves a newer
 branch head implicitly. Later upstream-only updates advance this machine-owned
-input independently of NerdOS. This does not make installation fully offline:
+input independently of Cybex OS. This does not make installation fully offline:
 release authentication and packages not bundled on the medium require internet.
 
 Use a backed-up target disk of at least 64 GiB. Installation erases only the
@@ -188,26 +188,26 @@ Its layout and minimum disk size come from the shared Nix module contract.
 
 `nixos-generate-config` records actual hardware and filesystems. DMI/PCI/ACPI/
 EDID detection selects narrowly scoped XPS/NVIDIA declarations. The machine
-flake follows the stable Nixpkgs input and pins the authenticated NerdOS exact
+flake follows the stable Nixpkgs input and pins the authenticated Cybex OS exact
 revision/NAR identity. The complete target is built and installed through the
 shared modules. First login installs missing vendor-skill discovery symlinks
 and never overwrites a pre-existing personal skill.
 
 Production media install only their own exact tested source. Before asking for
 choices, the installer fetches the immutable signed manifest for the medium's
-`/etc/nerdos/release.json` version (`releases/download/vVERSION/manifest.json`)
+`/etc/cybexos/release.json` version (`releases/download/vVERSION/manifest.json`)
 over public HTTPS, verifies its Ed25519 signature and supported metadata, and
 requires its version, exact revision and NAR to equal the medium's. A channel is
 never consulted to select a newer release; the medium's channel policy still
 applies (stable rejects a prerelease medium). Any mismatch stops before disk
 erasure and vendor evaluation. The medium's channel is written to `machine.nix`
-as an explicit `nerdos.updates.channel`, so a later stable vendor release does
+as an explicit `cybexos.updates.channel`, so a later stable vendor release does
 not move a beta machine; the vendor default is `beta` for prerelease versions and
 `stable` otherwise, and the administrator may change it.
 
 Production installation is blocked until owner-controlled trust keys and an
 authenticated published release exist. For isolated development qualification,
-`nerdos-install --development-source /path/to/source` explicitly selects an
+`cybexos-install --development-source /path/to/source` explicitly selects an
 unreleased content-addressed test source. The graphical welcome on an unsigned
 development ISO explains this limitation and offers the bundled test build,
 requiring explicit consent (default: no) before disk selection. Automated use
@@ -223,7 +223,7 @@ Automated isolated installation accepts a non-secret JSON plan with `disk`,
 `serial`, `hostname`, `username`, `timezone`, `locale`, `keyboard`, `encrypted`,
 `autoLogin`, `secureBoot`, `nvidiaOpen`, optionally `fullName`, `features` and
 `desktopKeyboard`, plus `{"password":"…"}` JSON through `--secrets-fd`. Stop
-`nerdos-installer-ui.service` and `nerdos-installerd.service` first; stopping the
+`cybexos-installer-ui.service` and `cybexos-installerd.service` first; stopping the
 service cancels its idle worker and releases the installer lock. The same
 validation and disk-erasure guard run in every mode. No installer reboots
 automatically.
@@ -241,8 +241,8 @@ scripts/qualify-installations /path/to/completed.iso --interactive \
 This boots the ISO as a virtual optical disk and installs into disposable disks.
 `--interactive` installs through the real tty1 screen with QMP keyboard and
 pointer input: Enter for development consent and navigation, a pointer click on
-the encryption switch (plain case), typing a name and `NerdQA` (the service must
-receive `nerdqa`), both passwords, and a pointer click on **Erase … & install**.
+the encryption switch (plain case), typing a name and `CybexQA` (the service must
+receive `cybexqa`), both passwords, and a pointer click on **Erase … & install**.
 The serial console only observes the service's snapshots; QA-only choices (the
 installed serial console, the smaller application set) go through the same
 service. It checks plain and encrypted installed password login, then exercises

@@ -267,7 +267,7 @@ test("clipboard, emoji, and action providers have installed data sources", () =>
         /wl-paste --type text --watch [\s\S]{0,100}?clipboard-history-store/);
     assert.match(providers,
         /wl-paste --type image --watch [\s\S]{0,100}?clipboard-history-store/);
-    assert.match(providers, /\/etc\/nerdos\/emoji-test\.txt/);
+    assert.match(providers, /\/etc\/cybexos\/emoji-test\.txt/);
     assert.match(providers, /watchChanges:\s*true/);
     assert.match(packages, /\bcliphist\b/);
     assert.match(packages, /unicode-emoji/);
@@ -277,9 +277,9 @@ test("clipboard, emoji, and action providers have installed data sources", () =>
     const catalogue = Object.fromEntries(load("LauncherProviders.js").BUILTIN_ACTIONS
         .map(action => [action.id, action]));
     assert.deepEqual(catalogue["ai-agent-launch"].command,
-        ["nerd", "agent", "--window"]);
+        ["cybex", "agent", "--window"]);
     assert.deepEqual(catalogue["ai-agent-choose"].command,
-        ["nerd", "agent", "--window", "--pick"]);
+        ["cybex", "agent", "--window", "--pick"]);
 });
 
 test("emoji activation pastes into the previously active window", () => {
@@ -314,7 +314,7 @@ test("the default AI agent is discoverable from the launcher and shortcut sheet"
 
     // The sheet is drawn from the binding's own description.
     assert.match(bindings,
-        /mainMod \.\. " \+ CTRL \+ SHIFT \+ A", hl\.dsp\.exec_cmd\([^)]*nerd agent --window"\),\s*\{ description = "Apps: AI agent" \}/);
+        /mainMod \.\. " \+ CTRL \+ SHIFT \+ A", hl\.dsp\.exec_cmd\([^)]*cybex agent --window"\),\s*\{ description = "Apps: AI agent" \}/);
 });
 
 test("launcher-only motion stays brief and cannot gate input", () => {
@@ -357,7 +357,7 @@ test("launcher IPC opens a requested tab, and Super+Ctrl+V opens History", () =>
         "opening an open launcher switches tabs instead of closing it");
     assert.match(view, /function onTargetRequested\(\) \{\s*root\.selectTab\(Launcher\.openRequest\.tab\);/);
     assert.match(bindings,
-        /mainMod \.\. " \+ CTRL \+ V", hl\.dsp\.exec_cmd\("nerdos-runtime ipc launcher open clipboard"\),\s*\{ description = "Clipboard: Clipboard history" \}/);
+        /mainMod \.\. " \+ CTRL \+ V", hl\.dsp\.exec_cmd\("cybexos-runtime ipc launcher open clipboard"\),\s*\{ description = "Clipboard: Clipboard history" \}/);
 });
 
 test("argument mode turns the field into a prompt that Escape backs out of", () => {
@@ -420,7 +420,7 @@ test("clipboard entries paste on Enter, copy on Shift+Enter, and pin on Ctrl+P",
     // The one hint the History tab adds names the key.
     assert.match(view, /id: clipboardHint[\s\S]*?"Ctrl\+P unpin" : "Ctrl\+P pin"/);
     assert.match(providers, /\["python3", root\.clipboardTool, "pin", "--notify", row\.raw\]/);
-    assert.match(providers, /path: root\.dataHome \+ "\/nerdos\/clipboard\/pins\.json"/);
+    assert.match(providers, /path: root\.dataHome \+ "\/cybexos\/clipboard\/pins\.json"/);
     // A selected image shows its picture inside the row; others only a thumb.
     assert.match(view, /readonly property bool previewing: isSelected && !!modelData\.thumbnail/);
     assert.match(view, /name: "pin"/);

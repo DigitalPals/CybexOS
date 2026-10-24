@@ -1,0 +1,3 @@
+#!/usr/bin/env python3
+from cybexos.cli import entry, admin
+entry(admin)

@@ -1,4 +1,4 @@
-// Pure translation of NerdOS preferences into Omarchy's flat shell tokens.
+// Pure translation of Cybex OS preferences into Omarchy's flat shell tokens.
 function values(settings, palette, metrics, session) {
     var inherited = settings.pluginBorderMode === "inherit";
     var border = inherited ? palette.surfaceBorder : settings.pluginBorderMode === "custom" ? settings.pluginBorderColor

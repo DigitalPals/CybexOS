@@ -42,7 +42,7 @@ function expectSeparated(windows: HTMLElement[]) {
 
 async function startDesktop(user: User) {
   render(<Desktop />);
-  await user.click(screen.getByRole('button', { name: 'Close Welcome to NerdOS' }));
+  await user.click(screen.getByRole('button', { name: 'Close Welcome to Cybex OS' }));
   await user.keyboard('{Alt>}{Enter}{/Alt}');
   const terminal = screen.getByRole('region', { name: 'Kitty window' });
   const command = within(terminal).getByRole('textbox', { name: 'Terminal command' });

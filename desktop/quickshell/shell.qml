@@ -48,12 +48,12 @@ ShellRoot {
     GlobalShortcut {
         appid: "quickshell"
         name: "assistantTalk"
-        description: I18n.tr("Ask the NerdOS Assistant; hold to talk")
+        description: I18n.tr("Ask the Cybex OS Assistant; hold to talk")
         onPressed: Assistant.shortcutPressed()
         onReleased: Assistant.shortcutReleased()
     }
 
-    // `nerd assistant show|hide|toggle|ask` and scripts.
+    // `cybex assistant show|hide|toggle|ask` and scripts.
     IpcHandler {
         target: "assistant"
 
@@ -211,14 +211,14 @@ ShellRoot {
             return SystemTheme.status();
         }
 
-        // `nerd theme apply`: a named theme its helper has validated and
+        // `cybex theme apply`: a named theme its helper has validated and
         // resolved (scripts/theme-packs.py), checked again here before it
         // changes anything. Returns "ok" or "error: <reason>".
         function use(theme: string): string {
             return Themes.use(theme);
         }
 
-        // Re-reads the theme folders after `nerd theme install` or `remove`.
+        // Re-reads the theme folders after `cybex theme install` or `remove`.
         function refresh(): void {
             Themes.refresh();
         }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""nerd report: native read-only diagnostics, archive privacy and redaction.
+"""cybex report: native read-only diagnostics, archive privacy and redaction.
 
 Every system tool the report runs is a stub in PATH whose output carries the
 kinds of private values real journals and hardware listings contain. Nothing
@@ -24,8 +24,8 @@ import urllib.parse
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
-HELPER = ROOT / 'assets/scripts/nerdos-report'
-loader = importlib.machinery.SourceFileLoader('nerdos_report', str(HELPER))
+HELPER = ROOT / 'assets/scripts/cybexos-report'
+loader = importlib.machinery.SourceFileLoader('cybexos_report', str(HELPER))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 report = importlib.util.module_from_spec(spec)
 loader.exec_module(report)
@@ -55,7 +55,7 @@ KEPT = ('127.0.0.1', '::1', '7.3.0', '22:09:11', 'NixOS 26.05', '1.2.3.400',
         'max_tokens=4096', 'serial8250', '0000:01:00.0')
 
 FIXTURE_LOG = textwrap.dedent(f'''\
-    2026-10-13T22:09:11+0200 {HOST} quickshell[2211]: QML error at /home/{USER}/.config/nerdos/shell.json:12
+    2026-10-13T22:09:11+0200 {HOST} quickshell[2211]: QML error at /home/{USER}/.config/cybexos/shell.json:12
     token=ghp_0123456789abcdefghijABCDEFGHIJ0123456789 and github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuv
     ANTHROPIC_API_KEY=sk-ant-api03-abcdefghijklmnopqrstuvwxyz012345 OPENAI sk-proj-ABCDEFGHIJKLMNOPQRSTUV123456
     aws AKIAIOSFODNN7EXAMPLE google AIzaSyA1234567890abcdefghijklmnopqrstuv slack xoxb-1234567890-abcdefghij
@@ -80,18 +80,18 @@ FIXTURE_LOG = textwrap.dedent(f'''\
 ''')
 
 STUBS = {
-    'nerd': f'''
+    'cybex': f'''
         case $1 in
           update) printf '%s\\n' '{{"state":"awaiting-boot"}}' ;;
           version) echo '1.0.0-beta.1' ;;
-          shell) printf '%s\\n' '{{"safe":false,"path":"/home/{USER}/.local/state/nerdos/shell.json"}}' ;;
-          report) exec "$NERDOS_REPORT" "${{@:2}}" ;;
+          shell) printf '%s\\n' '{{"safe":false,"path":"/home/{USER}/.local/state/cybexos/shell.json"}}' ;;
+          report) exec "$CYBEXOS_REPORT" "${{@:2}}" ;;
         esac
     ''',
     'journalctl': '''
-        for unit in nerdos-stage@local.service nerdos-apply@0123456789abcdef.service \\
-                    nerdos-rollback.service nerdos-confirm.service \\
-                    nerdos-recover.service nerdos-region.service; do
+        for unit in cybexos-stage@local.service cybexos-apply@0123456789abcdef.service \\
+                    cybexos-rollback.service cybexos-confirm.service \\
+                    cybexos-recover.service cybexos-region.service; do
           for pattern in "$@"; do
             if [[ $unit == $pattern ]]; then
               printf 'LIFECYCLE_UNIT:%s\\n' "$unit"
@@ -144,7 +144,7 @@ class RedactorFixtures(unittest.TestCase):
             self.assertNotIn(secret, text, secret)
         for value in KEPT:
             self.assertIn(value, text, value)
-        self.assertIn('/home/[user]/.config/nerdos/shell.json', text)
+        self.assertIn('/home/[user]/.config/cybexos/shell.json', text)
         self.assertIn('/home/[user]/Downloads', text)
         for kind in ('token', 'key', 'email', 'mac', 'ipv4', 'ipv6', 'serial', 'ssid', 'home', 'host', 'user'):
             self.assertGreater(redact.counts.get(kind, 0), 0, kind)
@@ -175,7 +175,7 @@ report = importlib.util.module_from_spec(spec)
 loader.exec_module(report)
 report.socket.gethostname = lambda: 'fixture-private-host'
 original_read = report.read
-report.read = lambda path, limit=None: json.dumps({'schema': 1, 'units': ['NetworkManager.service'], 'userUnits': []}) if str(path) == '/etc/nerdos/health-services.json' else original_read(path, limit)
+report.read = lambda path, limit=None: json.dumps({'schema': 1, 'units': ['NetworkManager.service'], 'userUnits': []}) if str(path) == '/etc/cybexos/health-services.json' else original_read(path, limit)
 sys.exit(report.main(sys.argv[2:]))
 """
 
@@ -197,7 +197,7 @@ class Fixture:
 
     def environment(self):
         return {'PATH': f"{self.bin}:{os.environ['PATH']}", 'HOME': str(self.home), 'USER': USER,
-                'FIXTURE': str(self.fixture), 'NERDOS_REPORT': str(HELPER), 'PYTHONDONTWRITEBYTECODE': '1',
+                'FIXTURE': str(self.fixture), 'CYBEXOS_REPORT': str(HELPER), 'PYTHONDONTWRITEBYTECODE': '1',
                 'XDG_STATE_HOME': str(self.home / '.local/state')}
 
     def run(self, *argv, command=None):
@@ -219,7 +219,7 @@ class Bundle(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             output = json.loads(result.stdout)
             path = Path(output['path'])
-            self.assertRegex(path.name, r'^nerdos-report-\d{8}-\d{6}\.tar\.gz$')
+            self.assertRegex(path.name, r'^cybexos-report-\d{8}-\d{6}\.tar\.gz$')
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
             content = members(path)
             self.assertEqual(set(content), {
@@ -236,14 +236,14 @@ class Bundle(unittest.TestCase):
             summary = json.loads(content['summary.json'])
             self.assertEqual(summary['health'], 'warning')
             self.assertEqual(summary['attention'], ['deployment'])
-            self.assertEqual(summary['nerdos'], '1.0.0-beta.1')
+            self.assertEqual(summary['cybexos'], '1.0.0-beta.1')
             self.assertIn('NVIDIA Corporation AD102 [10de:2684] (nvidia)', summary['gpus'])
             self.assertGreater(summary['redactions']['token'], 0)
             json.loads(content['health.json'])
             self.assertIn('/home/[user]', content['shell-health.json'])
-            for unit in ('nerdos-stage@local.service', 'nerdos-apply@0123456789abcdef.service',
-                         'nerdos-rollback.service', 'nerdos-confirm.service',
-                         'nerdos-recover.service', 'nerdos-region.service'):
+            for unit in ('cybexos-stage@local.service', 'cybexos-apply@0123456789abcdef.service',
+                         'cybexos-rollback.service', 'cybexos-confirm.service',
+                         'cybexos-recover.service', 'cybexos-region.service'):
                 self.assertIn('LIFECYCLE_UNIT:' + unit, content['journal/update-worker.txt'])
             self.assertFalse((fixture.fixture / 'opened').exists(), '--json never opens a browser')
 
@@ -253,11 +253,11 @@ class Bundle(unittest.TestCase):
             output = json.loads(fixture.run('--json', '--output', str(fixture.base)).stdout)
             url = urllib.parse.urlsplit(output['issueUrl'])
             self.assertEqual(f'{url.scheme}://{url.netloc}{url.path}',
-                             'https://github.com/DigitalPals/NerdOS/issues/new')
+                             'https://github.com/DigitalPals/CybexOS/issues/new')
             query = urllib.parse.parse_qs(url.query)
             self.assertEqual(query['template'], ['bug_report.yml'])
             environment = query['environment'][0]
-            self.assertIn('- NerdOS: 1.0.0-beta.1', environment)
+            self.assertIn('- Cybex OS: 1.0.0-beta.1', environment)
             self.assertIn(Path(output['path']).name, environment)
             self.assertLess(len(output['issueUrl']), 2000, 'the body stays short; logs go in the archive')
             form = (ROOT / '.github/ISSUE_TEMPLATE/bug_report.yml').read_text()
@@ -301,9 +301,9 @@ class NativeDiagnostics(unittest.TestCase):
             ('systemctl', 'is-system-running'): (0, 'running'),
             ('systemctl', 'is-active', 'NetworkManager.service'): (0, 'active'),
             ('systemctl', '--user', 'is-active', 'personal.service'): (0, 'active'),
-            ('nerd', 'update', 'status'): (0, '{"state":"done"}'),
+            ('cybex', 'update', 'status'): (0, '{"state":"done"}'),
             ('hyprctl', '-j', 'configerrors'): (0, '["", " "]'),
-            ('nerd', 'shell', 'status'): (0, '{"safe":false}'),
+            ('cybex', 'shell', 'status'): (0, '{"safe":false}'),
             ('systemctl', '--user', 'is-active', 'quickshell.service'): (0, 'active'),
         }
         values.update(replies or {})
@@ -325,8 +325,8 @@ class NativeDiagnostics(unittest.TestCase):
     def test_failed_service_pending_deployment_and_safe_shell_are_actionable(self):
         result = self.probe({
             ('systemctl', 'is-active', 'NetworkManager.service'): (3, 'failed'),
-            ('nerd', 'update', 'status'): (0, '{"state":"awaiting-boot"}'),
-            ('nerd', 'shell', 'status'): (0, '{"safe":true,"reason":"Repeated crashes"}'),
+            ('cybex', 'update', 'status'): (0, '{"state":"awaiting-boot"}'),
+            ('cybex', 'shell', 'status'): (0, '{"safe":true,"reason":"Repeated crashes"}'),
         })
         warnings = {check['name']: check['detail'] for check in result['checks'] if check['state'] == 'warning'}
         self.assertEqual(result['overall'], 'warning')
@@ -335,7 +335,7 @@ class NativeDiagnostics(unittest.TestCase):
         self.assertIn('Repeated crashes', warnings['shell'])
 
     def test_unavailable_and_malformed_responses_never_mean_healthy(self):
-        for command in [('nerd', 'update', 'status'), ('hyprctl', '-j', 'configerrors'), ('nerd', 'shell', 'status'),
+        for command in [('cybex', 'update', 'status'), ('hyprctl', '-j', 'configerrors'), ('cybex', 'shell', 'status'),
                         ('systemctl', '--user', 'is-active', 'quickshell.service')]:
             with self.subTest(command=command):
                 self.assertEqual(self.probe({command: (127, 'not installed')})['overall'], 'warning')

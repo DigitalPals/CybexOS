@@ -120,7 +120,7 @@ end
 hl = { dsp = { window = {}, workspace = {} }, plugin = {},
   get_loaded_plugins = function() return world.plugin_loaded and { { name = world.plugin_name or "hyprbars" } } or {} end }
 function hl.plugin.load(path)
-  assert(path == "/etc/nerdos/titlebars.so", "unexpected plugin path")
+  assert(path == "/etc/cybexos/titlebars.so", "unexpected plugin path")
   world.plugin_declarations = world.plugin_declarations + 1
 end
 setmetatable(hl.plugin, { __index = function(_, key)
@@ -237,7 +237,7 @@ function hl.dsp.window.move(spec) return function()
   local win = spec.window
   if spec.workspace then
     local destination
-    if spec.workspace == "special:nerdos-minimized" then
+    if spec.workspace == "special:cybexos-minimized" then
       destination = workspace(-99)
       if not destination then destination = { id = -99, name = spec.workspace, special = true, monitor = win.monitor, windows = 0 }; world.workspaces[#world.workspaces + 1] = destination end
     else destination = workspace(spec.workspace) or create(tonumber(spec.workspace)) end
@@ -326,10 +326,10 @@ world.active_window = first
 -- hyprland.lua collects ordinary Lua arrays from looknfeel/user float rules.
 -- Include actual generated-config patterns; these tables have no JSON .n tag.
 local exclusions = {
-  class = { "(?:^nerd$)", "(?:xdg-desktop-portal-gtk)" },
-  title = { "(?:^NerdOS Settings$)", "(?:^Welcome to NerdOS$)" },
+  class = { "(?:^cybex$)", "(?:xdg-desktop-portal-gtk)" },
+  title = { "(?:^Cybex OS Settings$)", "(?:^Welcome to Cybex OS$)" },
 }
-_G.__nerdos_float_exclusions = exclusions
+_G.__cybexos_float_exclusions = exclusions
 local ws = load()
 check(ws.snapshot.error == "", "nonempty generated float exclusions broke workspace refresh: " .. ws.snapshot.error)
 check(exclusions.class.n == nil and exclusions.title.n == nil and #exclusions.class == 2 and #exclusions.title == 2,
@@ -361,10 +361,10 @@ check(snapshot_row(ws, 1).layout == "dwindle", "cycling custom native layout did
 ws.set_layout(1, "default")
 local registered_gesture
 hl.gesture = function(spec) registered_gesture = spec end
-_G.__nerdos_gestures = { active = { { name = "workspace", fingers = 3, direction = "horizontal" } } }
-function _G.__nerdos_gestures.remove(name)
-  for i, entry in ipairs(_G.__nerdos_gestures.active) do
-    if entry.name == name then table.remove(_G.__nerdos_gestures.active, i); return true end
+_G.__cybexos_gestures = { active = { { name = "workspace", fingers = 3, direction = "horizontal" } } }
+function _G.__cybexos_gestures.remove(name)
+  for i, entry in ipairs(_G.__cybexos_gestures.active) do
+    if entry.name == name then table.remove(_G.__cybexos_gestures.active, i); return true end
   end
   return false
 end
@@ -435,7 +435,7 @@ check(created == 19 and workspace(created).monitor == internal, "Shared allocati
 check(named.name == "research" and named.monitor == external and special.monitor == external,
   "Shared allocation modified named/special workspaces")
 ws.set_mode("per-monitor")
-_G.__nerdos_gestures.remove("workspace")
+_G.__cybexos_gestures.remove("workspace")
 registered_gesture = nil
 ws.set_mode("shared"); ws.set_mode("per-monitor")
 check(registered_gesture == nil, "mode transition ignored a workspace swipe opt-out")
@@ -487,7 +487,7 @@ ws.set_layout(1, "dwindle"); ws.set_layout(1, "floating")
 -- Restore clamps geometry to scaled/rotated current usable bounds.
 world.active_window, world.focused = independent, internal
 ws.minimize(independent.address)
-check(independent.workspace.name == "special:nerdos-minimized" and #ws.snapshot.minimized == 1, "minimize did not retain reachable metadata")
+check(independent.workspace.name == "special:cybexos-minimized" and #ws.snapshot.minimized == 1, "minimize did not retain reachable metadata")
 ws = load()
 check(#ws.snapshot.minimized == 1, "Lua reload lost minimized origin")
 internal.scale, internal.transform, internal.width, internal.height = 2, 1, 1920, 1080
@@ -602,7 +602,7 @@ local regular_open = open_window("0xd157", renamed)
 check(regular_open.floating and floating.tagged(regular_open, floating.FLOATED)
   and floating.tagged(regular_open, floating.FLOATING) and not floating.tagged(regular_open, floating.OPENED),
   "explicit Floating did not claim/decorate a new client before the mapping callback returned")
-local app_open = open_window("0xd158", renamed, { floating = true, class = "nerd", title = "NerdOS Settings" })
+local app_open = open_window("0xd158", renamed, { floating = true, class = "cybex", title = "Cybex OS Settings" })
 local dialog_open = open_window("0xd159", renamed, { floating = true, modal = true })
 local full_open = open_window("0xd15a", renamed, { fullscreen = 2 })
 local pinned_open = open_window("0xd15b", renamed, { floating = true, pinned = true })
@@ -730,7 +730,7 @@ check(named_native_owner.floating and named_native_child.floating,
 -- layout controller alone: minimize origin/session metadata stays with its
 -- coordinator and is not manufactured by an opening ownership callback.
 local origin_layout = floating.new(function() error("nonregular destination queried a managed layout") end)
-local minimized_destination = { id = -99, name = "special:nerdos-minimized", special = true, monitor = internal }
+local minimized_destination = { id = -99, name = "special:cybexos-minimized", special = true, monitor = internal }
 for _, target in ipairs({ native_named, special, minimized_destination }) do
   for _, provenance in ipairs({ floating.USER, floating.FLOATED }) do
     local native_float = provenance == floating.FLOATED
@@ -747,7 +747,7 @@ ws.set_default_layout("floating")
 -- Installed plugins are declared on each parse, never on event/runtime edits.
 local native_open = io.open
 io.open = function(path, mode)
-  if path == "/etc/nerdos/titlebars.so" then return { close = function() end } end
+  if path == "/etc/cybexos/titlebars.so" then return { close = function() end } end
   return native_open(path, mode)
 end
 ws = load()

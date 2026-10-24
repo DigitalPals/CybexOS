@@ -1,7 +1,0 @@
-#!/usr/bin/env python3
-"""Try one boot while retaining the previous generation as persistent default."""
-import sys
-from nerdos.boot import trial
-from nerdos.cli import entry
-
-entry(lambda: trial(sys.argv[1:]))

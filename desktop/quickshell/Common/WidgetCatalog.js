@@ -30,13 +30,13 @@ var WIDGETS = {
     gh: { name: "GitHub", short: "GitHub", detail: true, glyph: "code", description: "Watch GitHub repositories and activity." },
     updates: { name: "Updates", short: "Updates", tag: "when pending", detail: true, glyph: "update", description: "Check software updates and installation progress." },
     tray: { name: "System tray", short: "System tray", tag: "when populated", glyph: "apps", description: "Access background applications." },
-    assistant: { name: "Assistant", short: "Assistant", glyph: "assistant", description: "Show or hide the NerdOS Assistant, which answers questions and changes NerdOS for you." },
+    assistant: { name: "Assistant", short: "Assistant", glyph: "assistant", description: "Show or hide the Cybex OS Assistant, which answers questions and changes Cybex OS for you." },
     notifications: { name: "Notifications", short: "Notifications", detail: true, glyph: "notifications", description: "Open notification history and unread messages." },
     vol: { name: "Volume", short: "Volume", detail: true, glyph: "volume_up", description: "Adjust volume and audio devices." },
     wifi: { name: "Network", short: "Network", glyph: "wifi", description: "Manage network connections." },
     bt: { name: "Bluetooth", short: "Bluetooth", tag: "when connected", glyph: "bluetooth", description: "Manage connected Bluetooth devices." },
     batt: { name: "Battery", short: "Battery", tag: "on laptops", detail: true, glyph: "battery_full", description: "Monitor battery charge and power status." },
-    control: { name: "Control Center", short: "Control Center", glyph: "tune", description: "Open Control Center from the NerdOS button. Configure its tabs, overview, and behavior." }
+    control: { name: "Control Center", short: "Control Center", glyph: "tune", description: "Open Control Center from the Cybex OS button. Configure its tabs, overview, and behavior." }
 };
 
 // Never null: a widget id that outlived its catalog entry still has to draw a

@@ -4,7 +4,7 @@
 //
 // A binding appears only when it carries a description. Descriptions use the
 // convention "Group: Label", split at the first ": ". The vendor groups come
-// first in GROUP_ORDER; groups introduced by ~/.config/nerdos/hypr/user.lua
+// first in GROUP_ORDER; groups introduced by ~/.config/cybexos/hypr/user.lua
 // follow in the order Hyprland lists them, and a description with no group
 // lands in "Other", last.
 

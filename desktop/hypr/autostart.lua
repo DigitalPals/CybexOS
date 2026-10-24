@@ -1,3 +1,3 @@
 hl.on("hyprland.start", function()
-  hl.exec_cmd("nerdos-session-start")
+  hl.exec_cmd("cybexos-session-start")
 end)

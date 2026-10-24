@@ -209,7 +209,7 @@ AssistantSurface {
                     selectedTextColor: Theme.textHi
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.control
-                    Accessible.name: I18n.tr("Ask the NerdOS Assistant")
+                    Accessible.name: I18n.tr("Ask the Cybex OS Assistant")
                     Accessible.description: I18n.tr("Enter sends. Shift Enter inserts a newline.")
                     Component.onCompleted: text = Assistant.draft
 
@@ -246,7 +246,7 @@ AssistantSurface {
                     Text {
                         visible: input.text === ""
                         width: parent.width
-                        text: Assistant.connected ? I18n.tr("Ask NerdOS anything…")
+                        text: Assistant.connected ? I18n.tr("Ask Cybex OS anything…")
                             : I18n.tr("The assistant service is not running.")
                         elide: Text.ElideRight
                         color: Theme.textFaint

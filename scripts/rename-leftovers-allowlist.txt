@@ -1,12 +1,15 @@
-# Each exception preserves supplied material, immutable attribution or the scanner itself.
-README.md :: ^Formerly CybexOS\.$  # the single public name-history sentence
-docs/rename-to-nerdos.md :: CybexOS|cybex  # scope, baseline evidence and documented old identity
-assets/brand/USAGE.md :: ^\*\*NerdOS\*\* \(formerly CybexOS\)  # supplied usage guide is preserved verbatim
-assets/PROVENANCE.json :: "creator": "CybexOS contributors  # immutable attribution for existing wallpaper bytes
-scripts/generate-wallpapers.py :: Original CybexOS landscapes|\x27creator\x27: \x27CybexOS contributors  # preserve the original generator and its recorded digest
-hardware/xps/camera/patches/0005-ipu7-psys-stock-core-layout.patch :: ^From: CybexOS <cybexos@localhost>$  # historical patch author
-hardware/xps/camera/patches/0006-camera-hal-native-cvs-bridge.patch :: ^From: CybexOS <cybexos@localhost>$  # historical patch author
-desktop/quickshell/ModelUsage/THIRD_PARTY_NOTICES.md :: ^\x23\x23 DigitalPals/cybexos-config$|CybexOS.*commit  # pinned upstream/design-reference attribution
-scripts/check_leftovers.py :: cybex|Cybex  # scanner must recognize the retired spelling
-scripts/rename-inventory.py :: cybex|Cybex|CYBEX  # inventory must recognize the retired spellings
-scripts/rename-leftovers-allowlist.txt :: .  # the explicit exception patterns necessarily contain retired names
+# Retired spelling exceptions are limited to history, the scanners and upstream font names.
+docs/rename-to-nerdos.md :: .  # archived report and artifacts for the previous rename
+docs/measurements/* :: .  # recorded evidence describes the revision actually exercised
+docs/branding.md :: NerdOS|Nerd Font  # explains the reverted identity
+scripts/check_leftovers.py :: (?i)nerdos|nerd  # scanner must recognize retired names
+scripts/rename-inventory.py :: (?i)nerdos|nerd  # inventory must recognize retired names
+scripts/rename-leftovers-allowlist.txt :: .  # exception patterns necessarily mention retired names
+nix/modules/applications.nix :: nerd-fonts  # upstream Nixpkgs attribute
+desktop/defaults/kitty.conf :: Nerd Font  # upstream font family
+desktop/hypr/hyprlock.conf :: Nerd Font  # upstream font family
+docs/omarchy-plugin-compatibility.md :: Nerd Font  # upstream font family
+desktop/quickshell/Ui/PanelSectionHeader.qml :: JetBrainsMono Nerd  # upstream font family comment
+desktop/quickshell/Common/SettingsHelpers.js :: Nerd Font  # upstream font family
+desktop/quickshell/Common/Theme.qml :: Nerd Font  # upstream font family
+tests/quickshell/* :: Nerd Font  # upstream font family assertions

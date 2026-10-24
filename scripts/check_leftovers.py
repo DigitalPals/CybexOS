@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Fail if any 'cybex' reference survives the rename outside the allowlist (stdlib only).
+"""Fail if any 'NerdOS / nerd' reference survives the rename outside the allowlist (stdlib only).
 
 Usage:
   python3 check_leftovers.py [--repo REPO_ROOT] [--allowlist FILE] [--untracked] [--show-allowed]
 
 Scans tracked file paths and text contents (plus untracked, non-ignored files
-with --untracked) for /cybex/i. Every hit must match an allowlist rule:
+with --untracked) for the retired product name and CLI. Every hit must match an allowlist rule:
 
     <path-glob> :: <regex on the matching line>      # reason (required)
 
@@ -49,12 +49,12 @@ def allowed(path, subject):
 
 
 cmd = ["git", "-C", str(root), "ls-files", "-z"]
-files = [f for f in subprocess.run(cmd, check=True, capture_output=True, text=True).stdout.split("\0") if f]
+files = [f for f in subprocess.run(cmd, check=True, capture_output=True, text=True).stdout.split("\0") if f and (root / f).is_file()]
 if args.untracked:
     cmd = ["git", "-C", str(root), "ls-files", "-z", "--others", "--exclude-standard"]
     files += [f for f in subprocess.run(cmd, check=True, capture_output=True, text=True).stdout.split("\0") if f]
 
-NAME = re.compile(r"(?i)cybex")
+NAME = re.compile(r"(?i)nerdos|\bnerd\b")
 bad, ok = [], []
 for rel in files:
     if NAME.search(rel):
@@ -77,9 +77,9 @@ if args.show_allowed and ok:
     print(f"== allowlisted ({len(ok)})")
     print("\n".join(ok))
 if bad:
-    print(f"== unexpected 'cybex' references ({len(bad)})")
+    print(f"== unexpected 'NerdOS / nerd' references ({len(bad)})")
     print("\n".join(bad))
     files_bad = len({b.split(":", 1)[0].split("  [", 1)[0] for b in bad})
     print(f"\nFAIL: {len(bad)} unexpected references in {files_bad} files ({len(ok)} allowlisted).")
     sys.exit(1)
-print(f"OK: no unexpected 'cybex' references ({len(ok)} allowlisted).")
+print(f"OK: no unexpected 'NerdOS / nerd' references ({len(ok)} allowlisted).")

@@ -143,7 +143,7 @@ test("T3Socket stays reachable by URL, since it is not a type", () => {
 
 test("notification image fingerprint wrapper loads through one fixed lazy URL", () => {
     assert.match(read("Common/Notifs.qml"), /active:\s*false\s+asynchronous:\s*false\s+source:\s*"NotifImageFingerprint\.qml"/);
-    assert.match(read("Common/NotifImageFingerprint.qml"), /import NerdOS\.Images 1\.0/);
+    assert.match(read("Common/NotifImageFingerprint.qml"), /import CybexOS\.Images 1\.0/);
 });
 
 test("HermesSocket stays reachable by URL, since it is not a type", () => {

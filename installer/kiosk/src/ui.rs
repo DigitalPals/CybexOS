@@ -20,7 +20,7 @@ use crate::zones::{Hit, ZoneDb};
 use crate::{AppRow, Check, Choice, DiskRow, Filtered, InstallerWindow, StageRow, Store, SummaryRow, UsbRow, WifiRow, ZoneRow};
 
 const STAGES: [(&str, &str); 6] = [
-    ("Preparing the selected disk", "A GPT layout with the EFI system partition and the NerdOS root"),
+    ("Preparing the selected disk", "A GPT layout with the EFI system partition and the Cybex OS root"),
     ("Creating filesystems and encryption", "Your password becomes the disk key"),
     ("Recording hardware and your configuration", "Your settings go into /etc/nixos; your password never enters the Nix store"),
     ("Building and installing your desktop", "Most of it is copied from this medium; the rest downloads"),
@@ -33,7 +33,7 @@ const TIPS: [(&[&str], &str); 6] = [
     (&["Super", "Return"], "opens a terminal. Fish is already set up."),
     (&["Super", "K"], "shows every keyboard shortcut the desktop actually has."),
     (&["Super", "Tab"], "opens the window overview with live thumbnails."),
-    (&["Super", "I"], "talks to the NerdOS Assistant. Hold it to dictate."),
+    (&["Super", "I"], "talks to the Cybex OS Assistant. Hold it to dictate."),
     (&["Super", "Ctrl", "V"], "opens clipboard history. Ctrl+P pins an entry."),
 ];
 
@@ -345,7 +345,7 @@ impl App {
             _ if state.development => Check { label: s("Release"), value: s(format!("Test build {}", self.statics.version)), detail: s("Bundled source, not a published release"), state: 3 },
             _ => Check {
                 label: s("Release"),
-                value: s(format!("NerdOS {} · signature verified", self.statics.version)),
+                value: s(format!("Cybex OS {} · signature verified", self.statics.version)),
                 detail: s(state.release.split(" • ").nth(1).unwrap_or("")),
                 state: 0,
             },
@@ -592,7 +592,7 @@ impl App {
             ),
             row(
                 "Release",
-                format!("NerdOS {}", self.statics.version),
+                format!("Cybex OS {}", self.statics.version),
                 if state.development { "unreleased test build".into() } else { "signature verified".into() },
                 "",
                 "",
@@ -650,7 +650,7 @@ impl App {
             (
                 "STOPPED BEFORE ANY DISK CHANGE",
                 "This computer started in legacy BIOS mode.",
-                "NerdOS installs only in UEFI mode. None of your disks have been touched.".to_string(),
+                "Cybex OS installs only in UEFI mode. None of your disks have been touched.".to_string(),
                 "Boot mode",
                 "Legacy BIOS".to_string(),
                 vec!["Restart and open the boot menu (often F12, F11 or Esc).", "Choose the UEFI entry for this USB drive or network boot.", "If there is none, enable UEFI boot in the firmware settings."],
@@ -664,7 +664,7 @@ impl App {
                 "This installer isn't signed for Secure Boot yet, and it never turns Secure Boot off for you. None of your disks have been touched.".to_string(),
                 "Secure Boot",
                 "Enabled".to_string(),
-                vec!["Restart into your firmware settings with the button below.", "Turn Secure Boot off, then save and exit.", "Start the NerdOS installer again."],
+                vec!["Restart into your firmware settings with the button below.", "Turn Secure Boot off, then save and exit.", "Start the Cybex OS installer again."],
                 "firmware",
             )
         } else {
@@ -885,7 +885,7 @@ impl App {
         store.set_details(s(lines[start..].join("\n")));
         store.set_details_error(s(&details.error));
         store.set_details_note(s(format!(
-            "Private log /run/nerdos-installer.log{}. Passwords never appear here.",
+            "Private log /run/cybexos-installer.log{}. Passwords never appear here.",
             if details.truncated || start > 0 { ", most recent part" } else { "" }
         )));
     }

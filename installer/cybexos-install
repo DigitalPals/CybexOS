@@ -1,0 +1,887 @@
+#!/usr/bin/env python3
+"""Fresh UEFI installation. This executable is enabled only on the live ISO."""
+import argparse
+import contextlib
+from contextlib import contextmanager
+import fcntl
+import getpass
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import secrets as random_secrets
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from urllib.parse import urlencode
+
+from cybexos.common import CommandFailure, Failure, Runner, atomic, parse, read
+from cybexos.engine import copy_config
+from cybexos.credentials import validate_password
+from cybexos.installer_network import ensure_internet
+from cybexos.trust import REPO, Fetcher, validate_release, verify, version
+
+ETC = Path('/etc/cybexos')
+CACHE = Path('/run/cybexos-installer-cache')
+LOCK = Path('/run/cybexos-installer.lock')
+DISK_PATTERN = r'/dev/(sd[a-z]+|vd[a-z]+|nvme[0-9]+n[0-9]+)'
+JSON_UI = False
+INSTALL_LOG = Path('/run/cybexos-installer.log')
+MAX_DETAILS = 256 * 1024
+
+
+def installation_details():
+    """A bounded, private read for the live UI, including while the worker runs."""
+    try:
+        with INSTALL_LOG.open('rb') as stream:
+            stream.seek(0, os.SEEK_END)
+            truncated = stream.tell() > MAX_DETAILS
+            stream.seek(max(0, stream.tell() - MAX_DETAILS))
+            data = stream.read(MAX_DETAILS)
+        if truncated:
+            data = data.partition(b'\n')[2]
+        text = data.decode('utf-8', errors='replace')
+        # Build tools may emit terminal escape sequences. This is plain text,
+        # never markup or something to execute in a terminal.
+        text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', text)
+        text = ''.join(c for c in text if c in '\n\t' or ord(c) >= 32)
+        return {'text': text or 'No installation output has been recorded yet.', 'truncated': truncated}
+    except FileNotFoundError:
+        return {'text': 'No installation log exists yet. The worker may have stopped before installation began.', 'truncated': False}
+
+
+def event(kind, **values):
+    global JSON_UI
+    if JSON_UI:
+        try:
+            print(json.dumps({'event': kind, **values}), flush=True)
+        except (BrokenPipeError, OSError):
+            # The screen's service went away. A running installation keeps
+            # going and keeps its private log; it never stops for lost output.
+            JSON_UI = False
+            with contextlib.suppress(OSError):
+                sys.stdout = open(os.devnull, 'w')
+
+
+def ensure_network(run):
+    def notify(message):
+        event('network', message=message)
+        if not JSON_UI:
+            print(message, flush=True)
+
+    def note(message):
+        if os.geteuid() == 0 and (ETC / 'installer').is_file():
+            with INSTALL_LOG.open('a') as log:
+                log.write(time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime()) + ' · ' + message + '\n')
+
+    try:
+        servers = [line.split()[1] for line in Path('/etc/resolv.conf').read_text().splitlines()
+                   if line.split()[:1] == ['nameserver'] and len(line.split()) >= 2]
+    except OSError:
+        servers = []
+    note('Configured DNS servers: ' + (', '.join(servers) or 'none'))
+    return ensure_internet(run, notify, note)
+
+
+def stage(number, message):
+    event('stage', stage=number, total=6, message=message)
+    if not JSON_UI:
+        print(f'[{number}/6] {message}', flush=True)
+
+
+class Cancelled(Exception):
+    """A deliberate cancellation before disk preparation."""
+
+
+class UnreleasedMedia(Failure):
+    """There is no publisher trust for a production installation."""
+
+
+def ask(label, default=None, check=None):
+    """Keep a correctable answer on its current step."""
+    while True:
+        answer = input(label + (f' [{default}]' if default is not None else '') + ': ').strip()
+        answer = answer or (default if default is not None else '')
+        try:
+            if check:
+                check(answer)
+            return answer
+        except Failure as error:
+            print(f'  {str(error).rstrip(".")}. Please try again.\n')
+
+
+def yes_no(label, default=True):
+    def check(answer):
+        if answer.lower() not in ('y', 'yes', 'n', 'no'):
+            raise Failure('Enter yes or no')
+    return ask(label, 'Y' if default else 'N', check).lower() in ('y', 'yes')
+
+
+def choose(label, values, default):
+    def check(answer):
+        if answer.lower() not in values:
+            raise Failure('Enter ' + ', '.join(values))
+    return ask(label, default, check).lower()
+
+
+def password(label):
+    while True:
+        value = getpass.getpass(label + ': ')
+        try:
+            validate_password(value)
+            return value
+        except Failure as error:
+            print(f'  {error}. Please try again.\n')
+
+
+@contextmanager
+def build_progress():
+    """Show activity without exposing private command output or inventing a percentage."""
+    finished = threading.Event()
+    started = time.monotonic()
+    def report():
+        while not finished.wait(20):
+            elapsed = int(time.monotonic() - started)
+            event('activity', elapsed=elapsed, message='Building and downloading packages')
+            if not JSON_UI:
+                print(f'  Building and downloading packages — {elapsed // 60}m {elapsed % 60:02d}s elapsed.', flush=True)
+    reporter = threading.Thread(target=report, daemon=True)
+    reporter.start()
+    try:
+        yield
+    finally:
+        finished.set()
+        reporter.join()
+
+
+def authenticate_media(fetch, etc, recover_network=None):
+    """Authenticate the exact release this medium was built and tested from.
+
+    Media install only their own source. A channel that later advances must not
+    change what an already-qualified ISO installs, so no channel is consulted to
+    select a release. The medium's channel policy is applied to its own
+    immutable release manifest and becomes the installed machine's choice.
+    """
+    media, policy, trust = read(etc / 'release.json'), read(etc / 'update.json'), read(etc / 'trust.json')
+    if not isinstance(trust, dict) or not isinstance(trust.get('keys'), dict) or not trust['keys']:
+        raise UnreleasedMedia('Production installation is blocked: no owner-controlled publisher trust keys are configured. Nothing has been erased')
+    if not isinstance(policy, dict) or policy.get('channel') not in ('stable', 'beta'):
+        raise Failure('Installation medium has no supported release channel. Nothing has been erased')
+    if (not isinstance(media, dict) or not isinstance(media.get('revision'), str) or not isinstance(media.get('narHash'), str)
+            or not re.fullmatch('[0-9a-f]{40}', media['revision'])
+            or not re.fullmatch(r'sha256-[A-Za-z0-9+/]{43}=', media['narHash'])
+            or not isinstance(media.get('architecture'), str) or not isinstance(media.get('nixos'), str)):
+        raise Failure('Installation medium was not built from an exact committed release source. Nothing has been erased')
+    try:
+        version(media.get('version'))
+        url = f'https://github.com/{REPO}/releases/download/v{media["version"]}/manifest.json'
+        try:
+            document, signature = fetch.get(url), fetch.get(url + '.sig')
+        except Failure as error:
+            cause = error
+            while cause is not None and not isinstance(cause, socket.gaierror):
+                reason = getattr(cause, 'reason', None)
+                cause = reason if isinstance(reason, BaseException) else cause.__cause__
+            if cause is None or recover_network is None:
+                raise
+            recover_network()
+            document, signature = fetch.get(url), fetch.get(url + '.sig')
+        release = verify(document, signature, trust, 'release')
+        # The medium's own version is the floor, so the channel policy also
+        # rejects a stable-channel installation of a prerelease medium.
+        validate_release(release, media['version'], media['architecture'], media['nixos'], policy['channel'])
+    except Failure as error:
+        raise Failure(f'{str(error).rstrip(".")}. The installation medium was not authenticated; nothing has been erased') from error
+    if any(release[field] != media[field] for field in ('version', 'revision', 'narHash')):
+        raise Failure('Published release identity differs from this installation medium. Nothing has been erased')
+    return release, policy['channel']
+
+
+NIXPKGS_BRANCH = 'nixos-26.05'
+
+
+def vendor_nixpkgs(source):
+    """Return the root Nixpkgs lock node that the vendor source was tested with.
+
+    The source must already be authenticated (or explicitly selected for
+    development). Only its lock file is read; nothing is evaluated. Seeding the
+    machine lock with this node keeps the installer from resolving the moving
+    branch head, while the original branch selector still lets later upstream
+    updates advance independently.
+    """
+    try:
+        lock = read(Path(source) / 'flake.lock')
+        if type(lock.get('version')) is not int or lock['version'] != 7:
+            raise Failure('unsupported lock version')
+        name = lock['nodes'][lock['root']]['inputs']['nixpkgs']
+        node = lock['nodes'][name] if isinstance(name, str) else None
+        original, locked = node['original'], node['locked']
+        if (set(node) != {'original', 'locked'}
+                or original != {'type': 'github', 'owner': 'NixOS', 'repo': 'nixpkgs', 'ref': NIXPKGS_BRANCH}
+                or not isinstance(locked, dict)
+                or {k: locked.get(k) for k in ('type', 'owner', 'repo')} != {'type': 'github', 'owner': 'NixOS', 'repo': 'nixpkgs'}
+                or not set(locked) <= {'type', 'owner', 'repo', 'rev', 'narHash', 'lastModified'}
+                or not isinstance(locked.get('rev'), str) or not re.fullmatch('[0-9a-f]{40}', locked['rev'])
+                or not isinstance(locked.get('narHash'), str) or not re.fullmatch(r'sha256-[A-Za-z0-9+/]{43}=', locked['narHash'])
+                or ('lastModified' in locked and (type(locked['lastModified']) is not int or locked['lastModified'] < 1))):
+            raise Failure('unsupported Nixpkgs lock node')
+    except (Failure, OSError, AttributeError, KeyError, TypeError) as error:
+        raise Failure('Installation source has no exact tested stable Nixpkgs lock. No disk has been erased.') from error
+    return {'original': dict(original), 'locked': dict(locked)}
+
+
+def copy_initial_inputs(archived, target, run):
+    """Retain the already authenticated live-store sources in the new system."""
+    paths = set()
+    def collect(node):
+        paths.add(node['path'])
+        for child in node.get('inputs', {}).values():
+            collect(child)
+    collect(archived)
+    # ISO store registration omits source CA/signature metadata. These paths
+    # have already been selected and verified through the authenticated lock;
+    # this is a direct copy from the trusted live store into our new local
+    # target, like nixos-install's closure transfer. Scope the exemption to this
+    # copy; leave remote fetches and the installed cache trust policy intact.
+    run('nix', 'copy', '--no-check-sigs', '--to', 'local?root=' + str(target), *sorted(paths))
+    roots = target / 'nix/var/nix/gcroots/cybexos-initial'
+    roots.mkdir(parents=True)
+    for index, path in enumerate(sorted(paths)):
+        (roots / str(index)).symlink_to(path)
+    atomic(target / 'var/lib/cybexos/initial-inputs.json', archived)
+
+
+def detect(sysroot=Path('/sys'), cpuinfo=Path('/proc/cpuinfo')):
+    def text(path):
+        try:
+            return (sysroot / path).read_text().strip()
+        except OSError:
+            return ''
+    vendor = text('class/dmi/id/sys_vendor')
+    product = text('class/dmi/id/product_name')
+    sku = text('class/dmi/id/product_sku')
+    cpu = cpuinfo.read_text()
+    xps = 'Dell' in vendor and any(s in product for s in ('XPS 14', 'XPS 16', 'DA14260', 'DA16260')) and sku in ('0DB9', '0DBA') and ('Panther' in cpu or 'Ultra' in cpu)
+    pci, graphics = [], []
+    for device in sorted((sysroot / 'bus/pci/devices').glob('*')):
+        try:
+            vendor_id = (device / 'vendor').read_text().strip()
+            pci.append(vendor_id + ':' + (device / 'device').read_text().strip())
+            display_class = (device / 'class').read_text().strip().startswith('0x03')
+            domain, bus, slot, function = re.fullmatch(r'([0-9a-fA-F]{4}):([0-9a-fA-F]{2}):([0-9a-fA-F]{2})\.([0-7])', device.name).groups()
+            # PRIME's ordinary PCI:b:d:f identifiers are unambiguous only in
+            # domain zero. Leave unusual multi-domain hardware for an explicit
+            # administrator choice instead of guessing a different GPU.
+            if display_class and int(domain, 16) == 0:
+                graphics.append((vendor_id, f'PCI:{int(bus, 16)}:{int(slot, 16)}:{int(function, 16)}'))
+        except (OSError, AttributeError):
+            continue
+    nvidia = [bus for vendor_id, bus in graphics if vendor_id == '0x10de']
+    intel = [bus for vendor_id, bus in graphics if vendor_id == '0x8086']
+    amd = [bus for vendor_id, bus in graphics if vendor_id == '0x1002']
+    prime = {'enable': len(nvidia) == 1 and len(intel) + len(amd) == 1,
+             'nvidiaBusId': nvidia[0] if len(nvidia) == 1 else '',
+             'intelBusId': intel[0] if len(intel) == 1 else '',
+             'amdgpuBusId': amd[0] if len(amd) == 1 else ''}
+    acpi = any('OVTI08F4' in p.name for p in (sysroot / 'bus/acpi/devices').glob('*'))
+    panel = ''
+    for p in (sysroot / 'class/drm').glob('*eDP-*/edid'):
+        try:
+            data = p.read_bytes()
+            if len(data) >= 12:
+                panel = data[8:12].hex()
+        except OSError:
+            pass
+    return {'nvidia': any(s.startswith('0x10de:') for s in pci), 'nvidiaPrime': prime, 'xps': xps, 'sku': sku, 'panel': panel,
+            'camera': xps and acpi and '0x8086:0xb05d' in pci}
+
+
+def known_timezone(value):
+    roots = [Path('/etc/zoneinfo'), Path('/usr/share/zoneinfo')]
+    if os.environ.get('TZDIR'):
+        roots.append(Path(os.environ['TZDIR']))
+    return any((root / value).is_file() for root in roots)
+
+
+def validate_field(key, value):
+    patterns = {'hostname': r'[a-z][a-z0-9-]{0,30}', 'username': r'[a-z][a-z0-9-]{0,30}',
+                'timezone': r'[A-Za-z0-9_+-]+(?:/[A-Za-z0-9_+-]+)*',
+                'locale': r'[A-Za-z][A-Za-z0-9_@.-]{0,79}', 'keyboard': r'[A-Za-z0-9_-]{1,80}',
+                'desktopKeyboard': r'[a-z][a-z0-9_-]{0,31}'}
+    if not isinstance(value, str) or not re.fullmatch(patterns[key], value) or '..' in value:
+        hints = {'hostname': 'Use a computer name starting with a lowercase letter, followed by letters, digits or hyphens (31 characters maximum)',
+                 'username': 'Use a username starting with a lowercase letter, followed by letters, digits or hyphens (31 characters maximum)'}
+        raise Failure(hints.get(key, f'Invalid {key}'))
+    if key in ('hostname', 'username') and value in ('root', 'nixos'):
+        raise Failure(f'Choose a {key} other than root or nixos')
+    if key == 'username' and value in reserved_names():
+        raise Failure(f'The username {value} is reserved by the system. Choose another username')
+    if key == 'timezone' and not known_timezone(value):
+        raise Failure('Unknown timezone; examples: UTC, Europe/Amsterdam, America/New_York')
+
+
+def reserved_names():
+    """System user and group names of the product the medium installs.
+
+    The ISO records them from the evaluated payload system, so a clashing
+    username is refused at review instead of failing activation after the
+    disk has already been erased.
+    """
+    names = read(ETC / 'installer-reserved-names.json', [])
+    return set(names) if isinstance(names, list) else set()
+
+
+FULL_NAME_FORBIDDEN = set(':,\\"$`')
+
+
+def validate_full_name(value):
+    # The description becomes a GECOS field and a Nix string: no separators,
+    # quoting or interpolation characters, and nothing invisible.
+    if (not isinstance(value, str) or not value.strip() or len(value) > 64 or value != value.strip()
+            or any(ord(c) < 32 or ord(c) == 127 or c in FULL_NAME_FORBIDDEN for c in value)):
+        raise Failure('Your name may not contain : , \\ " $ ` or control characters (64 characters at most)')
+
+
+def validate(plan):
+    required = {'disk', 'serial', 'hostname', 'username', 'timezone', 'locale', 'keyboard', 'encrypted', 'autoLogin', 'secureBoot', 'nvidiaOpen'}
+    if not isinstance(plan, dict) or not required.issubset(plan) or set(plan) - required - {'features', 'serialConsole', 'desktopKeyboard', 'fullName'}:
+        raise Failure('Installation plan has missing or unknown fields')
+    if 'fullName' in plan:
+        validate_full_name(plan['fullName'])
+    for key in ('hostname', 'username', 'timezone', 'locale', 'keyboard'):
+        validate_field(key, plan[key])
+    if not isinstance(plan['disk'], str) or not re.fullmatch(DISK_PATTERN, plan['disk']):
+        raise Failure('Select a whole supported disk')
+    if not isinstance(plan['serial'], str) or not 1 <= len(plan['serial']) <= 256 or any(ord(c) < 32 for c in plan['serial']):
+        raise Failure('Invalid disk serial')
+    for key in ('encrypted', 'autoLogin', 'secureBoot', 'nvidiaOpen'):
+        if type(plan[key]) is not bool:
+            raise Failure('Invalid boolean installation choice')
+    if not isinstance(plan.get('features', {}), dict) or any(k not in ('developer','proprietary','steam','docker','podman','tailscale','connectedWidgets','assistant','localNetworkServices') or type(v) is not bool for k,v in plan.get('features', {}).items()):
+        raise Failure('Invalid optional application group choices')
+    if type(plan.get('serialConsole', False)) is not bool:
+        raise Failure('Invalid serial console choice')
+    if plan['autoLogin'] and not plan['encrypted']:
+        raise Failure('Automatic login requires encryption')
+    validate_field('desktopKeyboard', plan.get('desktopKeyboard', plan['keyboard']))
+    return plan
+
+
+def check_platform(secure_boot=False):
+    if not Path('/sys/firmware/efi').exists():
+        raise Failure('Boot this installer in UEFI mode. Nothing has been erased')
+    enabled = any(p.read_bytes()[-1:] == b'\x01' for p in Path('/sys/firmware/efi/efivars').glob('SecureBoot-*'))
+    if enabled and not secure_boot:
+        raise Failure('Secure Boot is enabled. A signed installer and locally enrolled signing keys are required; it will not be disabled.')
+    if secure_boot:
+        raise Failure('Secure Boot enrollment must be provisioned and qualified before installation; no signing key was supplied. No disk has been erased.')
+
+
+def disks():
+    return parse(subprocess.check_output(['lsblk', '--json', '--bytes', '--output', 'PATH,TYPE,SIZE,MODEL,SERIAL,FSTYPE,MOUNTPOINTS,RO']))['blockdevices']
+
+
+def layout():
+    policy = read(ETC / 'installer-layout.json')
+    if (not isinstance(policy, dict) or set(policy) != {'minimumDiskGiB', 'espGiB'}
+            or any(type(value) is not int for value in policy.values())
+            or not 1 <= policy['espGiB'] < policy['minimumDiskGiB'] <= 4096
+            or policy['minimumDiskGiB'] - policy['espGiB'] < 32):
+        raise Failure('Installation medium is missing its shared disk layout. Nothing has been erased')
+    return policy
+
+
+def disk_guard(plan):
+    minimum = layout()['minimumDiskGiB']
+    found = next((d for d in disks() if d['path'] == plan['disk'] and d['type'] == 'disk'), None)
+    if not found or found['ro'] or not found.get('serial') or found['serial'] != plan['serial']:
+        raise Failure('Disk identity changed or is unavailable. Nothing has been erased.')
+    def mounted(node):
+        return any(node.get('mountpoints', [])) or any(mounted(c) for c in node.get('children', []))
+    if mounted(found) or found['size'] < minimum * 1024**3:
+        raise Failure(f'Selected disk is mounted or smaller than {minimum} GiB. Nothing has been erased.')
+    swap_devices = {s.split()[0] for s in Path('/proc/swaps').read_text().splitlines()[1:]}
+    nodes = subprocess.check_output(['lsblk', '-nrpo', 'PATH', plan['disk']], text=True).splitlines()
+    if swap_devices.intersection(nodes):
+        raise Failure('Selected disk contains active swap. Nothing has been erased.')
+
+
+APPLICATION_GROUPS = (
+    ('developer', 'Development tools'), ('proprietary', 'Proprietary applications'),
+    ('steam', 'Steam and gaming'), ('docker', 'Docker'), ('podman', 'Podman'),
+    ('tailscale', 'Tailscale'), ('connectedWidgets', 'Connected desktop widgets'),
+    ('assistant', 'Cybex OS Assistant'),
+    ('localNetworkServices', 'Local network discovery services'),
+)
+
+
+def interactive(release):
+    check_platform()
+    print('\033[2J\033[H\033[1;38;2;96;165;250mCybex OS\033[0m  •  A desktop that stays yours\n')
+    logo = Path(os.environ['CYBEXOS_UPDATER_SHARE']) / 'brand/ascii/cybexos-compact.fastfetch.txt'
+    print(logo.read_text().replace('$1', '\033[38;2;243;242;236m').replace('$2', '\033[38;2;96;165;250m') + '\033[0m')
+    print('Fresh installation • UEFI • NixOS 26.05\n' + release)
+    print('\nConnect to the internet and power before continuing. Back up the target disk.')
+    print('You will review all settings before anything is erased. Ctrl+C cancels.\n')
+    defaults = read(ETC / 'installer-defaults.json')
+    if not isinstance(defaults, dict) or any(type(defaults.get(key)) is not bool for key, _ in APPLICATION_GROUPS):
+        raise Failure('Installation medium is missing its shared application defaults. Nothing has been erased')
+    hardware = detect()
+    plan = {'hostname': 'cybexos', 'timezone': 'UTC', 'locale': 'en_US.UTF-8', 'keyboard': 'us',
+            'encrypted': True, 'autoLogin': False, 'secureBoot': False, 'nvidiaOpen': True, 'features': {}}
+    while True:
+        print('\n1 of 5 · Choose a disk\n')
+        available = [disk for disk in disks() if disk['type'] == 'disk' and re.fullmatch(DISK_PATTERN, disk['path'])]
+        if not available:
+            raise Failure(f'No installation disks found. Attach a writable disk of at least {layout()["minimumDiskGiB"]} GiB and restart the installer')
+        for index, disk in enumerate(available, 1):
+            print(f"  {index}. {disk['path']}  {disk['size'] // 1024**3} GiB  {(disk.get('model') or '').strip()}  serial: {disk.get('serial') or 'unavailable'}")
+        print('\nThe entire selected disk will be erased, including every partition.')
+        def select(answer):
+            choice = next((disk for index, disk in enumerate(available, 1)
+                           if answer in (str(index), disk['path'])), None)
+            if choice is None:
+                raise Failure('Choose a listed disk number or its complete /dev path')
+            disk_guard({'disk': choice['path'], 'serial': choice.get('serial')})
+        selected = ask('Disk number or path', plan.get('disk'), select)
+        disk = next(disk for index, disk in enumerate(available, 1) if selected in (str(index), disk['path']))
+        plan.update(disk=disk['path'], serial=disk['serial'])
+        print('\n2 of 5 · Make it yours\n')
+        for key, label in (('username', 'Your username'), ('hostname', 'Computer name'),
+                           ('timezone', 'Timezone (for example Europe/Amsterdam)'), ('locale', 'System language / locale'),
+                           ('keyboard', 'Console keymap, including disk unlock')):
+            plan[key] = ask(label, plan.get(key), lambda value, key=key: validate_field(key, value))
+        full_name = ask('Your full name (optional)', plan.get('fullName'),
+                        lambda value: value and validate_full_name(value))
+        if full_name:
+            plan['fullName'] = full_name
+        else:
+            plan.pop('fullName', None)
+        # Console keymap names and XKB layout names need not match.
+        desktop_default = {'uk': 'gb', 'de-latin1': 'de', 'fr-latin9': 'fr'}.get(plan['keyboard'], plan['keyboard'])
+        plan['desktopKeyboard'] = ask('Desktop keyboard layout', plan.get('desktopKeyboard', desktop_default),
+                                      lambda value: validate_field('desktopKeyboard', value))
+        print('\n3 of 5 · Applications\n')
+        print('Standard desktop defaults:')
+        for key, label in APPLICATION_GROUPS:
+            print(f"  {label}: {'included' if defaults[key] else 'off'}")
+        if yes_no('Choose application groups individually?', bool(plan['features'])):
+            plan['features'] = {key: yes_no(label, plan['features'].get(key, defaults[key])) for key, label in APPLICATION_GROUPS}
+        else:
+            plan['features'] = {}
+        if hardware['nvidia']:
+            plan['nvidiaOpen'] = yes_no('Use the open NVIDIA kernel driver?', plan['nvidiaOpen'])
+        print('\n4 of 5 · Protect your desktop\n')
+        print('Encryption protects your files when the computer is off. Keep its passphrase safe.')
+        plan['encrypted'] = yes_no('Encrypt this disk? (recommended)', plan['encrypted'])
+        if not plan['encrypted']:
+            print('  Files on this disk will be stored without encryption. Password login remains required.')
+        plan['autoLogin'] = plan['encrypted'] and yes_no('Automatic desktop login after verified disk unlock?', plan['autoLogin'])
+        validate(plan)
+        print('\n5 of 5 · Review your installation\n')
+        model = (disk.get('model') or '').strip()
+        print(f"  Erase disk: {plan['disk']} · {disk['size'] // 1024**3} GiB" + (f' · {model}' if model else ''))
+        print(f"  Disk serial: {plan['serial']}\n  Account: {plan['username']} on {plan['hostname']}")
+        print(f"  Region: {plan['timezone']} · {plan['locale']}")
+        print(f"  Keyboard: console {plan['keyboard']} · desktop {plan['desktopKeyboard']}")
+        print(f"  Encryption: {'LUKS2' if plan['encrypted'] else 'OFF — files are not encrypted'}")
+        print(f"  Desktop login: {'automatic after disk unlock' if plan['autoLogin'] else 'password required'}")
+        if hardware['nvidia']:
+            print(f"  NVIDIA driver: {'open' if plan['nvidiaOpen'] else 'proprietary'}")
+        for key, label in APPLICATION_GROUPS:
+            print(f"  {label}: {'included' if plan['features'].get(key, defaults[key]) else 'off'}")
+        action = choose('Continue, change settings, or cancel', ('continue', 'change', 'cancel'), 'continue')
+        if action == 'cancel':
+            raise Cancelled()
+        if action == 'change':
+            continue
+        print('\nSet your password (at least 8 characters). Input is hidden.')
+        print('Your login password also authorizes administration. Configure additional sign-in methods after installation.')
+        secrets = {'password': password('Password')}
+        if not yes_no(f"Erase all data on {model or plan['disk']} ({plan['disk']}, {disk['size'] // 1024**3} GiB) and install Cybex OS?", False):
+            raise Cancelled()
+        return plan, secrets
+
+
+def install(plan, secrets, source, revision, nar_hash, run=Runner(), *, channel):
+    validate(plan)
+    if channel not in ('stable', 'beta'):
+        raise Failure('Installation requires a supported release channel. No disk has been erased.')
+    check_platform(plan['secureBoot'])
+    hardware = detect()
+    # A hardware stack is never silently omitted to permit an install.
+    if hardware['camera']:
+        print('Detected IPU7 camera: its complete native stack will be built; build failures stop installation.')
+    if not isinstance(secrets, dict) or set(secrets) != {'password'}:
+        raise Failure('Supply one password for login and disk encryption')
+    validate_password(secrets['password'])
+    source_path = source.removeprefix('path:')
+    if not source.startswith('path:'):
+        if (not re.fullmatch('[0-9a-f]{40}', revision)
+                or not re.fullmatch(r'sha256-[A-Za-z0-9+/]{43}=', nar_hash)
+                or source != 'github:DigitalPals/CybexOS/' + revision):
+            raise Failure('Installation requires an authenticated exact release source')
+        # Lock generation evaluates vendor flake metadata. Authenticate its
+        # downloaded bytes before that evaluation and before touching the disk.
+        # Keep narHash out of the machine URL: its plain exact revision is the
+        # stable lock-file contract shared with the updater.
+        fetched = parse(run('nix', 'flake', 'prefetch', '--json',
+                            source + '?' + urlencode({'narHash': nar_hash})))
+        if not isinstance(fetched, dict) or fetched.get('hash') != nar_hash:
+            raise Failure('Installation source does not match its authenticated NAR identity. No disk has been erased.')
+        source_path = fetched.get('storePath')
+        if not isinstance(source_path, str) or not re.fullmatch(r'/nix/store/[0-9a-z]{32}-[^/]+', source_path):
+            raise Failure('Authenticated installation source has no store path. No disk has been erased.')
+    # The initial machine uses the Nixpkgs revision this release was tested
+    # with; resolving the moving branch here would install an untested set.
+    nixpkgs = vendor_nixpkgs(source_path)
+    ensure_network(run)
+    # Recheck the disk immediately before preparation: source downloads can
+    # take long enough for a device to be unplugged or remounted.
+    disk_guard(plan)
+    suffix = 'p' if plan['disk'][-1].isdigit() else ''
+    esp, root = plan['disk'] + suffix + '1', plan['disk'] + suffix + '2'
+    mounted, opened = False, False
+    # Nix's local target store rejects world-writable ancestry, including /tmp.
+    # /run is a root-owned trusted parent in the shared NixOS live environment.
+    with tempfile.TemporaryDirectory(prefix='cybexos-install-', dir='/run') as temporary:
+        # Nix's build users must traverse the public target/configuration path.
+        # Keep credentials in their separate mode-0700 directory below.
+        Path(temporary).chmod(0o755)
+        target = Path(temporary) / 'target'
+        target.mkdir()
+        target.chmod(0o755)
+        try:
+            stage(1, 'Preparing the selected disk…')
+            run('sgdisk', '--zap-all', plan['disk'])
+            run('sgdisk', '-n', f'1:1MiB:+{layout()["espGiB"]}GiB', '-t', '1:ef00', '-c', '1:Cybex OS EFI',
+                '-n', '2:0:0', '-t', '2:8300', '-c', '2:Cybex OS root', plan['disk'])
+            run('udevadm', 'settle')
+            stage(2, 'Creating filesystems' + (' and LUKS2 encryption…' if plan['encrypted'] else '…'))
+            run('mkfs.vfat', '-F', '32', '-n', 'CYBEXOS_EFI', esp)
+            if plan['encrypted']:
+                run('cryptsetup', 'luksFormat', '--type', 'luks2', '--batch-mode', '--key-file', '-', root,
+                    input=secrets['password'].encode(), sensitive=True)
+                run('cryptsetup', 'open', '--key-file', '-', root, 'cybexos-install-root', input=secrets['password'].encode(), sensitive=True)
+                opened = True
+                root = '/dev/mapper/cybexos-install-root'
+            run('mkfs.ext4', '-L', 'cybexos-root', root)
+            # Udev's filesystem hints can lag immediately after formatting a
+            # reused device. Mount the filesystem we just created explicitly.
+            run('mount', '-t', 'ext4', root, target); mounted = True
+            (target / 'boot').mkdir()
+            run('mount', '-t', 'vfat', esp, target / 'boot')
+            secret_dir = target / 'var/lib/cybexos/secrets'
+            secret_dir.mkdir(parents=True, mode=0o700)
+            # Hash the login password over stdin; neither plaintext nor hash is
+            # embedded in Nix source or a process argument.
+            password_hash = run('openssl', 'passwd', '-6', '-stdin', input=secrets['password'].encode(), sensitive=True).strip()
+            config = target / 'var/lib/cybexos/working/initial'
+            config.parent.mkdir(parents=True)
+            for directory in (target / 'var', target / 'var/lib', target / 'var/lib/cybexos', config.parent):
+                directory.chmod(0o755)
+            copy_config(Path(os.environ['CYBEXOS_UPDATER_SHARE']) / 'machine', config)
+            stage(3, 'Recording hardware and your machine configuration…')
+            flake = (config / 'flake.nix').read_text().replace('github:DigitalPals/CybexOS/REPLACE_WITH_AUTHENTICATED_REVISION', source)
+            atomic(config / 'flake.nix', flake.encode(), 0o644)
+            run('nixos-generate-config', '--root', target, '--dir', config)
+            (config / 'configuration.nix').unlink(missing_ok=True)
+            nix = json.dumps
+            machine = '{ ... }: {\n  cybexos = {\n    enable = true;\n'
+            machine += f'    primaryUser = {nix(plan["username"])}; encrypted = {str(plan["encrypted"]).lower()}; autoLogin = {str(plan["autoLogin"]).lower()};\n'
+            # Persist the medium's channel as the machine's own choice: the
+            # vendor default follows each release's version, so a later stable
+            # release must not silently move a beta machine to stable.
+            machine += f'    updates.channel = {nix(channel)};\n'
+            machine += f'    hardware.nvidia = {str(hardware["nvidia"]).lower()}; hardware.nvidiaOpen = {str(plan["nvidiaOpen"]).lower()};\n'
+            if hardware['nvidiaPrime']['enable']:
+                prime = hardware['nvidiaPrime']
+                machine += '    hardware.nvidiaPrime = { enable = true; '
+                machine += ' '.join(f'{key} = {nix(prime[key])};' for key in ('intelBusId', 'amdgpuBusId', 'nvidiaBusId')) + ' };\n'
+            if hardware['xps']:
+                machine += f'    hardware.xps = {{ enable = true; sku = {nix(hardware["sku"])}; panel = {nix(hardware["panel"])}; camera = {str(hardware["camera"]).lower()}; }};\n'
+            for key, value in plan.get('features', {}).items():
+                machine += f'    features.{key} = {str(value).lower()};\n'
+            machine += '  };\n'
+            if plan.get('serialConsole'):
+                machine += '  boot.kernelParams = [ \"console=tty0\" \"console=ttyS0,115200n8\" ];\n'
+            if plan.get('fullName'):
+                # Validated above: no quote, backslash or interpolation characters.
+                machine += f'  users.users.{nix(plan["username"])}.description = {json.dumps(plan["fullName"], ensure_ascii=False)};\n'
+            machine += f'  networking.hostName = {nix(plan["hostname"])}; time.timeZone = {nix(plan["timezone"])}; i18n.defaultLocale = {nix(plan["locale"])}; console.keyMap = {nix(plan["keyboard"])}; services.xserver.xkb.layout = {nix(plan.get("desktopKeyboard", plan["keyboard"]))};\n'
+            machine += '  system.stateVersion = "26.05";\n}\n'
+            atomic(config / 'machine.nix', machine.encode(), 0o644)
+            # Seed only the root Nixpkgs node, keeping its branch selector.
+            # Nix reuses a lock entry whose original matches flake.nix, and
+            # fills the Cybex OS input and its vendor graph around it.
+            atomic(config / 'flake.lock', {'version': 7, 'root': 'root', 'nodes': {
+                'root': {'inputs': {'nixpkgs': 'nixpkgs'}}, 'nixpkgs': nixpkgs}}, 0o644)
+            run('nix', 'flake', 'lock', f'path:{config}')
+            lock = read(config / 'flake.lock')
+            from cybexos.inputs import identity, resolved, validate_machine
+            validate_machine(lock)
+            final = resolved(lock, 'nixpkgs')
+            if {key: final.get(key) for key in ('original', 'locked')} != nixpkgs:
+                raise Failure('Initial machine Nixpkgs differs from the tested release Nixpkgs')
+            chosen = identity(lock, 'cybexos')
+            if not source.startswith('path:') and (chosen.get('rev') != revision or chosen.get('narHash') != nar_hash):
+                raise Failure('Installation source identity differs from the authenticated release')
+            (target / 'etc').mkdir(exist_ok=True)
+            (target / 'etc').chmod(0o755)
+            (target / 'etc/nixos').symlink_to('/var/lib/cybexos/working/initial')
+            stage(4, 'Building and installing your complete desktop…')
+            print('  Keep power and internet connected. Downloads and builds may take a while.\n'
+                  '  Private build log: sudo tail -f /run/cybexos-installer.log', flush=True)
+            with build_progress():
+                run('nixos-install', '--root', target, '--flake', f'path:{config}#cybexos', '--no-root-passwd', '--no-channel-copy', timeout=10800)
+            stage(5, 'Setting up your account and keyboard preferences…')
+            # Set the initial mutable account credential once. A declarative
+            # hashedPasswordFile would reset subsequent passwd changes at every
+            # activation. No credential belongs in the flake or Nix store.
+            run('nixos-enter', '--root', target, '--command', '/run/current-system/sw/bin/chpasswd -e',
+                input=(plan['username'] + ':' + password_hash + '\n').encode(), sensitive=True)
+            # Seed the initial desktop layout as personal runtime data. Later
+            # preferences do not require an OS rebuild or edits to vendor Lua.
+            passwd = next(line.split(':') for line in (target / 'etc/passwd').read_text().splitlines()
+                          if line.split(':', 1)[0] == plan['username'])
+            user_config = target / passwd[5].lstrip('/') / '.config/cybexos'
+            user_config.mkdir(parents=True, exist_ok=True)
+            input_preferences = user_config / 'input.json'
+            if not input_preferences.exists():
+                atomic(input_preferences, {'v': 1, 'keyboard': {'layouts': [{'layout': plan.get('desktopKeyboard', plan['keyboard'])}]}}, 0o600)
+            for path in (user_config.parent, user_config, input_preferences):
+                os.chown(path, int(passwd[2]), int(passwd[3]))
+            atomic(target / 'var/lib/cybexos/installation.json', {'revision': revision, 'narHash': nar_hash, 'channel': channel, 'hardware': hardware,
+                   'username': plan['username'], 'encrypted': plan['encrypted'], 'sharedPassword': True})
+            deployed = target / 'var/lib/cybexos/initial-deployed'
+            copy_config(config, deployed)
+            (target / 'var/lib/cybexos/deployed').symlink_to('/var/lib/cybexos/initial-deployed')
+            stage(6, 'Retaining the tested sources and finishing installation…')
+            archived = parse(run('nix', 'flake', 'archive', '--json', '--no-update-lock-file', f'path:{deployed}'))
+            copy_initial_inputs(archived, target, run)
+        finally:
+            try:
+                if mounted:
+                    run('umount', '-R', target)
+            finally:
+                if opened:
+                    run('cryptsetup', 'close', 'cybexos-install-root')
+    print(f"\nInstallation complete — welcome, {plan['username']}.\n"
+          f"Your computer is {plan['hostname']}. "
+          + ('Unlock the disk with its passphrase, then ' if plan['encrypted'] else '')
+          + ('your desktop will open automatically.\n' if plan['autoLogin'] else 'sign in with your login password.\n')
+          + 'Restart when ready using the desktop power menu or sudo systemctl reboot.\n'
+          'Remove the installation media as the computer restarts. No reboot has been requested.', flush=True)
+
+
+def main():
+    global JSON_UI
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--plan-file', type=Path)
+    parser.add_argument('--secrets-fd', type=int)
+    parser.add_argument('--development-source', type=Path, help='Explicit unreleased test source; never a production qualification')
+    parser.add_argument('--serial-console', action='store_true', help='Keep a serial console on the installed machine for isolated VM testing')
+    parser.add_argument('--terminal', action='store_true', help='Use the same installer through its terminal interface')
+    parser.add_argument('--json-ui', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--diagnostics', action='store_true', help=argparse.SUPPRESS)
+    args = parser.parse_args()
+    JSON_UI = args.json_ui
+    os.umask(0o077)
+    runner = Runner(INSTALL_LOG)
+    if not (ETC / 'installer').is_file():
+        raise Failure('Fresh installation is available only from the Cybex OS installation ISO')
+    if not (args.terminal or args.json_ui or args.plan_file or args.diagnostics) and (os.environ.get('WAYLAND_DISPLAY') or os.environ.get('DISPLAY')):
+        executable = shutil.which('cybexos-installer')
+        if not executable:
+            raise Failure('The graphical installer is missing. Run cybexos-install --terminal for diagnostics')
+        os.execv(executable, [executable, *sys.argv[1:]])
+    if os.geteuid() != 0:
+        # Nix store binaries have no setuid bit. A systemd user service may
+        # put system.path before the security wrappers in PATH.
+        os.execv('/run/wrappers/bin/sudo', ['sudo', 'cybexos-install', *sys.argv[1:]])
+    if args.diagnostics:
+        print(json.dumps(installation_details()), flush=True)
+        return
+    # The live desktop and another terminal must never prepare disks together.
+    with LOCK.open('a') as operation:
+        try:
+            fcntl.flock(operation, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise Failure('Another installer is running. Return to its window or wait for it to finish') from error
+        if args.json_ui:
+            graphical_session(args, runner)
+        else:
+            run_installation(args, runner)
+
+
+def resolve_source(args, runner):
+    # Select and authenticate the source before collecting choices: a medium
+    # that cannot be authenticated never asks for passwords or a disk.
+    if not args.development_source:
+        try:
+            release, channel = authenticate_media(Fetcher(CACHE), ETC, lambda: ensure_network(runner))
+        except UnreleasedMedia:
+            if getattr(args, 'json_ui', False):
+                event('development-required', message='This is an unreleased development build. Use it only for testing on a backed-up or disposable disk.')
+                request = ui_request()
+                if request != {'action': 'development', 'consent': True}:
+                    raise Cancelled()
+                args.development_source = Path((ETC / 'installer-source').read_text().strip())
+            elif args.plan_file or not sys.stdin.isatty():
+                raise
+            else:
+                print('\nCybex OS development installation\n'
+                  'This ISO is an unreleased development build. It has no publisher trust keys\n'
+                  'and cannot install an authenticated production release.\n'
+                  'Use it only for testing on a disposable disk. You will review the disk before erasing it.')
+                if not yes_no('Continue with the bundled unreleased test build?', False):
+                    raise Cancelled()
+                args.development_source = Path((ETC / 'installer-source').read_text().strip())
+    if args.development_source:
+        source_path = args.development_source.resolve()
+        metadata = parse(runner('nix', 'flake', 'metadata', '--json', f'path:{source_path}'))
+        source = f'path:{metadata["path"]}'
+        revision, nar_hash = 'UNRELEASED-' + metadata['locked']['narHash'], metadata['locked']['narHash']
+        # Unreleased sources still install the medium's own channel policy.
+        policy = read(ETC / 'update.json')
+        channel = policy.get('channel') if isinstance(policy, dict) else None
+        label = 'UNRELEASED TEST INSTALLATION: this source has not been authenticated as a published release.'
+    else:
+        source = f'github:{REPO}/' + release['revision']
+        revision, nar_hash = release['revision'], release['narHash']
+        label = f'Authenticated Cybex OS {release["version"]} • {channel} channel • exact revision {revision}'
+    if channel not in ('stable', 'beta'):
+        raise Failure('Installation requires a supported release channel. Nothing has been erased')
+    return source, revision, nar_hash, channel, label
+
+
+def ui_request():
+    line = sys.stdin.readline(65537)
+    if not line:
+        raise Cancelled()
+    if len(line) > 65536:
+        raise Failure('Installer request is too large')
+    request = parse(line)
+    if not isinstance(request, dict):
+        raise Failure('Invalid installer request')
+    if request.get('action') == 'cancel':
+        raise Cancelled()
+    return request
+
+
+def graphical_session(args, runner):
+    """Private stdin requests and public JSON events for the native live UI.
+
+    The worker owns source authentication, disk enumeration and the reviewed
+    plan. A random review token binds the final click to that exact plan.
+    No credential is sent until that click, and it is never echoed in events.
+    """
+    check_platform()
+    while True:
+        try:
+            source, revision, nar_hash, channel, label = resolve_source(args, runner)
+            ensure_network(runner)
+            break
+        except Failure as error:
+            event('preflight-error', message=str(error))
+            if ui_request().get('action') != 'retry':
+                raise Cancelled()
+    defaults = read(ETC / 'installer-defaults.json')
+    if not isinstance(defaults, dict) or any(type(defaults.get(key)) is not bool for key, _ in APPLICATION_GROUPS):
+        raise Failure('Installation medium is missing its shared application defaults')
+    regions = read(ETC / 'installer-region.json', {})
+    reviewed, token = None, None
+
+    def snapshot():
+        choices = []
+        for disk in disks():
+            if disk['type'] != 'disk' or not re.fullmatch(DISK_PATTERN, disk['path']):
+                continue
+            reason = ''
+            try:
+                disk_guard({'disk': disk['path'], 'serial': disk.get('serial')})
+            except Failure as error:
+                reason = str(error)
+            choices.append({key: disk.get(key) for key in ('path', 'serial', 'model', 'size')} | {
+                'available': not reason, 'reason': reason,
+                'filesystems': sorted({node.get('fstype') for node in disk.get('children', []) if node.get('fstype')})})
+        event('ready', disks=choices, defaults=defaults, region=regions, layout=layout(),
+              applications=[{'id': key, 'name': label} for key, label in APPLICATION_GROUPS],
+              release=label, development=bool(args.development_source), hardware=detect())
+
+    snapshot()
+    while True:
+        request = ui_request()
+        if request.get('action') == 'rescan':
+            reviewed, token = None, None
+            snapshot()
+        elif request.get('action') == 'review':
+            try:
+                candidate = validate(request.get('plan'))
+                if candidate['autoLogin']:
+                    raise Failure('The first desktop login requires your password. Automatic login can be configured after installation')
+                disk_guard(candidate)
+                reviewed, token = candidate, random_secrets.token_urlsafe(24)
+                event('review', plan=reviewed, token=token)
+            except Failure as error:
+                reviewed, token = None, None
+                event('validation-error', message=str(error))
+        elif request.get('action') == 'install':
+            if reviewed is None or request.get('token') != token or request.get('confirmed') is not True:
+                raise Failure('Review and explicitly confirm the selected disk before installation')
+            secret = request.get('secrets')
+            if args.serial_console:
+                reviewed['serialConsole'] = True
+            event('started')
+            install(reviewed, secret, source, revision, nar_hash, run=runner, channel=channel)
+            secret.clear()
+            request.clear()
+            event('complete', username=reviewed['username'], encrypted=reviewed['encrypted'], hostname=reviewed['hostname'])
+            return
+        else:
+            raise Failure('Unknown installer request')
+
+
+def run_installation(args, runner):
+    source, revision, nar_hash, channel, label = resolve_source(args, runner)
+    ensure_network(runner)
+    if args.plan_file:
+        if args.secrets_fd is None:
+            raise Failure('Automation requires passwords over a private file descriptor')
+        print(label)
+        plan = read(args.plan_file)
+        with os.fdopen(args.secrets_fd) as stream:
+            secrets = parse(stream.read(16384))
+    else:
+        plan, secrets = interactive(label)
+    if args.serial_console:
+        plan['serialConsole'] = True
+    validate(plan)
+    install(plan, secrets, source, revision, nar_hash, run=runner, channel=channel)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except Cancelled:
+        event('cancelled')
+        print('\nInstallation cancelled. Nothing has been erased. You can restart with cybex install.')
+    except (KeyboardInterrupt, EOFError):
+        event('error', message='Installation was interrupted. Review the private installation log before retrying.')
+        print('\nInstallation interrupted. Review /run/cybexos-installer.log before retrying.', file=sys.stderr)
+        sys.exit(130)
+    except Exception as error:
+        message = str(error).rstrip('.')
+        if isinstance(error, CommandFailure):
+            message = str(error).partition('. Use cybex update log')[0]
+        event('error', message=message, log='/run/cybexos-installer.log')
+        print(f'\nInstallation stopped: {message}.\nPrivate diagnostics: sudo less /run/cybexos-installer.log', file=sys.stderr)
+        if isinstance(error, UnreleasedMedia):
+            print('This development medium cannot perform an authenticated production installation.\n'
+                  'For an isolated test on a disposable disk, explicitly run:\n'
+                  '  sudo cybexos-install --development-source "$(cat /etc/cybexos/installer-source)"', file=sys.stderr)
+        sys.exit(1)

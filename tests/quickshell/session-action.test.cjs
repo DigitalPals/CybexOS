@@ -6,14 +6,14 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { shellDir } = require("./shell.cjs");
 
-const helper = path.resolve(shellDir, "../bin/nerdos-session-action");
+const helper = path.resolve(shellDir, "../bin/cybexos-session-action");
 
 // `locker` is what the lock unit does once started: "locks" (hyprctl reports
 // the session locked after `lockDelay` more queries), "hangs" (the unit stays
 // active and never locks), or "exits" (the unit is not active).
 function fixture({ initiallyLocked = false, locker = "locks", lockDelay = 0,
         onBattery = "b false", lockedHint = "no" } = {}) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nerdos-session-action."));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cybexos-session-action."));
     const bin = path.join(root, "bin");
     const state = path.join(root, "locked");
     const pending = path.join(root, "pending");
@@ -41,7 +41,7 @@ printf '%s\\n' "$TEST_LOCKED_HINT"
 `);
     fs.writeFileSync(path.join(bin, "systemctl"), `#!/usr/bin/env bash
 printf 'systemctl %s\\n' "$*" >> "$TEST_LOG"
-if [[ $* == *'start nerdos-session-lock.service'* && $TEST_LOCKER == locks ]]; then
+if [[ $* == *'start cybexos-session-lock.service'* && $TEST_LOCKER == locks ]]; then
   printf '%s\\n' "$TEST_LOCK_DELAY" > "$TEST_PENDING"
 fi
 if [[ $* == *'is-active'* ]]; then
@@ -95,8 +95,8 @@ test("suspend happens only after the singleton locker reports ready", t => {
     const result = f.run("suspend");
     assert.equal(result.status, 0, result.stderr);
     const calls = f.calls();
-    assert.ok(calls.indexOf("start nerdos-session-lock.service") >= 0);
-    assert.ok(calls.indexOf("systemctl suspend") > calls.indexOf("start nerdos-session-lock.service"));
+    assert.ok(calls.indexOf("start cybexos-session-lock.service") >= 0);
+    assert.ok(calls.indexOf("systemctl suspend") > calls.indexOf("start cybexos-session-lock.service"));
 });
 
 test("suspend waits for hyprctl to report the session locked", t => {
@@ -107,7 +107,7 @@ test("suspend waits for hyprctl to report the session locked", t => {
     assert.ok(f.locked());
     assert.ok(f.queries() >= 7, "the helper polled until the lock was reported");
     const calls = f.calls();
-    assert.ok(calls.indexOf("systemctl suspend") > calls.indexOf("start nerdos-session-lock.service"));
+    assert.ok(calls.indexOf("systemctl suspend") > calls.indexOf("start cybexos-session-lock.service"));
 });
 
 test("a stale logind LockedHint does not skip the lock before suspend", t => {
@@ -116,8 +116,8 @@ test("a stale logind LockedHint does not skip the lock before suspend", t => {
     const result = f.run("suspend");
     assert.equal(result.status, 0, result.stderr);
     const calls = f.calls();
-    assert.ok(calls.indexOf("start nerdos-session-lock.service") >= 0);
-    assert.ok(calls.indexOf("systemctl suspend") > calls.indexOf("start nerdos-session-lock.service"));
+    assert.ok(calls.indexOf("start cybexos-session-lock.service") >= 0);
+    assert.ok(calls.indexOf("systemctl suspend") > calls.indexOf("start cybexos-session-lock.service"));
 });
 
 test("a failed lock leaves the machine awake", t => {
@@ -137,7 +137,7 @@ test("a lock screen that never confirms is left running and the machine stays aw
         assert.equal(result.status, 1);
         assert.match(result.stderr, /did not secure the session/);
         const calls = f.calls();
-        assert.match(calls, /start nerdos-session-lock\.service/);
+        assert.match(calls, /start cybexos-session-lock\.service/);
         assert.doesNotMatch(calls, /stop|kill/, "the only safe failure is to stay locked");
         assert.doesNotMatch(calls, /systemctl suspend/);
     }
@@ -167,7 +167,7 @@ test("idle suspend locks first and ignores the power source by default", t => {
     assert.equal(result.status, 0, result.stderr);
     const calls = f.calls();
     assert.doesNotMatch(calls, /busctl/);
-    assert.ok(calls.indexOf("systemctl suspend") > calls.indexOf("start nerdos-session-lock.service"));
+    assert.ok(calls.indexOf("systemctl suspend") > calls.indexOf("start cybexos-session-lock.service"));
 });
 
 test("battery-only idle suspend stays awake on mains or an unknown source", t => {

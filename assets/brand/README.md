@@ -1,29 +1,15 @@
-# NerdOS artwork
+# Cybex OS artwork
 
-The supplied NerdOS identity package is preserved here unchanged, including SVG
-masters, outlined lettering, hinted small icons, ASCII art, usage rules and
-generators. Read [USAGE.md](USAGE.md) before using a mark. NerdOS means the
-**Opinionated System**, at **nerdos.org**.
+The master is [source/cybex_white.svg](source/cybex_white.svg), supplied by the
+project owner in `cybex_white.zip`. Its bytes are unchanged (SHA-256
+`8c3adcb92102d29f08f25d5c63d8f402afb0c789708d88e27291b5bbb3f4e0b5`).
 
-Deployment copies from the rename kit:
+Deployment artwork uses the same outlined paths with the original red accent
+(`#DC1E37`). Interface controls use blue independently. Small
+icons use the two paths forming the X in the supplied wordmark, with a square
+viewBox and clear space. No font is required to display the artwork.
 
-| Destination | Kit source |
-| --- | --- |
-| `desktop/plymouth/logo{,@2x}.png` | `derived/plymouth/` |
-| `desktop/quickshell/assets/nerdos{,-white}.svg` | `derived/quickshell/` |
-| `desktop/icons/hicolor/` | `derived/hicolor/` |
-| `desktop/fastfetch/` | `derived/fastfetch/` |
-| `web/public/nerdos-logo.svg` | `derived/welcome/nerdos-logo.svg` |
-| `web/public/nerdos{,-white}.svg` | `derived/quickshell/` |
-| `web/public/` favicons and manifest | `derived/web/`, excluding the example HTML snippet |
-
-Nix packages install the boot theme, hicolor icons, fastfetch files and canonical
-brand sources. The same shared module selects them for the ISO and installed
-system. No Fedora/Cockpit welcome or new-owner window exists in this NixOS tree;
-the terminal installer and browser welcome carry the identity.
-
-These marks are original project artwork supplied in October 2026, under the
-repository MIT license. Space Grotesk and JetBrains Mono lettering is outlined
-from SIL OFL 1.1 fonts; these SVGs have no live-text/font dependency. Their font
-copyright and licence notices are in `FONT-LICENSES/`.
-Trademark clearance for **NerdOS** remains an owner task.
+`scripts/export-brand.py` exports the logo, icons, favicons, terminal art,
+installer and Plymouth/ISO images, plus a SHA-256 manifest of deployed assets.
+It requires Python with Pillow and `rsvg-convert` from the locked Nixpkgs.
+See [USAGE.md](USAGE.md) for the palette and intended uses.

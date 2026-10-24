@@ -7,8 +7,8 @@ import sys
 import urllib.error
 import urllib.request
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lifecycle'))
-from nerdos.common import Failure, read
-from nerdos.trust import https, verify, validate_release
+from cybexos.common import Failure, read
+from cybexos.trust import https, verify, validate_release
 
 def verify_assets(manifest, trust, local=False, *, expected_version=None, expected_revision=None, expected_nar_hash=None):
     release = verify(manifest.read_bytes(), Path(str(manifest) + '.sig').read_bytes(), trust, 'release')

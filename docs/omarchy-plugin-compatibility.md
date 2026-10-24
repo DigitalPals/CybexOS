@@ -1,6 +1,6 @@
 # Omarchy plugin compatibility
 
-NerdOS supports all six Omarchy plugin kinds: **bar-widget, service, panel,
+Cybex OS supports all six Omarchy plugin kinds: **bar-widget, service, panel,
 overlay, menu, and replacement bar**. Packages using the implemented host
 contract can run unchanged. This includes the tested upstream Pomodoro widget,
 Media service/widget, and Bar replacement. It is not a guarantee that every
@@ -21,12 +21,12 @@ default branch is not the compatibility boundary.
 | --- | --- |
 | Six plugin kinds, defaults, service/UI lifecycle, repeated widgets, replacement bars | Implemented, with representative fixtures and the limits below; not universal package compatibility |
 | Git package management | `add`, `update [--preview]`, and `remove`; candidate manifests/entrypoints are validated before installation or fast-forward. Dirty/diverged checkouts are rejected; settings and data survive removal |
-| Built-in customization | `clone <id> <new-id> [--edit]`, with `--from <omarchy-checkout>` for built-in manifests and `clonePaths`. Installed originals are disabled and restored when the clone is removed. Native NerdOS built-ins are not replaced by Omarchy clone IDs |
+| Built-in customization | `clone <id> <new-id> [--edit]`, with `--from <omarchy-checkout>` for built-in manifests and `clonePaths`. Installed originals are disabled and restored when the clone is removed. Native Cybex OS built-ins are not replaced by Omarchy clone IDs |
 | Management menus | Settings → Omarchy plugins supports trusted Git installs, enable/disable, update preview/update, clone and confirmed removal; built-in imports from an Omarchy checkout use the CLI |
 | Code reload | Two-second discovery refresh detects package edits and loads versioned snapshots, including relative QML/JS imports. `keepLoaded` services survive code reload; disable/re-enable or `plugin restart` recreates them |
-| Shell IPC | Added configuration/theme refresh, placement and settings mutations, panel toggling, transparency and geometry methods. Mutations are queued, and NerdOS schemas/validation differ; this is not exact signature/result parity |
-| First-party integrations | Full bars receive narrow idle, nightlight, notification and media adapters backed by NerdOS. Authentication, Omarchy commands and external backends are not supplied |
-| Manifest acceptance | Stricter here, not identical. For example, NerdOS requires an ID beginning with a letter, while upstream's package CLI also accepts a leading digit; NerdOS also requires entrypoint keys to exactly match declared kinds |
+| Shell IPC | Added configuration/theme refresh, placement and settings mutations, panel toggling, transparency and geometry methods. Mutations are queued, and Cybex OS schemas/validation differ; this is not exact signature/result parity |
+| First-party integrations | Full bars receive narrow idle, nightlight, notification and media adapters backed by Cybex OS. Authentication, Omarchy commands and external backends are not supplied |
+| Manifest acceptance | Stricter here, not identical. For example, Cybex OS requires an ID beginning with a letter, while upstream's package CLI also accepts a leading digit; Cybex OS also requires entrypoint keys to exactly match declared kinds |
 
 The lack of a marketplace is a local limitation, but is **not established as
 a parity gap** by this upstream revision. Its plugin catalogue enumerates local
@@ -51,9 +51,9 @@ the current installed desktop.
 
 ## Install and configure
 
-Install a trusted package with `nerd plugin add <git-url-or-local-repository>`,
+Install a trusted package with `cybex plugin add <git-url-or-local-repository>`,
 then enable it, or put a complete plugin checkout in
-`~/.local/share/nerdos/plugins/<manifest-id>/`. The directory must match
+`~/.local/share/cybexos/plugins/<manifest-id>/`. The directory must match
 its manifest ID. Preserve the manifest, QML, relative imports, scripts, and
 assets. No manifest conversion or Omarchy installation is required. Packages
 are trusted executable QML running as the desktop user; they are not sandboxed.
@@ -62,15 +62,15 @@ Enabling a package does not run its installer or install its dependencies.
 For the tested `markbus-ai/omarchy-pomodoro` package:
 
 ```bash
-nerd plugin enable markbusking.pomodoro --section right --width 90
-nerd plugin set markbusking.pomodoro workMinutes 25
-nerd plugin set markbusking.pomodoro sound false
-nerd plugin list
+cybex plugin enable markbusking.pomodoro --section right --width 90
+cybex plugin set markbusking.pomodoro workMinutes 25
+cybex plugin set markbusking.pomodoro sound false
+cybex plugin list
 ```
 
 ### Declared settings
 
-Upstream schema 1 defines no settings format, so NerdOS reads an optional
+Upstream schema 1 defines no settings format, so Cybex OS reads an optional
 `barWidget.schema` array, the convention used by packages such as
 `digitalpals.model-usage`. The widget's settings dialog (Settings → Bar →
 the widget) draws each entry as an ordinary settings row, with its `label`,
@@ -91,15 +91,15 @@ or whose saved value its control cannot show exactly (wrong type, an undeclared
 option, a number out of range), is not drawn as a row. That key, and any saved
 key the schema does not mention, stays in the dialog's raw JSON editor, so no
 saved value is hidden. The schema is presentation only: the CLI and IPC still
-accept any JSON value. NerdOS's own `apiVersion` manifests can declare the same
+accept any JSON value. Cybex OS's own `apiVersion` manifests can declare the same
 `barWidget.schema`; their defaults come only from each entry's `defaultValue`.
 
 Preferences apply at once. Package code refreshes within two seconds while
-Settings is open and within five minutes otherwise; `nerd plugin update`
-reloads at once, and `nerd plugin reload` requests an immediate scan through
-the running shell. `nerd plugin restart` explicitly restarts the managed
+Settings is open and within five minutes otherwise; `cybex plugin update`
+reloads at once, and `cybex plugin reload` requests an immediate scan through
+the running shell. `cybex plugin restart` explicitly restarts the managed
 `quickshell.service`.
-Disable with `nerd plugin disable <id>`; files and preferences remain.
+Disable with `cybex plugin disable <id>`; files and preferences remain.
 
 Manage packages in **Settings → Omarchy plugins**, or from the CLI. The page
 links the community directory at <https://plugins.omarchy.org/>; its Source
@@ -108,12 +108,12 @@ command the directory hands out (the command words and flags such as
 `--enable` are dropped, so the package still starts disabled).
 
 ```bash
-nerd plugin update markbusking.pomodoro --preview
-nerd plugin update markbusking.pomodoro
-nerd plugin clone markbusking.pomodoro personal.pomodoro --edit
-nerd plugin remove personal.pomodoro
+cybex plugin update markbusking.pomodoro --preview
+cybex plugin update markbusking.pomodoro
+cybex plugin clone markbusking.pomodoro personal.pomodoro --edit
+cybex plugin remove personal.pomodoro
 # Import a built-in from a trusted checkout of the pinned upstream revision:
-nerd plugin clone omarchy.spacer personal.spacer --from ~/Code/omarchy
+cybex plugin clone omarchy.spacer personal.spacer --from ~/Code/omarchy
 ```
 
 Cloning copies settings, enables the new ID and disables an installed original.
@@ -122,7 +122,7 @@ state. Removing any package preserves its preferences and persistent data.
 Clones are editable copies without Git history; update their source explicitly.
 Enabling a built-in import does not install its operating-system dependencies.
 
-Hot reload uses snapshots under `$XDG_RUNTIME_DIR/nerd-plugin-code/`, keyed by
+Hot reload uses snapshots under `$XDG_RUNTIME_DIR/cybex-plugin-code/`, keyed by
 shell PID/start time and package fingerprint. Old snapshots remain for the
 session so retained services can still read their original assets; later scans
 remove dead sessions, and logout clears the runtime directory. Original package
@@ -139,31 +139,31 @@ section's plugin space and reports overflow instead of covering built-ins.
 For a widget whose manifest declares `barWidget.allowMultiple: true`:
 
 ```bash
-nerd plugin instance example.widget work --section left --width 100
-nerd plugin instance example.widget personal --section right --width 100
-nerd plugin set example.widget label '"Work"' --instance work
-nerd plugin merge example.widget '{"label":"Personal"}' --instance personal
+cybex plugin instance example.widget work --section left --width 100
+cybex plugin instance example.widget personal --section right --width 100
+cybex plugin set example.widget label '"Work"' --instance work
+cybex plugin merge example.widget '{"label":"Personal"}' --instance personal
 ```
 
 Named instances replace the implicit single instance and appear on each output.
 They inherit plugin defaults/base preferences, with independent overrides.
-Remove one with `nerd plugin instance example.widget personal --remove`.
+Remove one with `cybex plugin instance example.widget personal --remove`.
 Removing the last returns to the implicit single instance. These commands do
 not enable a disabled plugin; enable it separately.
 
 A plugin declaring a `bar` entrypoint can replace the native bar:
 
 ```bash
-nerd plugin bar omarchy.bar --position top
-nerd plugin bar omarchy.bar --position left
-nerd plugin bar native
+cybex plugin bar omarchy.bar --position top
+cybex plugin bar omarchy.bar --position left
+cybex plugin bar native
 ```
 
 The selected replacement receives a catalogue and layout of enabled Omarchy
 widgets. Native bars are retired while it is active. A construction failure
 restores the native bar and exposes an error. Top, bottom, left and right are
 supported by the tested upstream replacement; position is its configuration,
-not a change to NerdOS's native bar preference.
+not a change to Cybex OS's native bar preference.
 
 ## Built-in Model Usage
 
@@ -172,12 +172,12 @@ The [Model Usage](https://github.com/DigitalPals/omarchy-modelusage) plugin
 widget: an unchanged copy in `ModelUsage/`, hosted by a native bar module
 through this adapter's bar facade (see `ModelUsage/README.md`). It is placed,
 enabled and configured in Settings → Bar like any built-in widget, and is
-updated with NerdOS; `scripts/sync-model-usage` re-vendors a new upstream
+updated with Cybex OS; `scripts/sync-model-usage` re-vendors a new upstream
 commit.
 
 An installed copy of the package is listed under Settings → Omarchy plugins with that
-reason and is never loaded, so it cannot draw a second widget; `nerd plugin
-enable` and `add` refuse it. Remove it with `nerd plugin remove
+reason and is never loaded, so it cannot draw a second widget; `cybex plugin
+enable` and `add` refuse it. Remove it with `cybex plugin remove
 digitalpals.model-usage`. Its settings in `plugins.json` are not carried over,
 but the scripts share their state and saved keys (`~/.local/state/omarchy/`,
 `~/.config/omarchy/model-usage/`), so re-enter only the source and server
@@ -198,14 +198,14 @@ settings.
 | Replacement bar | Component catalogue, metadata, layout, orientation, scoped UI controls and bar-config mutation; repeated widgets supported; omitted layout widgets hidden without stopping their services |
 | Menus | Application listing, basic name/subtext search, icons and launch through Quickshell desktop entries; `appsChanged` notification |
 | UI | All 35 QML components from the pinned upstream `Ui` directory, including forms, popups, sliders, media backgrounds and speed-test overlay |
-| Theme | `qs.Commons` Style, Color, Util and Border APIs, with NerdOS palette/font/rounding and upstream role names/helpers |
+| Theme | `qs.Commons` Style, Color, Util and Border APIs, with Cybex OS palette/font/rounding and upstream role names/helpers |
 | IPC | `shell` target: `ping`, `summon`, `hide`, `toggle`, `call`, `listPlugins`, `rescanPlugins`, `setPluginEnabled`, `enablePlugin`, `putBarWidget`, `moveBarWidget`, `setBarWidget`, `togglePanelAt`, `reloadConfig`, `applyTheme`, `toggleBarTransparency`, `listShellConfig`, `debugBarGeometry`; plugin-defined targets remain available |
 | Helpers | Bundled `omarchy-shell` forwards IPC to the already-running matching runtime; `omarchy-notification-send` uses desktop notification D-Bus |
 
 `OMARCHY_PATH` points to the bundled compatibility directory and its `bin`
 directory is on the shell's PATH. It is not a complete Omarchy checkout.
 The IPC helper supports `-q`, timeouts, and default `{}` payloads for summon
-and toggle; it never starts another shell. `listPlugins` reports NerdOS's
+and toggle; it never starts another shell. `listPlugins` reports Cybex OS's
 plugin descriptors and runtime errors, not an identical upstream JSON schema.
 
 Ordinary plugins receive their own registry/service/settings access. A full
@@ -218,7 +218,7 @@ These API boundaries do not sandbox trusted QML.
 A preference change preserves running widget/service state. Changing
 layout, enablement, or code can recreate objects; plugins must persist state
 needed across those events. Native-bar Omarchy popups coordinate ownership
-with NerdOS popouts. Lifecycle failures are reported without intentionally
+with Cybex OS popouts. Lifecycle failures are reported without intentionally
 restarting the entire shell.
 
 Preferences and package data stay in the existing user-owned roots described
@@ -233,7 +233,7 @@ menubar's color and opacity, including glass mode. Inner cards, controls and
 menus retain their own palette roles for contrast. Plugins drawing custom
 windows still own their styling.
 
-On the native NerdOS bar, shared Omarchy `KeyboardPanel` and `PopupCard`
+On the native Cybex OS bar, shared Omarchy `KeyboardPanel` and `PopupCard`
 components share the native panels’ six-logical-pixel gap from the visible
 menubar edge and screen sides. They remain centred on their widget (or the bar when `centerOnBar`
 is set), including with a bottom bar. This applies to Model Usage without
@@ -258,7 +258,7 @@ and opacity overrides. Corner value -1 follows the shared panel corners; 0 is
 square. Existing explicit plugin overrides are preserved until changed or reset. Scaling affects shared Omarchy UI, including bar widgets.
 
 Advanced users can set `pluginThemeOverrides` in
-`~/.config/nerdos/shell.json`, using flat Omarchy shell tokens:
+`~/.config/cybexos/shell.json`, using flat Omarchy shell tokens:
 
 ```json
 {
@@ -289,7 +289,7 @@ retain their status indications.
   host capabilities are not supplied. Cross-plugin private service lookup is
   unavailable; full bars receive only the four narrow service adapters. The compatibility theme's lock/polkit colors do not implement
   those systems.
-- A replacement bar cannot render native NerdOS API 1 widgets. Hosted widget
+- A replacement bar cannot render native Cybex OS API 1 widgets. Hosted widget
   facades do not expose service objects: a widget relying on direct service
   access can work in the native bar yet need adaptation in a third-party
   replacement. This includes the tested Media widget, whose native-bar
@@ -301,15 +301,15 @@ retain their status indications.
 - No remote marketplace catalogue. Generated settings rows cover only the
   `barWidget.schema` types listed under Declared settings.
   `applyTheme` updates the Omarchy compatibility palette/style for the session,
-  not NerdOS's persisted theme. `reloadConfig` refreshes plugin preferences;
-  NerdOS shell settings retain their existing file watcher.
+  not Cybex OS's persisted theme. `reloadConfig` refreshes plugin preferences;
+  Cybex OS shell settings retain their existing file watcher.
 - IPC mutations return acceptance before the serialized helper writes finish;
   check plugin diagnostics for persistence errors. Layout validation is stricter
   than upstream (for example, out-of-range indices are rejected, not clamped).
   Native-bar transparency/geometry is not exposed through the Omarchy adapter.
 - Built-in clones that have no installed source cannot restore an absent
   Omarchy package on removal. This host does not import Omarchy's whole built-in
-  catalogue or replace native NerdOS widgets by matching their names.
+  catalogue or replace native Cybex OS widgets by matching their names.
 - The media adapter supports player selection and basic transport; it does not
   reproduce Omarchy's feedback overlays or player-launch policy.
 - Application removal explicitly returns false. The menu application bridge

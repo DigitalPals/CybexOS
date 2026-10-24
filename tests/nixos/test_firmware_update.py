@@ -20,8 +20,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
-HELPER = ROOT / "assets/scripts/nerdos-firmware-update"
-LOADER = importlib.machinery.SourceFileLoader("nerdos_firmware_update", str(HELPER))
+HELPER = ROOT / "assets/scripts/cybexos-firmware-update"
+LOADER = importlib.machinery.SourceFileLoader("cybexos_firmware_update", str(HELPER))
 SPEC = importlib.util.spec_from_loader(LOADER.name, LOADER)
 module = importlib.util.module_from_spec(SPEC)
 LOADER.exec_module(module)
@@ -407,7 +407,7 @@ class PlanTests(unittest.TestCase):
                          FeatureFlags.REQUESTS | FeatureFlags.REQUESTS_NON_GENERIC
                          | FeatureFlags.UPDATE_ACTION | FeatureFlags.DETACH_ACTION
                          | FeatureFlags.FDE_WARNING)
-        self.assertEqual(client.user_agent, ("nerdos-firmware-update", "1"))
+        self.assertEqual(client.user_agent, ("cybexos-firmware-update", "1"))
 
     def test_plan_reports_an_unreachable_daemon(self):
         client = FakeClient(connect_error=FakeGLibError("g-dbus-error-quark", 2, "no daemon"))

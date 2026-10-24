@@ -20,8 +20,8 @@ function fixture() {
     const runtime = path.join(base, "runtime");
     fs.mkdirSync(packages);
     const env = {
-        ...process.env, HOME: base, NERDOS_PLUGIN_ROOT: packages,
-        NERDOS_USER_CONFIG_ROOT: config, XDG_DATA_HOME: path.join(base, "data"),
+        ...process.env, HOME: base, CYBEXOS_PLUGIN_ROOT: packages,
+        CYBEXOS_USER_CONFIG_ROOT: config, XDG_DATA_HOME: path.join(base, "data"),
         XDG_RUNTIME_DIR: base, PYTHONDONTWRITEBYTECODE: "1"
     };
     function cli(...args) {

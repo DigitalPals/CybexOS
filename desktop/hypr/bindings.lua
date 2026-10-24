@@ -1,32 +1,32 @@
 local mainMod = "SUPER"
-local terminal = "nerdos-apps terminal --"
+local terminal = "cybexos-apps terminal --"
 local home = os.getenv("HOME")
 local features = require("features")
-local browser = "nerdos-apps browser"
-local privateBrowser = "nerdos-apps browser --private"
+local browser = "cybexos-apps browser"
+local privateBrowser = "cybexos-apps browser --private"
 
--- Web apps are installed per account (nerdos-webapp; Install web app… in
+-- Web apps are installed per account (cybexos-webapp; Install web app… in
 -- the launcher). The helper follows the selected browser and tells the
 -- user how to reinstall one that was removed.
 local function web_app(id)
-  return "nerdos-webapp launch " .. id
+  return "cybexos-webapp launch " .. id
 end
 
-local previous = rawget(_G, "__nerdos_hypr_binds") or {}
+local previous = rawget(_G, "__cybexos_hypr_binds") or {}
 for _, keybind in ipairs(previous) do
   if keybind and keybind.remove then keybind:remove()
   elseif keybind and keybind.unbind then keybind:unbind() end
 end
-_G.__nerdos_hypr_binds = {}
+_G.__cybexos_hypr_binds = {}
 
 -- Every binding the user should know about carries a description, "Group:
 -- Label". The Super+K cheatsheet is drawn from `hyprctl binds -j`, so these
 -- strings are the cheatsheet: a binding without one does not appear there.
--- Bindings added in ~/.config/nerdos/hypr/user.lua join it the same way.
+-- Bindings added in ~/.config/cybexos/hypr/user.lua join it the same way.
 local function bind(keys, dispatcher, opts)
   hl.unbind(keys)
   local keybind = hl.bind(keys, dispatcher, opts)
-  table.insert(_G.__nerdos_hypr_binds, keybind)
+  table.insert(_G.__cybexos_hypr_binds, keybind)
   return keybind
 end
 
@@ -51,18 +51,18 @@ if features.assistant then
   bind(mainMod .. " + I", hl.dsp.global("quickshell:assistantTalk"),
     { description = "Shell: Assistant" })
 end
-bind(mainMod .. " + CTRL + SHIFT + A", hl.dsp.exec_cmd("nerd agent --window"),
+bind(mainMod .. " + CTRL + SHIFT + A", hl.dsp.exec_cmd("cybex agent --window"),
   { description = "Apps: AI agent" })
--- The shell runs from the NerdOS runtime by path, where a bare
--- `qs ipc call` finds no configuration; nerdos-runtime names the active one.
-bind(mainMod .. " + comma", hl.dsp.exec_cmd("nerdos-runtime ipc settings toggle"),
-  { description = "Shell: NerdOS Settings" })
+-- The shell runs from the Cybex OS runtime by path, where a bare
+-- `qs ipc call` finds no configuration; cybexos-runtime names the active one.
+bind(mainMod .. " + comma", hl.dsp.exec_cmd("cybexos-runtime ipc settings toggle"),
+  { description = "Shell: Cybex OS Settings" })
 -- Shell surfaces the menubar also opens by click.
-bind(mainMod .. " + N", hl.dsp.exec_cmd("nerdos-runtime ipc popouts toggle notifications"),
+bind(mainMod .. " + N", hl.dsp.exec_cmd("cybexos-runtime ipc popouts toggle notifications"),
   { description = "Shell: Notifications" })
-bind(mainMod .. " + A", hl.dsp.exec_cmd("nerdos-runtime ipc popouts toggle control"),
+bind(mainMod .. " + A", hl.dsp.exec_cmd("cybexos-runtime ipc popouts toggle control"),
   { description = "Shell: Control Panel" })
-bind(mainMod .. " + K", hl.dsp.exec_cmd("nerdos-runtime ipc session keys"),
+bind(mainMod .. " + K", hl.dsp.exec_cmd("cybexos-runtime ipc session keys"),
   { description = "Shell: Keyboard shortcuts" })
 bind(mainMod .. " + E", hl.dsp.exec_cmd("nautilus --new-window"), { description = "Apps: Files" })
 bind(mainMod .. " + B", hl.dsp.exec_cmd(browser), { description = "Apps: Browser" })
@@ -106,7 +106,7 @@ bind(mainMod .. " + V", function() send_shortcut_once("SHIFT", "Insert") end, { 
 bind(mainMod .. " + X", function() send_shortcut_once("CTRL", "X") end, { description = "Clipboard: Cut" })
 bind(mainMod .. " + SHIFT + V", hl.dsp.exec_cmd("clipboard-image-to-file"),
   { description = "Clipboard: Save copied image to a file" })
-bind(mainMod .. " + CTRL + V", hl.dsp.exec_cmd("nerdos-runtime ipc launcher open clipboard"),
+bind(mainMod .. " + CTRL + V", hl.dsp.exec_cmd("cybexos-runtime ipc launcher open clipboard"),
   { description = "Clipboard: Clipboard history" })
 
 bind(mainMod .. " + Q", hl.dsp.window.close(), { description = "Windows: Close window" })
@@ -118,7 +118,7 @@ bind(mainMod .. " + BACKSPACE", hl.dsp.window.set_prop({ prop = "alpha", value =
 -- `overview` IPC target serves the touchpad gesture.
 bind(mainMod .. " + TAB", hl.dsp.global("quickshell:overviewToggle"), { description = "Windows: Overview" })
 bind(mainMod .. " + SHIFT + M", hl.dsp.exit(), { description = "Shell: Exit Hyprland" })
-bind(mainMod .. " + L", hl.dsp.exec_cmd("nerdos-session-action lock"),
+bind(mainMod .. " + L", hl.dsp.exec_cmd("cybexos-session-action lock"),
   { description = "Shell: Lock screen" })
 -- Effects, gaps and idle lock off for games; the helper notifies and the
 -- menubar shows an indicator while it is on.

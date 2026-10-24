@@ -10,7 +10,7 @@ interface WelcomeAppProps extends AppProps {
 }
 
 const wallpapers = [
-  { id: 'mountains', name: 'Moonlit peaks', accent: '#d3d283' },
+  { id: 'mountains', name: 'Moonlit peaks', accent: '#60a5fa' },
   { id: 'aurora', name: 'Aurora', accent: '#a6c7a0' },
   { id: 'dusk', name: 'After hours', accent: '#e4aaa1' },
 ] as const;
@@ -19,13 +19,13 @@ export function WelcomeApp({ openApp, notify, preferences, updatePreferences, on
   return (
     <div className="welcome-app">
       <header className="welcome-header">
-        <img className="welcome-wordmark" src="/nerdos-logo.svg" alt="NerdOS" width="225" height="30" />
+        <img className="welcome-wordmark" src="/cybexos-logo.svg" alt="Cybex OS" width="225" height="53" />
         <span className="welcome-section-label">Your desktop</span>
       </header>
 
       <div className="welcome-intro">
         <h1>Welcome to your new desktop.</h1>
-        <p>NerdOS — the Opinionated System. Pick a wallpaper to start: the desktop’s colors follow it. You can come back here any time from the app launcher.</p>
+        <p>Cybex OS. Pick a wallpaper to start. You can change the desktop’s colors in Settings. You can come back here any time from the app launcher.</p>
       </div>
 
       <section className="welcome-personalize" aria-labelledby="welcome-wallpapers-heading">

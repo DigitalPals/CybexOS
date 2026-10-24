@@ -328,7 +328,7 @@ Singleton {
     // on light panels. Keep the user's color and resolve copy independently.
     readonly property color accentText: SettingsHelpers.ensureContrast(
         accent.toString(), copyReferenceBg.toString(), 4.5)
-    // Derived rather than fixed white: the redesign's chartreuse accent needs
+    // Derived rather than fixed white: the blue brand accent needs
     // dark ink on it, and any pale fixed accent has the same problem.
     readonly property color accentFg: paletteActive
         ? SettingsHelpers.ensureContrast(Common.Palette.primaryInk.toString(),
@@ -449,7 +449,7 @@ Singleton {
     readonly property string fontNumeric: Settings.font === "mono" ? fontMono : "Geist Mono"
     // Bundled Tabler icons. Sym owns name resolution, font loading and the
     // consistent outline rendering; views must not draw icon codepoints directly.
-    readonly property string fontIcon: "NerdOS Tabler Outline"
+    readonly property string fontIcon: "Cybex OS Tabler Outline"
 
     // One library owns the scale AND its usage by native and plugin surfaces.
     readonly property var typography: Typography.resolve(fontBaseSize)

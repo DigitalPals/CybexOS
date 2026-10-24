@@ -1,13 +1,13 @@
 import { DEFAULT_PREFERENCES, type AppId, type DesktopWindow, type Preferences } from './types';
 
 export const APP_NAMES: Record<AppId, string> = {
-  welcome: 'Welcome to NerdOS', terminal: 'Kitty', files: 'Files', notes: 'Omawrite', settings: 'Settings', shortcuts: 'Keyboard shortcuts', usage: 'Model Usage',
+  welcome: 'Welcome to Cybex OS', terminal: 'Kitty', files: 'Files', notes: 'Omawrite', settings: 'Settings', shortcuts: 'Keyboard shortcuts', usage: 'Model Usage',
 };
 export const APP_DESCRIPTIONS: Record<AppId, string> = {
   welcome: 'A little introduction to your desktop', terminal: 'Explore the terminal', files: 'Browse your demo files', notes: 'A quiet place for your thoughts', settings: 'Make this desktop yours', shortcuts: 'Find your way around', usage: 'Codex & Claude subscriptions · CLIProxyAPI',
 };
 export const APP_IDS = Object.keys(APP_NAMES) as AppId[];
-export const STORAGE_KEY = 'nerdos-web-preferences-v1';
+export const STORAGE_KEY = 'cybexos-web-preferences-v1';
 
 export function readPreferences(value: string | null): Preferences {
   try {

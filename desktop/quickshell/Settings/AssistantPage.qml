@@ -46,7 +46,7 @@ SettingsPage {
                 SettingsAction {
                     visible: Settings.assistantConfigured && !Assistant.connected
                     text: I18n.tr("Start")
-                    onTriggered: Quickshell.execDetached(["systemctl", "--user", "start", "nerdos-assistant.service"])
+                    onTriggered: Quickshell.execDetached(["systemctl", "--user", "start", "cybexos-assistant.service"])
                 }
             }
             SettingsHint {
@@ -74,7 +74,7 @@ SettingsPage {
             }
             SettingsHint {
                 width: parent.width
-                text: I18n.tr("Automatic follows your nerd agent default, then whichever is installed. Sign-in and permissions stay with the agent itself.")
+                text: I18n.tr("Automatic follows your cybex agent default, then whichever is installed. Sign-in and permissions stay with the agent itself.")
             }
             ValueRow {
                 width: parent.width
@@ -159,8 +159,8 @@ SettingsPage {
             SettingsHint {
                 width: parent.width
                 text: Settings.assistantCharacter === "mark"
-                    ? I18n.tr("The NerdOS glasses as they are; the ring around them shows what the assistant is doing.")
-                    : I18n.tr("The glasses with eyes behind the lenses, which follow what the assistant is doing.")
+                    ? I18n.tr("The Cybex OS logo; the ring around it shows what the assistant is doing.")
+                    : I18n.tr("The Cybex OS logo follows focus and responds to your voice.")
             }
         }
     }

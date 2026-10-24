@@ -1,10 +1,10 @@
 { config, lib, pkgs, ... }:
 let
-  cfg = config.nerdos;
+  cfg = config.cybexos;
   chatgptLinux = pkgs.callPackage ../packages/chatgpt.nix {};
   assistant = pkgs.callPackage ../packages/assistant.nix {};
 in {
-  options.nerdos.browser.bravePolicies = lib.mkOption {
+  options.cybexos.browser.bravePolicies = lib.mkOption {
     type = lib.types.attrsOf lib.types.anything;
     default = {};
     description = "Brave enterprise policies; administrator values override vendor defaults.";
@@ -90,14 +90,14 @@ in {
         };
       };
     };
-    nerdos.browser.bravePolicies = lib.mkIf cfg.features.proprietary {
+    cybexos.browser.bravePolicies = lib.mkIf cfg.features.proprietary {
       RestoreOnStartup = lib.mkDefault 1;
       SpellcheckLanguage = lib.mkDefault [ (lib.toLower (lib.head (lib.splitString "_" config.i18n.defaultLocale))) ];
       ExtensionInstallForcelist = lib.mkDefault [ "aeblfdkhhhdcdjpifhhbdiojplfjncoa;https://clients2.google.com/service/update2/crx" ];
     };
     # The pinned Origin executable retains Brave's native policy root. Keep
     # this namespaced file declarative and expose policy overrides above.
-    environment.etc."brave/policies/managed/nerdos.json" = lib.mkIf cfg.features.proprietary {
+    environment.etc."brave/policies/managed/cybexos.json" = lib.mkIf cfg.features.proprietary {
       text = builtins.toJSON cfg.browser.bravePolicies;
     };
     hardware.sane.enable = lib.mkDefault true;
@@ -110,7 +110,7 @@ in {
     # vpnc plugin still has unfixed local-root CVEs and is never permitted.
     networking.networkmanager.plugins = with pkgs; [ networkmanager-openvpn networkmanager-openconnect networkmanager-ssh (pkgs.callPackage ../packages/networkmanager-libreswan.nix {}) ];
     services.libreswan.enable = lib.mkDefault true;
-    environment.etc."nerdos/emoji-test.txt".source = "${pkgs.unicode-emoji}/share/unicode/emoji/emoji-test.txt";
+    environment.etc."cybexos/emoji-test.txt".source = "${pkgs.unicode-emoji}/share/unicode/emoji/emoji-test.txt";
     i18n.inputMethod = { enable = true; type = "ibus"; ibus.engines = with pkgs.ibus-engines; [ anthy chewing hangul libpinyin m17n typing-booster ]; };
   };
 }

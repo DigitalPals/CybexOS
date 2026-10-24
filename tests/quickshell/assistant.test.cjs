@@ -1,4 +1,4 @@
-// The NerdOS Assistant's shell side (docs/assistant.md): placement, the box's
+// The Cybex OS Assistant's shell side (docs/assistant.md): placement, the box's
 // side, agent choice, and the wiring between the shortcut, the service, the
 // bar, the compositor and the installation feature. The service has its own
 // tests in tests/nixos/test_assistant.py.
@@ -58,7 +58,7 @@ test("a drag that ends past the edge finds the display under the pointer", () =>
     assert.equal(A.dragged(5, 0), true);
 });
 
-test("automatic follows the nerd agent default, then whichever is installed", () => {
+test("automatic follows the cybex agent default, then whichever is installed", () => {
     const both = { claude: { available: true }, codex: { available: true } };
     const codexOnly = { claude: { available: false }, codex: { available: true } };
     assert.equal(A.resolveAgent("auto", both, "codex"), "codex");
@@ -98,8 +98,8 @@ test("readouts: elapsed time, home-relative paths and closure changes", () => {
     assert.equal(A.elapsedLabel(8400), "8 s");
     assert.equal(A.elapsedLabel(65000), "1 min 05 s");
     assert.equal(A.elapsedLabel(12 * 60000 + 5000), "12 min");
-    assert.equal(A.displayPath("/home/nerd/.config/nerdos/shell.json", "/home/nerd"), "~/.config/nerdos/shell.json");
-    assert.equal(A.displayPath("/home/nerdy/x", "/home/nerd"), "/home/nerdy/x");
+    assert.equal(A.displayPath("/home/cybex/.config/cybexos/shell.json", "/home/cybex"), "~/.config/cybexos/shell.json");
+    assert.equal(A.displayPath("/home/nerdy/x", "/home/cybex"), "/home/nerdy/x");
     const changes = A.closureChanges([
         "obsidian: ∅ → 1.9.12, +148.2 MiB",
         "electron: ∅ → 37.2.4, +201.0 MiB",
@@ -121,7 +121,7 @@ test("Super+I is one in-process shortcut: a tap types, a hold talks", () => {
     assert.match(shell, /GlobalShortcut \{\s*appid: "quickshell"\s*name: "assistantTalk"[\s\S]*?onPressed: Assistant\.shortcutPressed\(\)\s*onReleased: Assistant\.shortcutReleased\(\)/);
     const bindings = repo("desktop/hypr/bindings.lua");
     assert.match(bindings, /if features\.assistant then\s*bind\(mainMod \.\. " \+ I", hl\.dsp\.global\("quickshell:assistantTalk"\),\s*\{ description = "Shell: Assistant" \}\)/);
-    assert.match(repo("desktop/hypr/features.lua"), /assistant = os\.getenv\("NERDOS_ASSISTANT"\) ~= "0"/);
+    assert.match(repo("desktop/hypr/features.lua"), /assistant = os\.getenv\("CYBEXOS_ASSISTANT"\) ~= "0"/);
     const assistant = read("Common/Assistant.qml");
     assert.match(assistant, /interval: AssistantHelpers\.HOLD_MS/);
     assert.match(assistant, /function shortcutReleased\(\) \{\s*if \(holdTimer\.running\) \{\s*holdTimer\.stop\(\);[\s\S]*?toggleComposer\(\);/,
@@ -191,15 +191,15 @@ test("the installation feature carries the service, the agents and the menubar",
     const options = repo("nix/modules/default.nix");
     assert.match(options, /assistant = mkOption \{ type = types\.bool; default = true; \};/);
     const desktop = repo("nix/modules/desktop.nix");
-    assert.match(desktop, /NERDOS_ASSISTANT = if cfg\.features\.assistant then "1" else "0";/);
-    assert.match(desktop, /systemd\.user\.services\.nerdos-assistant = lib\.mkIf cfg\.features\.assistant \{/);
-    assert.match(desktop, /ExecStart = "\$\{assistant\}\/bin\/nerdos-assistant serve";/);
+    assert.match(desktop, /CYBEXOS_ASSISTANT = if cfg\.features\.assistant then "1" else "0";/);
+    assert.match(desktop, /systemd\.user\.services\.cybexos-assistant = lib\.mkIf cfg\.features\.assistant \{/);
+    assert.match(desktop, /ExecStart = "\$\{assistant\}\/bin\/cybexos-assistant serve";/);
     assert.match(desktop, /path = \[ config\.system\.path \];\s*serviceConfig = \{\s*ExecStart = "\$\{assistant\}/);
     const applications = repo("nix/modules/applications.nix");
     assert.match(applications, /lib\.optionals \(cfg\.features\.proprietary && \(cfg\.features\.developer \|\| cfg\.features\.assistant\)\) \[ claude-code \]/,
         "Claude Code is unfree: it still needs the proprietary feature");
     assert.match(applications, /lib\.optionals cfg\.features\.assistant \[ assistant codex \]/);
-    assert.match(repo("installer/nerdos-install"), /\('assistant', 'NerdOS Assistant'\)/);
-    assert.match(repo("lifecycle/nerdos/cli.py"), /for name in \('agent', 'assistant', 'backup', 'report'\):/);
-    assert.match(read("Common/Settings.qml"), /readonly property bool assistantConfigured:\s*Quickshell\.env\("NERDOS_ASSISTANT"\) !== "0"/);
+    assert.match(repo("installer/cybexos-install"), /\('assistant', 'Cybex OS Assistant'\)/);
+    assert.match(repo("lifecycle/cybexos/cli.py"), /for name in \('agent', 'assistant', 'backup', 'report'\):/);
+    assert.match(read("Common/Settings.qml"), /readonly property bool assistantConfigured:\s*Quickshell\.env\("CYBEXOS_ASSISTANT"\) !== "0"/);
 });

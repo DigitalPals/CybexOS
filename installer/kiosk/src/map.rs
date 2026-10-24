@@ -90,7 +90,7 @@ const DAY: [u8; 3] = [0xb4, 0xb7, 0xac];
 const TWILIGHT: [u8; 3] = [0x6d, 0x70, 0x69];
 const NIGHT: [u8; 3] = [0x34, 0x36, 0x3b];
 const PIN: [u8; 3] = [0xf3, 0xf2, 0xec];
-const LIME: [u8; 3] = [0xc8, 0xff, 0x1f];
+const ACCENT: [u8; 3] = [0x60, 0xa5, 0xfa];
 
 pub struct Canvas {
     pub width: u32,
@@ -202,10 +202,10 @@ impl LandMask {
         }
         if let Some(sel) = selected {
             let (x, y) = self.position(sel.lat, sel.lon, w, h);
-            canvas.vline(x, LIME, 0.22);
-            canvas.hline(y, LIME, 0.22);
-            canvas.disc(x, y, r * 5.0, LIME, 0.18);
-            canvas.disc(x, y, r * 1.9, LIME, 1.0);
+            canvas.vline(x, ACCENT, 0.22);
+            canvas.hline(y, ACCENT, 0.22);
+            canvas.disc(x, y, r * 5.0, ACCENT, 0.18);
+            canvas.disc(x, y, r * 1.9, ACCENT, 1.0);
         }
         canvas
     }

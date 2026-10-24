@@ -6,7 +6,7 @@
 #include <QThread>
 #include <QtEndian>
 
-namespace NerdOS {
+namespace CybexOS {
 namespace {
 bool boundedDimensions(int width, int height) {
     return width > 0 && height > 0 && width <= ImageDimensionLimit
@@ -27,7 +27,7 @@ QString imageFingerprint(const QImage &image, QString *error) {
     if (rgba.isNull()) return fail(QStringLiteral("canonicalization-failed"));
     if (rgba.sizeInBytes() > ImageByteLimit) return fail(QStringLiteral("image-bounds"));
     QCryptographicHash hash(QCryptographicHash::Sha256);
-    hash.addData(QByteArrayView("NerdOS.NotificationImage.RGBA.v1"));
+    hash.addData(QByteArrayView("CybexOS.NotificationImage.RGBA.v1"));
     const quint32 dimensions[] = {qToBigEndian(quint32(rgba.width())), qToBigEndian(quint32(rgba.height()))};
     hash.addData(QByteArrayView(reinterpret_cast<const char *>(dimensions), sizeof(dimensions)));
     for (int y = 0; y < rgba.height(); ++y)

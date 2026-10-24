@@ -5,8 +5,8 @@ password field) in the shell's font, text size and colours, over the current
 wallpaper. The clock, the date and the field grow with the shell's text
 (theme_tokens.text_scale), and so do the gaps between them, so a larger text
 size never makes them overlap.
-`nerdos-runtime exec hyprlock` prefers this file to the vendor one unless the
-user has their own ~/.config/nerdos/hypr/hyprlock.conf, and only while its
+`cybexos-runtime exec hyprlock` prefers this file to the vendor one unless the
+user has their own ~/.config/cybexos/hypr/hyprlock.conf, and only while its
 first line is HEADER, so a file this module did not write is never used.
 
 The wallpaper is blurred and covered by a scrim of the base colour. The blur
@@ -23,8 +23,8 @@ starts, and a lock that is already up keeps the look it started with.
 from theme_tokens import contrast, ensure_contrast, mix, rgba, scaled
 
 NAME = 'hyprlock'
-# The resolver compares the first line verbatim (assets/scripts/nerdos-runtime).
-HEADER = '# NerdOS lock screen, rendered by the system theme (theme_hyprlock.py).'
+# The resolver compares the first line verbatim (assets/scripts/cybexos-runtime).
+HEADER = '# Cybex OS lock screen, rendered by the system theme (theme_hyprlock.py).'
 
 # Scrim opacity: the least in SCRIM_STEPS that keeps the body text at 4.5:1
 # over a pure white or black wallpaper. The floor keeps a busy wallpaper calm.
@@ -105,7 +105,7 @@ def render(tokens):
 
     lines = [
         HEADER,
-        '# Edits are overwritten; ~/.config/nerdos/hypr/hyprlock.conf replaces it.',
+        '# Edits are overwritten; ~/.config/cybexos/hypr/hyprlock.conf replaces it.',
         f'$font = {tokens["font"]["ui"]}',
         '',
         'general {',
@@ -172,7 +172,7 @@ def render(tokens):
         '}',
         '',
         # The fingerprint prompt: empty, and so invisible, unless
-        # nerdos-runtime turned on hyprlock's fprintd check and a reader
+        # cybexos-runtime turned on hyprlock's fprintd check and a reader
         # with an enrolled finger is ready (docs/security.md).
         'label {',
         '  monitor =',

@@ -10,7 +10,7 @@ import tempfile
 
 root = Path(__file__).resolve().parents[2]
 checker = root / "hardware/xps/camera/xps-ipu7-camera-frame-check"
-with tempfile.TemporaryDirectory(prefix="nerdos-camera-frame-test-") as directory:
+with tempfile.TemporaryDirectory(prefix="cybexos-camera-frame-test-") as directory:
     command = Path(directory) / "v4l2-ctl"
     # Generated fixtures need the current interpreter inside a pure Nix sandbox.
     command.write_text('#!' + sys.executable + '\n' + """

@@ -84,9 +84,10 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-## NerdOS glasses
+## Cybex OS marks
 
-The NerdOS glasses are original project artwork supplied in October 2026 under
-the repository MIT license. The canonical and white variants are unmodified
-files from the identity kit. This code license does not grant rights in other
-depicted brands. See `assets/brand/USAGE.md` for identity usage rules.
+The Cybex OS marks are original project artwork supplied by the project owner
+in `cybex_white.zip`. Deployment variants use the supplied X paths with their
+original red accent and off-white or white lettering. See `assets/brand/USAGE.md`
+and the byte-preserved SVG master.
+This code license does not grant rights in other depicted brands.

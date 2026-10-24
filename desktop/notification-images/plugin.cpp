@@ -8,9 +8,9 @@ class NotificationImagesPlugin final : public QQmlExtensionPlugin {
     Q_PLUGIN_METADATA(IID QQmlExtensionInterface_iid)
 public:
     void registerTypes(const char *uri) override {
-        qmlRegisterSingletonType<NerdOS::ImageFingerprints>(uri, 1, 0, "ImageFingerprints",
+        qmlRegisterSingletonType<CybexOS::ImageFingerprints>(uri, 1, 0, "ImageFingerprints",
             [](QQmlEngine *engine, QJSEngine *) -> QObject * {
-                return new NerdOS::ImageFingerprints(engine);
+                return new CybexOS::ImageFingerprints(engine);
             });
     }
 };

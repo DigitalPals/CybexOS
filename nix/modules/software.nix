@@ -1,6 +1,6 @@
 { config, options, lib, pkgs, ... }:
 let
-  cfg = config.nerdos;
+  cfg = config.cybexos;
   selected = map (name: {
     attribute = name;
     package = lib.attrByPath (lib.splitString "." name)
@@ -10,7 +10,7 @@ let
     (builtins.filter (definition: definition.file != toString ./software.nix)
       options.environment.systemPackages.definitionsWithLocations);
 in {
-  options.nerdos.software.packages = lib.mkOption {
+  options.cybexos.software.packages = lib.mkOption {
     type = lib.types.listOf (lib.types.strMatching "[A-Za-z0-9_][A-Za-z0-9_+.-]*");
     default = [];
     description = "Native package attributes selected through the staged Software interface.";
@@ -21,7 +21,7 @@ in {
       message = "Software selection ${entry.attribute} is excluded by another systemPackages definition. Preserve that declaration and resolve the conflict explicitly.";
     }) selected;
     environment.systemPackages = map (entry: entry.package) selected;
-    environment.etc."nerdos/software.json".text = builtins.toJSON {
+    environment.etc."cybexos/software.json".text = builtins.toJSON {
       schema = 1;
       selected = cfg.software.packages;
       packages = lib.unique (map (package: {

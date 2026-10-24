@@ -2,7 +2,7 @@ local function persisted_scroll_factor()
   local home = os.getenv("HOME")
   if not home then return 1.0 end
 
-  local file = io.open(home .. "/.config/nerdos/shell.json", "r")
+  local file = io.open(home .. "/.config/cybexos/shell.json", "r")
   if not file then
     file = io.open(home .. "/.local/state/quickshell/shell-settings.json", "r")
   end
@@ -16,14 +16,14 @@ local function persisted_scroll_factor()
 end
 
 -- Saved input preferences reuse the release's option defaults.
-_G.__nerdos_vendor_keyboard_options = "compose:caps,lv3:ralt_switch"
+_G.__cybexos_vendor_keyboard_options = "compose:caps,lv3:ralt_switch"
 
 hl.config({
   input = {
     kb_layout = "us",
     kb_variant = "",
     -- Keep left Alt available to applications (for example Codex Alt+Up).
-    kb_options = _G.__nerdos_vendor_keyboard_options,
+    kb_options = _G.__cybexos_vendor_keyboard_options,
     follow_mouse = 1,
     natural_scroll = true,
     repeat_rate = 40,
@@ -40,16 +40,16 @@ hl.config({
 
 -- Touchpad gestures: three fingers sideways switch workspace, three fingers
 -- up open the overview. Settings -> Touchpad can turn the workspace swipe off
--- through input_preferences.lua, which calls _G.__nerdos_gestures.remove().
+-- through input_preferences.lua, which calls _G.__cybexos_gestures.remove().
 --
 -- Hyprland rejects a gesture that an earlier one overshadows, so a personal
 -- gesture in user.lua on the same fingers and direction would otherwise show
 -- a configuration error. While the configuration loads, hl.gesture first
--- retires any NerdOS gesture the new one overlaps: user.lua keeps winning,
+-- retires any Cybex OS gesture the new one overlaps: user.lua keeps winning,
 -- as it does for every other setting. Each reload starts a fresh Lua state,
 -- so this wrapper never stacks.
 local gestures = { active = {} }
-_G.__nerdos_gestures = gestures
+_G.__cybexos_gestures = gestures
 local add_gesture = hl.gesture
 local SWIPE_DIRECTIONS = {
   left = { left = true }, l = { left = true },
@@ -86,7 +86,7 @@ local function unset(entry)
   add_gesture({ fingers = entry.fingers, direction = entry.direction, action = "unset" })
 end
 
--- Retires the named NerdOS gesture; false when it is not registered.
+-- Retires the named Cybex OS gesture; false when it is not registered.
 function gestures.remove(name)
   for index, entry in ipairs(gestures.active) do
     if entry.name == name then
@@ -127,12 +127,12 @@ if type(add_gesture) == "function" then
     gestures.active[#gestures.active + 1] = { name = name, fingers = spec.fingers, direction = spec.direction }
   end
   vendor_gesture("workspace", { fingers = 3, direction = "horizontal", action = "workspace" })
-  -- The shell runs from the NerdOS runtime by path; nerdos-runtime names it.
+  -- The shell runs from the Cybex OS runtime by path; cybexos-runtime names it.
   vendor_gesture("overview", {
     fingers = 3,
     direction = "up",
     action = function()
-      hl.exec_cmd("nerdos-runtime ipc overview toggle")
+      hl.exec_cmd("cybexos-runtime ipc overview toggle")
     end,
   })
 end

@@ -38,7 +38,7 @@ var VERBS = [
 //
 // An entry is one of:
 //   command:      argv run detached once the launcher has closed
-//   settingsPage: a NerdOS Settings page id (settingsKey scrolls to a row)
+//   settingsPage: a Cybex OS Settings page id (settingsKey scrolls to a row)
 //   neither:      a built-in handled by id in LauncherProviders.qml
 // `argument` asks for one text value first; `choices` picks one item from a
 // list the shell loads (installed web apps); `requires` hides an entry while
@@ -48,7 +48,7 @@ var VERBS = [
 // Factory reset is deliberately absent: it stays behind Settings' own
 // confirmation and is never one mistyped Enter away.
 var BUILTIN_ACTIONS = [
-    { id: "software", verb: "install", name: "Open Software…", subtitle: "Search and review native package changes", keywords: ["install", "remove", "packages", "applications"], glyph: "apps", command: ["nerdos-software"] },
+    { id: "software", verb: "install", name: "Open Software…", subtitle: "Search and review native package changes", keywords: ["install", "remove", "packages", "applications"], glyph: "apps", command: ["cybexos-software"] },
     {
         id: "webapp-install",
         verb: "install",
@@ -63,7 +63,7 @@ var BUILTIN_ACTIONS = [
             hint: "Type a web address, then press Enter",
             submit: "Install web app from"
         },
-        command: ["nerdos-webapp", "install", "--notify",
+        command: ["cybexos-webapp", "install", "--notify",
             "--url", "{argument}"]
     },
     {
@@ -80,7 +80,7 @@ var BUILTIN_ACTIONS = [
             hint: "Type an https or SSH Git address, then press Enter",
             submit: "Install theme from"
         },
-        command: ["nerd", "theme", "install", "{argument}"]
+        command: ["cybex", "theme", "install", "{argument}"]
     },
     {
         id: "webapp-remove",
@@ -90,7 +90,7 @@ var BUILTIN_ACTIONS = [
         keywords: ["webapp", "uninstall", "delete", "pwa", "web"],
         glyph: "trash",
         choices: "webapps",
-        command: ["nerdos-webapp", "remove", "--notify", "{argument}"]
+        command: ["cybexos-webapp", "remove", "--notify", "{argument}"]
     },
     { id: "default-applications", verb: "setup", name: "Default applications", subtitle: "Choose your browser, terminal, editor and viewers", keywords: ["browser", "terminal", "editor", "defaults"], glyph: "apps", settingsPage: "applications" },
     { id: "storage-cleanup", verb: "setup", name: "Storage & cleanup", subtitle: "Review disk space and retained recovery points", keywords: ["disk", "space", "cleanup", "garbage", "retention"], glyph: "archive", settingsPage: "storage" },
@@ -129,7 +129,7 @@ var BUILTIN_ACTIONS = [
         keywords: ["ai", "default", "provider", "model", "agent", "code"],
         glyph: "robot",
         requires: "developerTools",
-        command: ["nerd", "agent", "--window", "--pick"]
+        command: ["cybex", "agent", "--window", "--pick"]
     },
     {
         id: "game-mode",
@@ -152,10 +152,10 @@ var BUILTIN_ACTIONS = [
         id: "updates-check",
         verb: "update",
         name: "Check for updates",
-        subtitle: "Look for NerdOS and NixOS package updates",
+        subtitle: "Look for Cybex OS and NixOS package updates",
         keywords: ["upgrade", "nix", "update"],
         glyph: "refresh",
-        command: ["nerdos-runtime", "ipc", "updates", "check"]
+        command: ["cybexos-runtime", "ipc", "updates", "check"]
     },
     {
         id: "firmware-update",
@@ -164,7 +164,7 @@ var BUILTIN_ACTIONS = [
         subtitle: "Check signed device firmware and confirm installation separately",
         keywords: ["firmware", "bios", "uefi", "device", "update"],
         glyph: "refresh",
-        command: ["nerdos-apps", "terminal", "--hold", "--", "nerdos-firmware-update", "interactive"]
+        command: ["cybexos-apps", "terminal", "--hold", "--", "cybexos-firmware-update", "interactive"]
     },
     {
         id: "updates-open",
@@ -173,7 +173,7 @@ var BUILTIN_ACTIONS = [
         subtitle: "Show pending updates and their progress",
         keywords: ["upgrade", "install", "update", "pending"],
         glyph: "circle-arrow-up",
-        command: ["nerdos-runtime", "ipc", "updates", "open"]
+        command: ["cybexos-runtime", "ipc", "updates", "open"]
     },
     {
         id: "screenshot-region",
@@ -248,7 +248,7 @@ var BUILTIN_ACTIONS = [
     {
         id: "settings",
         verb: "system",
-        name: "Open NerdOS Settings",
+        name: "Open Cybex OS Settings",
         subtitle: "Appearance, bar, widgets and system",
         keywords: ["preferences", "configuration", "shell"],
         glyph: "settings"
@@ -269,7 +269,7 @@ var BUILTIN_ACTIONS = [
         subtitle: "Start a backup with the saved settings",
         keywords: ["backup", "copy", "save"],
         glyph: "archive",
-        command: ["nerd", "backup", "now"]
+        command: ["cybex", "backup", "now"]
     },
     {
         id: "overview",
@@ -278,7 +278,7 @@ var BUILTIN_ACTIONS = [
         subtitle: "See every window and workspace",
         keywords: ["windows", "workspaces", "expose", "mission"],
         glyph: "layout-grid",
-        command: ["nerdos-runtime", "ipc", "overview", "open"]
+        command: ["cybexos-runtime", "ipc", "overview", "open"]
     },
     {
         id: "ai-agent-launch",
@@ -288,7 +288,7 @@ var BUILTIN_ACTIONS = [
         keywords: ["ai", "code", "assistant", "terminal", "agent"],
         glyph: "robot",
         requires: "developerTools",
-        command: ["nerd", "agent", "--window"]
+        command: ["cybex", "agent", "--window"]
     },
     {
         id: "wallpaper-shuffle",
@@ -318,10 +318,10 @@ var BUILTIN_ACTIONS = [
         id: "report",
         verb: "system",
         name: "Report a problem",
-        subtitle: "Collect diagnostics to share with NerdOS",
+        subtitle: "Collect diagnostics to share with Cybex OS",
         keywords: ["bug", "issue", "feedback", "diagnostics", "support"],
         glyph: "message-circle-exclamation",
-        command: ["nerd", "report"]
+        command: ["cybex", "report"]
     },
     {
         id: "recovery",
@@ -885,7 +885,7 @@ function argumentEmptyText(action, value) {
     return checked.error !== "" ? checked.error : String(spec.hint || "");
 }
 
-// `nerdos-webapp list --json`, read defensively: it is the shell's view of
+// `cybexos-webapp list --json`, read defensively: it is the shell's view of
 // files the user (or anything running as the user) can edit.
 function parseWebApps(text) {
     var value;
@@ -960,7 +960,7 @@ function expandCommand(command, home, argument) {
     });
 }
 
-// What `nerdos-runtime ipc launcher open <id>` shows: a tab opens as that
+// What `cybexos-runtime ipc launcher open <id>` shows: a tab opens as that
 // tab; a prefix provider opens Apps with its prefix typed, the way a user
 // would reach it. Anything else opens the plain launcher.
 function openTarget(providerId) {

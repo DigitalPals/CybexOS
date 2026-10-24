@@ -44,7 +44,7 @@ from websockets.asyncio.server import ServerConnection
 from websockets.exceptions import ConnectionClosed
 
 
-from nerdos_hermes.protocol import (
+from cybexos_hermes.protocol import (
     LOG as LOG,
     BRIDGE_VERSION as BRIDGE_VERSION,
     MAX_DOWNSTREAM_MESSAGE as MAX_DOWNSTREAM_MESSAGE,
@@ -84,7 +84,7 @@ from nerdos_hermes.protocol import (
     slugify as slugify,
     is_loopback as is_loopback,
 )
-from nerdos_hermes.auth import (
+from cybexos_hermes.auth import (
     _RemoteAuthRequired as _RemoteAuthRequired,
     _RemoteRedirectBlocked as _RemoteRedirectBlocked,
     _RemoteTransportError as _RemoteTransportError,
@@ -96,11 +96,11 @@ from nerdos_hermes.auth import (
     RemoteWebUIAuth as RemoteWebUIAuth,
     RemoteSession as RemoteSession,
 )
-from nerdos_hermes.registry import (
+from cybexos_hermes.registry import (
     default_conversations as default_conversations,
     ConversationRegistry as ConversationRegistry,
 )
-from nerdos_hermes.gateway import (
+from cybexos_hermes.gateway import (
     LocalClient as LocalClient,
     PendingUpstream as PendingUpstream,
     HermesGateway as HermesGateway,
@@ -471,7 +471,7 @@ class HermesBridge:
             provider_status = await self.refresh_provider_status()
             return {
                 **self.snapshot(),
-                "server": "nerdos-hermes-menubar-bridge",
+                "server": "cybexos-hermes-menubar-bridge",
                 "bridgeVersion": str(BRIDGE_VERSION),
                 "backendStatus": self.connection,
                 "capabilities": self.bridge_capabilities(),

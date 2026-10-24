@@ -1,4 +1,4 @@
-# NerdOS ISO menu appearance. Logo reused unchanged from Plymouth.
+# Cybex OS ISO menu appearance. Logo shared with Plymouth.
 desktop-color: "#0d0d0d"
 title-text: ""
 terminal-font: "Unifont Regular 16"
@@ -7,26 +7,26 @@ terminal-font: "Unifont Regular 16"
   left = 50%-180
   top = 12%
   width = 360
-  height = 48
+  height = 85
   file = "logo.png"
 }
 + label {
   left = 0
-  top = 23%
+  top = 31%
   width = 100%
   align = "center"
-  text = "NerdOS - Opinionated System"
+  text = "Cybex OS"
   color = "#F3F2EC"
   font = "Unifont Regular 16"
 }
 + boot_menu {
   left = 15%
-  top = 35%
+  top = 40%
   width = 70%
   height = 50%
   item_font = "Unifont Regular 16"
   item_color = "#F3F2EC"
-  selected_item_color = "#C8FF1F"
+  selected_item_color = "#60A5FA"
   item_height = 32
   item_padding = 8
   item_spacing = 4

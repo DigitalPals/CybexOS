@@ -12,12 +12,12 @@ Singleton {
     id: root
 
     readonly property var names: [
-        "claude", "nerdos", "fusebox", "gemini", "github", "grok", "kimi", "openai",
+        "claude", "cybexos", "fusebox", "gemini", "github", "grok", "kimi", "openai",
         "slack", "t3", "tailscale", "whatsapp", "youtube"
     ]
     readonly property var files: ({
         claude: "claude.svg",
-        nerdos: "nerdos.svg",
+        cybexos: "cybexos.svg",
         fusebox: "fusebox.svg",
         gemini: "gemini.svg",
         github: "github.svg",
@@ -35,7 +35,7 @@ Singleton {
     // keeps thin outlines (notably OpenAI's) at their original weight.
     readonly property var highlightFiles: ({
         claude: "claude-white.svg",
-        nerdos: "nerdos-white.svg",
+        cybexos: "cybexos-white.svg",
         fusebox: "fusebox-white.svg",
         gemini: "gemini-white.svg",
         github: "github-white.svg",
@@ -51,7 +51,7 @@ Singleton {
     })
     readonly property var labels: ({
         claude: "Claude",
-        nerdos: "NerdOS",
+        cybexos: "Cybex OS",
         fusebox: "Fusebox",
         gemini: "Gemini",
         github: "GitHub",

@@ -21,18 +21,18 @@ Singleton {
     id: root
 
     readonly property string filePath:
-        Quickshell.env("HOME") + "/.config/nerdos/shell.json"
+        Quickshell.env("HOME") + "/.config/cybexos/shell.json"
 
     readonly property bool connectedWidgetsConfigured:
-        Quickshell.env("NERDOS_CONNECTED_WIDGETS") === "1"
+        Quickshell.env("CYBEXOS_CONNECTED_WIDGETS") === "1"
     // The installer's assistant feature (docs/assistant.md). Unset, as in a
     // source-tree run, it counts as on: the default.
     readonly property bool assistantConfigured:
-        Quickshell.env("NERDOS_ASSISTANT") !== "0"
+        Quickshell.env("CYBEXOS_ASSISTANT") !== "0"
     // The installer's developer tooling feature (quickshell.service sets
     // it). Unset, as in a source-tree run, it counts as on: the default.
     readonly property bool developerToolsConfigured:
-        Quickshell.env("NERDOS_DEVELOPER_TOOLS") !== "0"
+        Quickshell.env("CYBEXOS_DEVELOPER_TOOLS") !== "0"
     readonly property var defaults: {
         const value = SettingsHelpers.defaults();
         return value;
@@ -664,7 +664,7 @@ Singleton {
     // `mv` has to start and finish first. The dependency rule above stands.
     function notifyCorruption(message) {
         Notifs.send({
-            appName: "NerdOS Settings",
+            appName: "Cybex OS Settings",
             appIcon: "preferences-system",
             urgency: NotificationUrgency.Critical,
             summary: I18n.tr("Settings file problem"),
@@ -775,7 +775,7 @@ Singleton {
     // unreadable file closes every write, and Retry re-reads it.
     function protectNewerFile(version) {
         loadError = true;
-        loadErrorText = filePath + " was saved by a newer NerdOS (settings version "
+        loadErrorText = filePath + " was saved by a newer Cybex OS (settings version "
             + version + "). Changes apply but are not saved, so its newer settings are kept.";
         saveTimer.stop();
         savePending = false;
@@ -1117,7 +1117,7 @@ Singleton {
         }
     }
 
-    // Power saver takes the compositor's polish too: nerdos_power_saver() in
+    // Power saver takes the compositor's polish too: cybexos_power_saver() in
     // looknfeel.lua uses one blur pass and turns animations off, and
     // holds that across a config reload. It is sent on startup as well, which
     // also lifts a saver left behind by a shell that exited meanwhile.
@@ -1128,7 +1128,7 @@ Singleton {
             return;
         dispatchedPowerSaver = Activity.powerSaver;
         powerSaverProc.command = ["hyprctl", "eval",
-            "nerdos_power_saver(" + (dispatchedPowerSaver ? "true" : "false") + ")"];
+            "cybexos_power_saver(" + (dispatchedPowerSaver ? "true" : "false") + ")"];
         powerSaverProc.running = true;
     }
 

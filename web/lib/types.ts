@@ -27,7 +27,7 @@ export interface DesktopWindow {
   height: number;
 }
 export const DEFAULT_PREFERENCES: Preferences = {
-  theme: 'dark', accent: '#d3d283', wallpaper: 'mountains', glass: false,
+  theme: 'dark', accent: '#60a5fa', wallpaper: 'mountains', glass: false,
   clock24: true, reducedMotion: false, font: 'mono',
 };
-export const REPOSITORY_URL = 'https://github.com/DigitalPals/NerdOS';
+export const REPOSITORY_URL = 'https://github.com/DigitalPals/CybexOS';

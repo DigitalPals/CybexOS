@@ -144,8 +144,7 @@ SettingsPage {
             SettingsAction {
                 text: I18n.tr("Change password")
                 glyph: "lock"
-                enabled: !Session.live
-                onTriggered: Quickshell.execDetached(["nerdos-password"])
+                onTriggered: Quickshell.execDetached(["cybexos-password"])
             }
         }
 
@@ -348,7 +347,7 @@ SettingsPage {
                 width: parent.width
                 visible: page.readerReady && page.fingers.length > 0
                 maximumLines: 6
-                text: I18n.tr("Set nerdos.authentication.fingerprint in a personal NixOS module, then preview with nerd update stage local and apply the reviewed change. Enrol and remove fingerprints here.")
+                text: I18n.tr("Set cybexos.authentication.fingerprint in a personal NixOS module, then preview with cybex update stage local and apply the reviewed change. Enrol and remove fingerprints here.")
             }
         }
 

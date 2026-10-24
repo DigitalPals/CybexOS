@@ -18,7 +18,7 @@ hardware support; no physical hardware was qualified during this implementation.
 Secure Boot installation currently stops before erasure. It is not supported
 merely because Lanzaboote evaluates. Existing firmware verification must not be
 disabled to get the installer to boot. Keys belong in
-`/var/lib/nerdos/secrets/secureboot` with root-only permissions, outside the
+`/var/lib/cybexos/secrets/secureboot` with root-only permissions, outside the
 store and source. Completing signed media, enrollment and module signing is a
 release blocker, not an optional post-release improvement.
 The kernel must enforce the intended signing/lockdown policy, and installation
@@ -90,8 +90,8 @@ out of Git. The updater only exposes private logs after administrator authentica
 
 Settings enrolls/removes fingerprints and security-key credentials through their
 persistent APIs. Authentication policy belongs to personal NixOS modules:
-set `nerdos.authentication.fingerprint = true;` or `false`, then preview with
-`nerd update stage local` and apply the reviewed transaction. Settings displays
+set `cybexos.authentication.fingerprint = true;` or `false`, then preview with
+`cybex update stage local` and apply the reviewed transaction. Settings displays
 the active policy without offering a switch that bypasses the staged lifecycle.
 Firmware has a separate explicit action in the Update drawer; its device writes
 are outside Nix generations and cannot be undone by a system rollback.

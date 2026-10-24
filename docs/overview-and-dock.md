@@ -6,7 +6,7 @@ list ship on; floating workspaces show the dock automatically.
 ## Window overview
 
 `Super+Tab` opens the overview on the focused screen. A three-finger swipe up
-on the touchpad, and `nerdos-runtime ipc overview toggle` (also `open` and
+on the touchpad, and `cybexos-runtime ipc overview toggle` (also `open` and
 `close`), open the same overview.
 
 Every workspace that has windows is a tile, along with the workspace on screen
@@ -54,7 +54,7 @@ the focused app has a wider accent mark.
 
 Until you pin or unpin something, the dock suggests your default browser,
 Files and the terminal. Pins are desktop entry ids stored in `dockPinned` in
-`~/.config/nerdos/shell.json`. A pinned app that is not installed is not
+`~/.config/cybexos/shell.json`. A pinned app that is not installed is not
 shown, but it stays pinned.
 
 Browser web-app windows, including Brave's URL-based app windows, match their

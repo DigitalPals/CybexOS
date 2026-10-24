@@ -2,7 +2,7 @@
 """Named theme packs: schema, catalogue, sharing and hostile sources.
 
 Exercises scripts/theme_packs.py and its command line (theme-packs.py, which
-`nerd theme` runs) against scratch theme roots, settings files and local Git
+`cybex theme` runs) against scratch theme roots, settings files and local Git
 repositories. Nothing reaches the network or a running shell: the IPC helper
 is a stub and Git sources are served over file://.
 """
@@ -41,19 +41,19 @@ def theme_json(**fields):
 
 class Scratch(unittest.TestCase):
     def setUp(self):
-        self.base = Path(tempfile.mkdtemp(prefix='nerdos-theme-packs.'))
+        self.base = Path(tempfile.mkdtemp(prefix='cybexos-theme-packs.'))
         self.addCleanup(shutil.rmtree, self.base, True)
-        self.themes = self.base / 'data/nerdos/themes'
+        self.themes = self.base / 'data/cybexos/themes'
         self.config = self.base / 'config'
         self.home = self.base / 'home'
         self.home.mkdir()
         self.env = {**os.environ, 'HOME': str(self.home), 'XDG_CONFIG_HOME': str(self.config),
                     'XDG_DATA_HOME': str(self.base / 'data'), 'PYTHONDONTWRITEBYTECODE': '1',
-                    'NERDOS_THEME_ROOT': str(self.themes),
-                    'NERDOS_RUNTIME_HELPER': str(self.base / 'no-runtime')}
+                    'CYBEXOS_THEME_ROOT': str(self.themes),
+                    'CYBEXOS_RUNTIME_HELPER': str(self.base / 'no-runtime')}
         self._environ = dict(os.environ)
         os.environ.update({key: self.env[key] for key in (
-            'HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'NERDOS_THEME_ROOT')})
+            'HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'CYBEXOS_THEME_ROOT')})
         self.addCleanup(self._restore)
 
     def _restore(self):
@@ -74,7 +74,7 @@ class Scratch(unittest.TestCase):
         return result
 
     def runtime_stub(self, answer=None, status=0):
-        """A nerdos-runtime whose `ipc` logs its arguments and answers."""
+        """A cybexos-runtime whose `ipc` logs its arguments and answers."""
         stub = self.base / 'runtime'
         log = self.base / 'ipc.log'
         body = f'printf "%s\\n" "$*" >>{log}\n'
@@ -82,7 +82,7 @@ class Scratch(unittest.TestCase):
             body += f'printf "%s\\n" {json.dumps(answer)}\n'
         stub.write_text(f'#!/bin/sh\n{body}exit {status}\n')
         stub.chmod(0o755)
-        self.env['NERDOS_RUNTIME_HELPER'] = str(stub)
+        self.env['CYBEXOS_RUNTIME_HELPER'] = str(stub)
         return log
 
 
@@ -91,7 +91,7 @@ class Schema(Scratch):
         listing = packs.catalogue()
         self.assertEqual(listing['invalid'], [])
         ids = [theme['id'] for theme in listing['themes']]
-        self.assertEqual(ids[0], 'nerdos')
+        self.assertEqual(ids[0], 'cybexos')
         self.assertGreaterEqual(len(ids), 8)
         for theme_id in ('nord', 'gruvbox', 'tokyo-night', 'catppuccin-mocha', 'catppuccin-latte',
                          'rose-pine', 'everforest', 'kanagawa'):
@@ -107,8 +107,8 @@ class Schema(Scratch):
             self.assertEqual((directory / 'theme.json').read_text(), packs.canonical(theme))
 
     def test_the_default_theme_is_a_fresh_install(self):
-        nerdos = packs.find('nerdos')
-        patch = packs.settings_patch(nerdos)
+        cybexos = packs.find('cybexos')
+        patch = packs.settings_patch(cybexos)
         defaults = packs.APPEARANCE_DEFAULTS
         for key in ('themeMode', 'paletteMode', 'accent', 'barColorMode', 'themePalette'):
             self.assertEqual(patch[key], defaults[key], key)
@@ -436,7 +436,7 @@ class GitInstall(Scratch):
 
 class ApplyAndPersist(Scratch):
     def write_settings(self, value):
-        path = self.config / 'nerdos/shell.json'
+        path = self.config / 'cybexos/shell.json'
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(value, indent=2) + '\n')
         return path
@@ -482,7 +482,7 @@ class ApplyAndPersist(Scratch):
         # A file from a newer shell is never rewritten by an older helper.
         newer = self.write_settings({'v': version + 1, 'accent': '#ffffff'})
         before = newer.read_text()
-        self.assertIn('newer NerdOS', self.cli('apply', 'gruvbox', status=1).stderr)
+        self.assertIn('newer Cybex OS', self.cli('apply', 'gruvbox', status=1).stderr)
         self.assertEqual(newer.read_text(), before)
 
     def test_a_theme_wallpaper_is_copied_without_replacing_files(self):
@@ -504,7 +504,7 @@ class ApplyAndPersist(Scratch):
         self.assertEqual(sorted(p.name for p in walls.iterdir()),
                          ['theme-harbour-2.png', 'theme-harbour-3.png', 'theme-harbour.png'])
         self.cli('apply', 'harbour')
-        self.assertEqual(json.loads((self.config / 'nerdos/shell.json').read_text())['wall'],
+        self.assertEqual(json.loads((self.config / 'cybexos/shell.json').read_text())['wall'],
                          'theme-harbour-3.png')
 
     def test_unknown_themes_and_resolve_errors(self):
@@ -538,7 +538,7 @@ class ShareAndSave(Scratch):
         nord = packs.settings_patch(packs.find('nord'))
         settings = {'v': packs.schema_version(), **nord, 'accent': '#ABCDEF', 'font': 'plex',
                     'wall': 'peak.jpg', 'wallDir': str(walls)}
-        path = self.config / 'nerdos/shell.json'
+        path = self.config / 'cybexos/shell.json'
         path.parent.mkdir(parents=True)
         path.write_text(json.dumps(settings))
         self.cli('export', 'CURRENT', self.base / 'out', '--name', 'Night shift')

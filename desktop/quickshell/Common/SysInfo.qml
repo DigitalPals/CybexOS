@@ -423,13 +423,13 @@ Singleton {
     }
 
     // ---- idle timeouts -------------------------------------------------
-    // nerdos-runtime renders hypridle's configuration from shell.json
+    // cybexos-runtime renders hypridle's configuration from shell.json
     // when hypridle starts, so a change applies by restarting the service
     // once the file holds it. The comparison uses the saved text, not the
     // live values: those can be ahead of the file while a save is in flight.
     // A user-owned hypridle.conf replaces the rendered file entirely.
     readonly property string idleUserConfigPath: Quickshell.env("HOME")
-        + "/.config/nerdos/hypr/hypridle.conf"
+        + "/.config/cybexos/hypr/hypridle.conf"
     property string idleTimeoutsApplied: ""
     property string idleTimeoutsError: ""
     property bool idleUserConfig: false
@@ -511,7 +511,7 @@ Singleton {
     Process {
         id: idleUserConfigProc
 
-        // The same test nerdos-runtime applies before preferring it.
+        // The same test cybexos-runtime applies before preferring it.
         command: ["sh", "-c", '[ -f "$1" ] && [ ! -L "$1" ]', "sh",
             root.idleUserConfigPath]
         onExited: exitCode => root.idleUserConfig = exitCode === 0

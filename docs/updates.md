@@ -4,8 +4,8 @@ The machine owns `/etc/nixos/flake.nix` and `flake.lock`:
 
 ```nix
 inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
-inputs.nerdos.url = "github:DigitalPals/NerdOS/EXACT_AUTHENTICATED_REVISION";
-inputs.nerdos.inputs.nixpkgs.follows = "nixpkgs";
+inputs.cybexos.url = "github:DigitalPals/CybexOS/EXACT_AUTHENTICATED_REVISION";
+inputs.cybexos.inputs.nixpkgs.follows = "nixpkgs";
 ```
 
 Add personal inputs explicitly and make their Nixpkgs follow the same root.
@@ -18,10 +18,10 @@ It uses Nixpkgs recipes and the single machine package universe. `nix/desktop-co
 records exact source identities; remove it after stable catches up and the
 runtime qualifies. Other upstream inputs continue to advance independently.
 
-`nerd update check` checks upstream and NerdOS independently. An unreachable
+`cybex update check` checks upstream and Cybex OS independently. An unreachable
 source is unknown/unavailable, never reported current. Nixpkgs checks identify
 available revisions; preview builds expose the actual package closure changes.
-The Update drawer has separate Upstream, NerdOS and Both preview actions,
+The Update drawer has separate Upstream, Cybex OS and Both preview actions,
 installed/available versions, release notes, durable progress, errors, built
 changes, restart requirements and recovery status.
 
@@ -31,7 +31,7 @@ API rate-limit response or HTTP 429 suggests retrying later; HTTP 403 without
 rate-limit evidence is reported as access denied. Recognized server, DNS, TLS,
 connection and timeout errors have separate guidance. Other Nix failures leave
 the cause unknown and suggest checking network access and Nix configuration.
-Malformed metadata also leaves the status unknown. NerdOS discovery still runs
+Malformed metadata also leaves the status unknown. Cybex OS discovery still runs
 after an upstream failure, so each source keeps its own result.
 
 Discovery creates no deployment or transaction log. Its public error includes
@@ -50,29 +50,29 @@ authentication token.
 The separate **Device firmware…** action opens a terminal, refreshes fwupd's
 signed metadata, shows the selected devices and versions, and asks before
 installation. The launcher also provides **Review device firmware…**; the CLI
-is `nerdos-firmware-update interactive`. fwupd supplies authentication,
+is `cybexos-firmware-update interactive`. fwupd supplies authentication,
 signature checks and device progress. Keep external power connected and follow
 device-specific instructions. Firmware changes are outside the Nix transaction
 and are not reverted by a generation rollback. Reboots remain explicit.
 
-`nerd update stage upstream|nerdos|both|local` authenticates selected release
+`cybex update stage upstream|cybexos|both|local` authenticates selected release
 metadata before evaluation, snapshots the entire personal configuration and
-updates only the chosen inputs. NerdOS-only updates include its source-declared
+updates only the chosen inputs. Cybex OS-only updates include its source-declared
 vendor dependency graph while preserving root upstream/personal inputs. They
 never select code from a moving branch. Failed combined previews offer the
-explicit `stage upstream` retry retaining installed NerdOS; that combination
+explicit `stage upstream` retry retaining installed Cybex OS; that combination
 must build and pass candidate checks too.
 
-`nerd update status` returns the built diff, transaction and review token.
-`nerd update apply ID TOKEN` runs under a supervised systemd worker and rejects
+`cybex update status` returns the built diff, transaction and review token.
+`cybex update apply ID TOKEN` runs under a supervised systemd worker and rejects
 stale review tokens or intervening personal edits. No widget/module is removed
 to make evaluation or runtime checks pass. Actual build progress is phase-based;
 private transaction logs hold build diagnostics. After a deliberate reboot and
-authenticated desktop login, `nerd update confirm` validates system services,
+authenticated desktop login, `cybex update confirm` validates system services,
 Hyprland, exactly one managed Quickshell and its current journal.
 
 A failed deployment is quarantined by complete system identity. Inspect the
-cause before using `nerd update retry-failed ID` to explicitly allow another
+cause before using `cybex update retry-failed ID` to explicitly allow another
 preview of it. Retry permission covers prior failures of that exact system and
 is consumed only after a successful preview. Recovery is separate from authenticated normal updates; a channel
 cannot use a lower semantic version as a normal update.

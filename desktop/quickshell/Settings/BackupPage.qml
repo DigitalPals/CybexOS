@@ -17,7 +17,7 @@ import "LocalTime.js" as LocalTime
 // switch and restore. Restoring never replaces anything: files go into a
 // new folder under ~/Restored, which then opens in Files.
 //
-// Everything that matters lives in the nerdos-backup helper (Common/
+// Everything that matters lives in the cybexos-backup helper (Common/
 // Backup.qml); this page holds only what the person is typing.
 SettingsPage {
     id: page
@@ -203,7 +203,7 @@ SettingsPage {
                 label: I18n.tr("Folder")
                 value: page.folder === "" ? "None chosen" : page.folder
                 valueMono: page.folder !== ""
-                hint: I18n.tr("An external drive is best. Backups go into a nerdos-backup folder inside it.")
+                hint: I18n.tr("An external drive is best. Backups go into a cybexos-backup folder inside it.")
 
                 SettingsAction {
                     text: I18n.tr("Choose…")
@@ -240,7 +240,7 @@ SettingsPage {
                 label: I18n.tr("Recovery key")
                 value: page.recoveryText
                 placeholder: I18n.tr("XXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX")
-                hint: I18n.tr("This destination already holds NerdOS backups. Enter their recovery key to keep using them from this computer.")
+                hint: I18n.tr("This destination already holds Cybex OS backups. Enter their recovery key to keep using them from this computer.")
                 onEdited: text => page.recoveryText = text
             }
             ValueRow {

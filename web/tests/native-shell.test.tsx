@@ -13,7 +13,7 @@ describe('native welcome and shell', () => {
     const user = userEvent.setup();
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...DEFAULT_PREFERENCES, clock24: false }));
     const firstVisit = render(<Desktop />);
-    const welcome = screen.getByRole('region', { name: 'Welcome to NerdOS window' });
+    const welcome = screen.getByRole('region', { name: 'Welcome to Cybex OS window' });
     expect(within(welcome).getByRole('button', { name: 'Use wallpaper Moonlit peaks' })).toHaveAttribute('aria-pressed', 'true');
 
     await user.click(within(welcome).getByRole('button', { name: 'Use wallpaper Aurora' }));
@@ -28,7 +28,7 @@ describe('native welcome and shell', () => {
 
     firstVisit.unmount();
     const secondVisit = render(<Desktop />);
-    const restoredWelcome = screen.getByRole('region', { name: 'Welcome to NerdOS window' });
+    const restoredWelcome = screen.getByRole('region', { name: 'Welcome to Cybex OS window' });
     expect(within(restoredWelcome).getByRole('button', { name: 'Use wallpaper Aurora' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(restoredWelcome).getByRole('button', { name: 'Use wallpaper Moonlit peaks' })).toHaveAttribute('aria-pressed', 'false');
     expect(secondVisit.container.querySelector('.desktop-wallpaper')).toHaveClass('wallpaper-aurora');
@@ -40,7 +40,7 @@ describe('native welcome and shell', () => {
     render(<Desktop />);
     await user.click(screen.getByRole('button', { name: 'Get started' }));
 
-    expect(screen.queryByRole('region', { name: 'Welcome to NerdOS window' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Welcome to Cybex OS window' })).not.toBeInTheDocument();
     const prompt = screen.getByRole('button', { name: /^Open an app/ });
     expect(prompt).toBeVisible();
     await user.click(prompt);
@@ -143,7 +143,7 @@ describe('native welcome and shell', () => {
     render(<Desktop />);
     await user.click(screen.getByRole('button', { name: 'Notifications' }));
     const notifications = screen.getByRole('tabpanel', { name: 'Notifications' });
-    expect(within(notifications).getByText('Welcome to your NerdOS browser desktop.')).toBeVisible();
+    expect(within(notifications).getByText('Welcome to your Cybex OS browser desktop.')).toBeVisible();
     await user.click(within(notifications).getByRole('button', { name: 'Clear all' }));
 
     expect(within(notifications).getByRole('heading', { name: 'All caught up.' })).toBeVisible();

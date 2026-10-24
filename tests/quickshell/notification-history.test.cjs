@@ -9,9 +9,9 @@ const helper=path.join(shellDir,'scripts/notification-history.py');
 const row=(extra={})=>({arrived:Date.now(),appName:'Chat',desktopEntry:'chat',webOrigin:'',displayAppName:'Chat',
     displaySummary:'Hello',displayBody:'Safe message',occurrences:1,urgency:1,...extra});
 function fixture(t){
-    const base=fs.mkdtempSync(path.join(os.tmpdir(),'nerdos-notification-history-'));
+    const base=fs.mkdtempSync(path.join(os.tmpdir(),'cybexos-notification-history-'));
     t.after(()=>fs.rmSync(base,{force:true,recursive:true}));
-    const directory=path.join(base,'nerdos/notifications');
+    const directory=path.join(base,'cybexos/notifications');
     return {base,directory,file:path.join(directory,'history.json')};
 }
 function run(env,requests){

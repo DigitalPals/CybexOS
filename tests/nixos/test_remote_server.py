@@ -94,7 +94,7 @@ class RemoteServerTests(unittest.TestCase):
     def test_stream_controls_and_eof_stop_the_transport(self):
         # A fake SSH executable runs the exact transmitted, quoted program
         # locally. This covers delivery, framing and lifetime without a host.
-        with tempfile.TemporaryDirectory(prefix="nerdos-remote-test-") as directory:
+        with tempfile.TemporaryDirectory(prefix="cybexos-remote-test-") as directory:
             fake = Path(directory) / "ssh"
             fake.write_text(f"#!{sys.executable}\nimport os,sys\nos.execl({shutil.which('sh')!r},'sh','-c',sys.argv[-1])\n")
             fake.chmod(0o700)

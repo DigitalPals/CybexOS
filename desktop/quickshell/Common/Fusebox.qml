@@ -597,7 +597,7 @@ Singleton {
 
     FileView {
         id: stateFile
-        path: Quickshell.env("HOME") + "/.local/state/nerdos/shell/fusebox.json"
+        path: Quickshell.env("HOME") + "/.local/state/cybexos/shell/fusebox.json"
         printErrors: false
         blockLoading: true
         // qmllint disable unqualified

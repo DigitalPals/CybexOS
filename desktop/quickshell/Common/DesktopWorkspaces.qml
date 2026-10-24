@@ -24,7 +24,7 @@ Singleton {
     readonly property bool titlebarsAvailable: ready && snapshot.capabilities.titlebars
     readonly property string error: commandError || (ready ? snapshot.error : "")
     readonly property string snapshotPath: Quickshell.env("XDG_RUNTIME_DIR")
-        ? Quickshell.env("XDG_RUNTIME_DIR") + "/nerdos/workspaces.json" : ""
+        ? Quickshell.env("XDG_RUNTIME_DIR") + "/cybexos/workspaces.json" : ""
 
     function monitor(name) { return WorkspaceHelpers.monitor(snapshot, name); }
     function workspace(id) { return WorkspaceHelpers.workspace(snapshot, id); }

@@ -203,7 +203,7 @@ Singleton {
     }
     Process {
         id: webAppList
-        command: ["nerdos-webapp", "list", "--json"]
+        command: ["cybexos-webapp", "list", "--json"]
         stdout: StdioCollector {
             onStreamFinished: root.webApps = ProviderHelpers.parseWebApps(text)
         }

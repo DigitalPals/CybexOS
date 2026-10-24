@@ -23,7 +23,7 @@ FAILURE_LIMIT = 3
 
 
 def state_path() -> Path:
-    return Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "nerdos/shell-recovery.json"
+    return Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "cybexos/shell-recovery.json"
 
 
 def boot_id() -> str:
@@ -129,8 +129,8 @@ def main(argv: list[str] | None = None) -> int:
     elif args.action == "run":
         selected = selected_path(args.runtime, state)
         if selected != args.runtime:
-            os.environ["NERDOS_SHELL_SAFE_MODE"] = "1"
-            print("nerdos: starting the recovery desktop; use nerd shell recover to retry", file=sys.stderr, flush=True)
+            os.environ["CYBEXOS_SHELL_SAFE_MODE"] = "1"
+            print("cybexos: starting the recovery desktop; use cybex shell recover to retry", file=sys.stderr, flush=True)
         os.execvp("qs", ["qs", "-p", str(selected)])
     return 0
 

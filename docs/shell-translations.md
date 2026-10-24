@@ -1,7 +1,7 @@
 # Shell translations
 
 The menubar, launcher, Settings, notifications and every other Quickshell
-surface show their own text in the session's language. NerdOS ships English
+surface show their own text in the session's language. Cybex OS ships English
 and Dutch. There is no separate language setting: **Settings → Region &
 formats → System language** sets the language every application uses after
 the next login, and the shell follows the same rule. Text without a
@@ -9,7 +9,7 @@ translation stays English.
 
 The language comes from the first of `LC_ALL`, `LC_MESSAGES` and `LANG` that
 names one (`C` and `POSIX` name none). An unsupported language falls back to
-English, as gettext does. `NERDOS_LANG=nl` overrides all three for tests and
+English, as gettext does. `CYBEXOS_LANG=nl` overrides all three for tests and
 screenshots.
 
 ## How it works

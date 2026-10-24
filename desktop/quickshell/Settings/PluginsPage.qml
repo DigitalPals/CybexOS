@@ -4,7 +4,7 @@ import "../Common"
 import "PluginSource.js" as PluginSource
 
 // Omarchy plugins: community bar widgets, panels, overlays, menus and
-// services built for Omarchy's shell, which NerdOS runs unchanged. The page
+// services built for Omarchy's shell, which Cybex OS runs unchanged. The page
 // leads with where to find them (plugins.omarchy.org), then the three steps
 // from there to a running plugin — copy its install command, paste it into
 // Source, switch it on — and ends with the installed list, each plugin with
@@ -147,7 +147,7 @@ SettingsPage {
                 }
                 Text {
                     width: parent.width
-                    text: I18n.tr("Bar widgets, panels, overlays, menus and services made for Omarchy. They run on NerdOS unchanged.")
+                    text: I18n.tr("Bar widgets, panels, overlays, menus and services made for Omarchy. They run on Cybex OS unchanged.")
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
                     color: Theme.textFaint

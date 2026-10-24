@@ -3,7 +3,7 @@
 local M = {}
 local json = require("displays")
 local config = os.getenv("XDG_CONFIG_HOME") or ((os.getenv("HOME") or "") .. "/.config")
-M.path = config .. "/nerdos/input.json"
+M.path = config .. "/cybexos/input.json"
 local shortcuts = { [""] = true,
   ["grp:alt_shift_toggle"] = true, ["grp:ctrl_shift_toggle"] = true, ["grp:caps_toggle"] = true }
 local function token(value)
@@ -31,7 +31,7 @@ function M.apply(document)
     assert(shortcuts[keyboard.shortcut], "invalid layout switching shortcut")
     -- Keep the shared vendor options; user.lua can still customize them.
     local options = {}
-    for option in (_G.__nerdos_vendor_keyboard_options or ""):gmatch("[^,]+") do
+    for option in (_G.__cybexos_vendor_keyboard_options or ""):gmatch("[^,]+") do
       if not option:match("^grp:") and not (keyboard.shortcut == "grp:caps_toggle" and option == "compose:caps") then
         options[#options + 1] = option
       end
@@ -59,7 +59,7 @@ function M.apply(document)
     input.sensitivity = touchpad.sensitivity
   end
   hl.config({ input = input })
-  local gestures = rawget(_G, "__nerdos_gestures")
+  local gestures = rawget(_G, "__cybexos_gestures")
   if touchpad.workspaceSwipe == false and type(gestures) == "table" and type(gestures.remove) == "function" then
     gestures.remove("workspace")
   end
@@ -71,8 +71,8 @@ if file then
   local document, error = json.decode(contents)
   local ok, reason = false, error
   if document ~= nil then ok, reason = pcall(M.apply, document) end
-  _G.__nerdos_input_error = not ok and tostring(reason) or nil
+  _G.__cybexos_input_error = not ok and tostring(reason) or nil
 else
-  _G.__nerdos_input_error = nil
+  _G.__cybexos_input_error = nil
 end
 return M

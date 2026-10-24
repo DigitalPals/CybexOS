@@ -37,8 +37,8 @@ jobs:
       source_ref: ${{ needs.resolve.outputs.revision }}
   publish:
     needs: [resolve, qualify]
-    runs-on: [self-hosted, linux, x64, nerdos-isolated]
-    environment: nerdos-release
+    runs-on: [self-hosted, linux, x64, cybexos-isolated]
+    environment: cybexos-release
     permissions:
       contents: write
     steps:
@@ -67,9 +67,9 @@ jobs:
           nix flake metadata --json > source-metadata.json
           python3 release/manage.py gate release-output/qualification.json "$(git rev-parse HEAD)" "$(jq -r .locked.narHash source-metadata.json)"
           nix flake check -L
-          staging=$(mktemp -d "$RUNNER_TEMP/nerdos-release-image-XXXXXX")
+          staging=$(mktemp -d "$RUNNER_TEMP/cybexos-release-image-XXXXXX")
           revision=$(git rev-parse HEAD)
-          image="/data/pxe/iso/nerdos-$revision-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.iso"
+          image="/data/pxe/iso/cybexos-$revision-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.iso"
           trap 'rm -rf "$staging"; sudo rm -f "$image" "$image.sha256"' EXIT
           nix build .#iso -L --out-link "$staging/result"
           sudo install -d -m 0755 /data/pxe/iso
@@ -79,7 +79,7 @@ jobs:
           (cd /data/pxe/iso; sha256sum -c "$image.sha256")
           nix develop -c scripts/check-image-parity "$image" . --output release-output/image-parity.json
           nix develop -c scripts/qualify-installations "$image" --output release-output/installation-evidence.json
-          cp "$image" "release-output/nerdos-${TAG#v}-x86_64-linux.iso"
+          cp "$image" "release-output/cybexos-${TAG#v}-x86_64-linux.iso"
       - name: Prepare immutable assets and manifest
         env:
           TAG: ${{ inputs.tag }}
@@ -90,9 +90,9 @@ jobs:
           trap 'rm -f signing-key' EXIT
           umask 077
           printf '%s\n' "$SIGNING_KEY" > signing-key
-          git archive --format=tar.gz --prefix=nerdos/ HEAD > release-output/nerdos-source.tar.gz
+          git archive --format=tar.gz --prefix=cybexos/ HEAD > release-output/cybexos-source.tar.gz
           cp release/notes.md release-output/release-notes.md
-          (cd release-output; sha256sum ./*.iso nerdos-source.tar.gz > SHA256SUMS)
+          (cd release-output; sha256sum ./*.iso cybexos-source.tar.gz > SHA256SUMS)
           python3 release/manage.py manifest release-output "${TAG#v}" "$(git rev-parse HEAD)" "$(jq -r .locked.narHash source-metadata.json)" release/notes.md
           python3 release/manage.py sign release-output/manifest.json signing-key "$KEY_ID" --trust release/keys/trust.json --purpose release
           python3 release/verify-assets.py release-output/manifest.json release/keys/trust.json --local
@@ -104,7 +104,7 @@ jobs:
         run: |
           set -euo pipefail
           release/require-immutable-releases
-          gh release create "$TAG" --draft --verify-tag --title "NerdOS ${TAG#v}" --notes-file release/notes.md
+          gh release create "$TAG" --draft --verify-tag --title "Cybex OS ${TAG#v}" --notes-file release/notes.md
           gh release upload "$TAG" release-output/*
           release/require-immutable-releases
           gh release edit "$TAG" --draft=false

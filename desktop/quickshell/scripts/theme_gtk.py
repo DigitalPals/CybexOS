@@ -148,7 +148,7 @@ def owns_text_scale(current, applied):
 
 def reload(tokens, directory):
     if shutil.which('gsettings') is None:
-        # glib2 ships gsettings on every NerdOS install, so a PATH without it
+        # glib2 ships gsettings on every Cybex OS install, so a PATH without it
         # is a bare environment (the driver tests run with an empty one), not
         # a desktop with GTK applications to follow it.
         return

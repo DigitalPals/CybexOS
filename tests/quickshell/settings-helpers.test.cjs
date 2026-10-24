@@ -27,8 +27,8 @@ test("defaults carry the design values", () => {
     assert.equal(d.barHeight, 36);
     assert.equal(d.barRadius, 11);
     assert.equal(d.font, "mono");
-    assert.equal(d.accent, "#d3d283");
-    assert.equal(d.paletteMode, "wallpaper");
+    assert.equal(d.accent, "#60a5fa");
+    assert.equal(d.paletteMode, "fixed");
     assert.equal(d.position, "top");
     assert.equal(d.barStyle, "hug");
     assert.equal(d.gap, 8);
@@ -435,7 +435,7 @@ test("merge over a partial object fills the rest from defaults", () => {
     assert.equal(merged.barHeight, 36);
     assert.equal(merged.unit, "f");
     assert.equal(merged.barRadius, 11);
-    assert.equal(merged.accent, "#d3d283");
+    assert.equal(merged.accent, "#60a5fa");
     assert.ok(!("v" in merged));
     assert.ok(!("bogus" in H.merge({ bogus: 1 })));
 });
@@ -493,7 +493,7 @@ test("merge falls back on invalid enums, colors and names", () => {
         "the previous menu face stays selectable");
     assert.equal(H.merge({ themeMode: "sepia" }).themeMode, "dark");
     assert.equal(H.merge({ v: H.VERSION, paletteMode: "auto" }).paletteMode,
-        "wallpaper");
+        "fixed");
     assert.equal(H.merge({ v: H.VERSION, barStyle: "island" }).barStyle, "hug");
     assert.equal(H.merge({ position: "left" }).position, "top");
     const invalidAccessibility = H.merge({
@@ -508,7 +508,7 @@ test("merge falls back on invalid enums, colors and names", () => {
     assert.equal(invalidAccessibility.interfaceDensity, "default");
     assert.ok(!("pollMax" in H.merge({ pollMax: 120 })),
         "the retired model-usage poll ceiling must be ignored");
-    assert.equal(H.merge({ accent: "red" }).accent, "#d3d283");
+    assert.equal(H.merge({ accent: "red" }).accent, "#60a5fa");
     assert.equal(H.merge({ accent: "#a992e0" }).accent, "#a992e0");
     assert.equal(H.merge({ wall: "../../etc/passwd" }).wall, H.defaults().wall);
     assert.equal(H.merge({ wall: "" }).wall, H.defaults().wall);

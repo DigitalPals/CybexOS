@@ -50,7 +50,7 @@ class RecoveryTest(unittest.TestCase):
         self.assertEqual(M.record_stop(stopped, 2, "boot", "new", "signal", "killed", "SEGV"), stopped)
 
     def test_launcher_execs_selected_shell_without_an_extra_supervisor(self):
-        with tempfile.TemporaryDirectory(prefix="nerdos-shell-exec.") as scratch:
+        with tempfile.TemporaryDirectory(prefix="cybexos-shell-exec.") as scratch:
             runtime = ROOT / "desktop/quickshell"
             with patch.dict(os.environ, {"XDG_STATE_HOME": scratch, "INVOCATION_ID": "test"}):
                 M.main(["safe", str(runtime)])
@@ -60,9 +60,9 @@ class RecoveryTest(unittest.TestCase):
                 self.assertEqual(M.read_state(M.state_path())["invocation"], "test")
 
     def test_commands_preserve_config_and_roundtrip_state(self):
-        with tempfile.TemporaryDirectory(prefix="nerdos-shell-recovery.") as scratch:
+        with tempfile.TemporaryDirectory(prefix="cybexos-shell-recovery.") as scratch:
             root = Path(scratch)
-            config = root / "config/nerdos"
+            config = root / "config/cybexos"
             config.mkdir(parents=True)
             personal = {"shell.json": '{"v":26,"font":"mine"}', "plugins.json": '{"enabled":["mine"]}'}
             for name, content in personal.items():
@@ -85,7 +85,7 @@ class RecoveryTest(unittest.TestCase):
             self.assertTrue(json.loads(call("status"))["safe"])
             call("recover")
             self.assertFalse(json.loads(call("status"))["safe"])
-            self.assertEqual(list((root / "state/nerdos").glob(".shell-recovery-*")), [])
+            self.assertEqual(list((root / "state/cybexos").glob(".shell-recovery-*")), [])
 
 
 if __name__ == "__main__":

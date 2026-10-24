@@ -22,6 +22,7 @@ const pages = [
 ] as const;
 
 const accents = [
+  { label: 'Cybex blue', color: '#60a5fa' },
   { label: 'Moonstone', color: '#d3d283' },
   { label: 'Sage', color: '#a6c7a0' },
   { label: 'Sky', color: '#9bbce0' },
@@ -30,7 +31,7 @@ const accents = [
 ];
 
 const wallpapers = [
-  { id: 'mountains', name: 'Moonlit peaks', detail: 'The NerdOS original' },
+  { id: 'mountains', name: 'Moonlit peaks', detail: 'The Cybex OS original' },
   { id: 'aurora', name: 'Aurora', detail: 'A quieter kind of green' },
   { id: 'dusk', name: 'After hours', detail: 'The last light of the day' },
 ] as const;
@@ -69,7 +70,7 @@ export function SettingsApp({ preferences, updatePreferences, notify }: Settings
   function resetPreferences() {
     updatePreferences({ ...DEFAULT_PREFERENCES });
     setConfirmReset(false);
-    notify('Desktop preferences restored to NerdOS defaults.');
+    notify('Desktop preferences restored to Cybex OS defaults.');
     resetButton.current?.focus();
   }
 
@@ -212,19 +213,19 @@ export function SettingsApp({ preferences, updatePreferences, notify }: Settings
           <section aria-labelledby="settings-about-heading">
             <header className="settings-page-heading">
               <span className="settings-eyebrow">A DESKTOP THAT FEELS LIKE YOURS</span>
-              <h2 id="settings-about-heading">NerdOS</h2>
+              <h2 id="settings-about-heading">Cybex OS</h2>
               <p>Thoughtfully simple. Unmistakably personal.</p>
             </header>
-            <div className="settings-about-brand"><img src="/nerdos-logo.svg" alt="NerdOS" width="240" height="32" /><small>OPINIONATED SYSTEM · THE BROWSER EXPERIENCE</small></div>
+            <div className="settings-about-brand"><img src="/cybexos-logo.svg" alt="Cybex OS" width="240" height="57" /><small>THE CYBEX OS BROWSER EXPERIENCE</small></div>
             <div className="settings-group settings-about-facts">
               <div><span>Native foundation</span><strong>NixOS 26.05</strong></div>
               <div><span>Window compositor</span><strong>Hyprland</strong></div>
               <div><span>Desktop shell</span><strong>Quickshell</strong></div>
               <div><span>This experience</span><strong>Interactive web demo</strong></div>
             </div>
-            <div className="settings-help-note settings-about-note"><ShieldCheck size={18} /><p>This is an interactive simulation of NerdOS. It does not install Linux or control your computer. Notes and preferences are stored locally in this browser.</p></div>
+            <div className="settings-help-note settings-about-note"><ShieldCheck size={18} /><p>This is an interactive simulation of Cybex OS. It does not install Linux or control your computer. Notes and preferences are stored locally in this browser.</p></div>
             <a className="settings-repository-link" href={REPOSITORY_URL} target="_blank" rel="noreferrer">
-              Explore NerdOS on GitHub <ArrowUpRight size={16} />
+              Explore Cybex OS on GitHub <ArrowUpRight size={16} />
             </a>
           </section>
         )}

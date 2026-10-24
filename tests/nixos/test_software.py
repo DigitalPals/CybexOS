@@ -5,9 +5,9 @@ import shutil
 import unittest
 
 import test_lifecycle as lifecycle
-from nerdos.common import Failure, atomic, read
-from nerdos.engine import config_digest, copy_config
-from nerdos import software
+from cybexos.common import Failure, atomic, read
+from cybexos.engine import config_digest, copy_config
+from cybexos import software
 
 
 class SoftwareTests(unittest.TestCase):
@@ -78,9 +78,9 @@ class SoftwareTests(unittest.TestCase):
     def test_supervised_requests_keep_distinct_payloads_and_report_worker_crashes(self):
         from unittest.mock import patch
         from types import SimpleNamespace
-        from nerdos.cli import enqueue, request_status
+        from cybexos.cli import enqueue, request_status
         state = self.base / 'requests-state'
-        with patch('nerdos.cli.subprocess.run'):
+        with patch('cybexos.cli.subprocess.run'):
             one = enqueue(state, 'software', {'packages':['hello'], 'previous':[]})
             two = enqueue(state, 'software', {'packages':['git'], 'previous':[]})
         self.assertNotEqual(one['requestId'], two['requestId'])
@@ -88,6 +88,6 @@ class SoftwareTests(unittest.TestCase):
         path = state / 'request-status' / (one['requestId'] + '.json')
         atomic(path, read(path) | {'createdAt':0, 'state':'running'})
         result = SimpleNamespace(returncode=0, stdout='ActiveState=failed\nResult=signal\n')
-        with patch('nerdos.cli.subprocess.run', return_value=result):
+        with patch('cybexos.cli.subprocess.run', return_value=result):
             self.assertEqual(request_status(one['requestId'], state)['state'], 'failed')
         with self.assertRaises(Failure): request_status('../secret', state)

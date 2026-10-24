@@ -15,8 +15,8 @@
 -- ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 -- DEALINGS IN THE SOFTWARE.
 local model = require("workspace_model")
-local M = { FLOATED = "nerdos-mode-floated", OPENED = "nerdos-mode-opened",
-  FLOATING = "nerdos-floating-workspace", USER = "nerdos-user-float" }
+local M = { FLOATED = "cybexos-mode-floated", OPENED = "cybexos-mode-opened",
+  FLOATING = "cybexos-floating-workspace", USER = "cybexos-user-float" }
 function M.tagged(window, tag)
   for _, value in ipairs(window.tags or {}) do
     if value == tag or value == tag .. "*" then return true end

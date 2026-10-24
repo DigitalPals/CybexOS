@@ -26,7 +26,7 @@ STORE = load('settings_store', 'desktop/quickshell/scripts/settings-store')
 
 class SettingsOwnership(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix='nerdos-settings-ownership-')
+        self.temporary = tempfile.TemporaryDirectory(prefix='cybexos-settings-ownership-')
         self.addCleanup(self.temporary.cleanup)
         self.home = Path(self.temporary.name)
         self.path = self.home / 'shell.json'

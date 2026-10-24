@@ -97,7 +97,7 @@ test("the control dashboard uses a compact Settings action without a chevron", (
         "the Settings hit target should hug its visible content");
     assert.match(footer, /height:\s*Theme\.chipHeight/,
         "footer actions are chips, at the bar's own control height");
-    assert.doesNotMatch(footer, /text:\s*"NerdOS Settings"|chevron_right/);
+    assert.doesNotMatch(footer, /text:\s*"Cybex OS Settings"|chevron_right/);
 });
 
 test("the panel card grows out of its trigger and never out of thin air", () => {
@@ -359,7 +359,7 @@ test("schema twenty-three keeps safe defaults and exposes accessibility preferen
     assert.match(helpers, /barRadius:\s*11/);
     assert.match(helpers, /glassEnabled:\s*false/);
     assert.match(helpers, /barColorMode:\s*"default"/);
-    assert.match(helpers, /paletteMode:\s*"wallpaper"/);
+    assert.match(helpers, /paletteMode:\s*"fixed"/);
     assert.match(helpers, /barStyle:\s*"hug"/);
     assert.match(helpers, /function migrateBarStyle\(parsed, defaultsValue\)/);
     assert.match(helpers, /function migratePaletteMode\(parsed, defaultsValue\)/);
@@ -887,7 +887,7 @@ test("a widget chip opens its built-in options in the widget dialog", () => {
 test("the settings store keeps its fixed user-owned config path", () => {
     const settings = read("Common/Settings.qml");
     assert.match(settings,
-        /Quickshell\.env\("HOME"\) \+ "\/\.config\/nerdos\/shell\.json"/);
+        /Quickshell\.env\("HOME"\) \+ "\/\.config\/cybexos\/shell\.json"/);
     assert.match(settings, /path:\s*root\.filePath/);
     assert.doesNotMatch(settings, /:\s*Quickshell\.statePath\(/,
         "Settings must not use statePath — it forks per config directory");

@@ -91,7 +91,7 @@ test("the page has Password, Fingerprint and Security keys groups", () => {
     assert.match(page, /visible: page\.readerReady && page\.fingers\.length > 0\s*\n\s*label: "Use fingerprint/);
     assert.match(page, /value: page\.snapshot\.fingerprintAuth === true \? "Enabled" : "Disabled"/);
     assert.match(page, /hint: "Managed in \/etc\/nixos\/local"/);
-    assert.match(page, /nerdos\.authentication\.fingerprint[\s\S]*nerd update stage local[\s\S]*apply the reviewed change/);
+    assert.match(page, /cybexos\.authentication\.fingerprint[\s\S]*cybex update stage local[\s\S]*apply the reviewed change/);
     assert.doesNotMatch(page, /action:\s*"fingerprint-auth"/,
         "a read-only policy indicator cannot attempt direct authentication changes");
     for (const action of ["Add fingerprint", "Remove fingerprint", "Remove key"])

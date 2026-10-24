@@ -24,7 +24,7 @@ CATALOG = [{'value': 'us', 'label': 'English', 'variants': [{'value': '', 'label
 
 class InputPersistence(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix='nerdos-input-test-')
+        self.temp = tempfile.TemporaryDirectory(prefix='cybexos-input-test-')
         self.addCleanup(self.temp.cleanup)
         self.service = inputs.InputSettings()
         self.service.path = Path(self.temp.name) / 'config/input.json'
@@ -161,7 +161,7 @@ class InputPersistence(unittest.TestCase):
         self.apply(values={'workspaceSwipe': False})
         self.assertIs(self.service.read()[0]['touchpad']['workspaceSwipe'], False)
         # The loader's contained-error check runs after every reload.
-        self.assertIn(['hyprctl', 'eval', 'assert(__nerdos_input_error == nil, __nerdos_input_error)'],
+        self.assertIn(['hyprctl', 'eval', 'assert(__cybexos_input_error == nil, __cybexos_input_error)'],
                       [call.args[0] for call in self.run.call_args_list])
         self.run.side_effect = lambda command: json.dumps(replies[command[-1]])
         self.assertIs(self.service.dispatch({'action': 'snapshot'})['touchpad']['workspaceSwipe'], False)
@@ -253,7 +253,7 @@ class RegionTransactions(unittest.TestCase):
         self.assertTrue(result['staged'])
         self.assertIn('review', result['message'])
         command = run.call_args.args[0]
-        self.assertEqual(command[:5], ['nerd', 'config', 'region', 'locale', 'nl_NL.UTF-8'])
+        self.assertEqual(command[:5], ['cybex', 'config', 'region', 'locale', 'nl_NL.UTF-8'])
         self.assertEqual(json.loads(command[5]), previous)
         self.assertEqual(self.locale, previous)
         self.service.call.assert_not_called()
@@ -263,7 +263,7 @@ class RegionTransactions(unittest.TestCase):
             result = self.service.dispatch({'action': 'timezone', 'value': 'UTC', 'previous': self.timezone})
         self.assertTrue(result['staged'])
         self.assertEqual(run.call_args.args[0],
-                         ['nerd', 'config', 'region', 'timezone', 'UTC', json.dumps(self.timezone)])
+                         ['cybex', 'config', 'region', 'timezone', 'UTC', json.dumps(self.timezone)])
         self.assertEqual(self.timezone, 'Europe/Amsterdam')
         self.service.call.assert_not_called()
 

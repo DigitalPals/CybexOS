@@ -35,10 +35,10 @@ background.
 | `grok.svg`, `grok-white.svg` | [CLI Proxy API Management Center: `grok.svg`](https://github.com/router-for-me/Cli-Proxy-API-Management-Center/blob/382c09109db2e70a6e60697c0ae0cf6ef97198e7/src/assets/icons/grok.svg) | `382c09109db2e70a6e60697c0ae0cf6ef97198e7` | Upstream Grok path with shell-silver/white paint; redundant sizing and inline-style metadata removed. |
 | `t3.svg` | [T3 Code production logo](https://github.com/pingdotgg/t3code/blob/a3a8cbd60539b4af4de8f96c892dbd07a2b6c041/assets/prod/logo.svg) | `a3a8cbd60539b4af4de8f96c892dbd07a2b6c041` | Cropped to the wordmark; background removed. |
 | `fusebox.svg`, `fusebox-white.svg` | [Fusebox: `assets/icon.svg`](https://github.com/DigitalPals/Fusebox/blob/11fb076e73a96684109cba3b8aa884712846a288/assets/icon.svg) | `11fb076e73a96684109cba3b8aa884712846a288` | Upstream paths and paint; size attributes removed. The hover sibling changes both paints to white. |
-| `nerdos.svg`, `nerdos-white.svg` | Supplied NerdOS identity kit, `derived/quickshell/` | October 2026 | Unmodified pixel-hinted glasses; off-white/lime and white paints with identical geometry. See `assets/brand/USAGE.md`. |
+| `cybexos.svg`, `cybexos-white.svg` | Owner-supplied `assets/brand/source/cybex_white.svg` | October 2026 | X paths from the supplied wordmark; off-white and white lettering with the original red accent and identical geometry. See `assets/brand/USAGE.md`. |
 
 Simple Icons is distributed under CC0 1.0 and Fusebox under the Unlicense.
-Tabler Icons, T3 Code, and the CLI Proxy API Management Center are MIT licensed. The NerdOS glasses are original project artwork under the repository MIT license.
+Tabler Icons, T3 Code, and the CLI Proxy API Management Center are MIT licensed. The Cybex OS marks are original project artwork under the repository MIT license.
 Notices and modification details are retained in `THIRD_PARTY_LICENSES.md`.
 Names and logos remain trademarks of their respective owners regardless of
 the vector files' copyright licences.

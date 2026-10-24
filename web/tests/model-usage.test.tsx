@@ -169,7 +169,7 @@ describe('model usage desktop experience', () => {
     const user = userEvent.setup();
     const preferences = JSON.stringify({ ...DEFAULT_PREFERENCES, theme: 'light' });
     localStorage.setItem(STORAGE_KEY, preferences);
-    localStorage.setItem('nerdos-demo-notes-v1', 'Keep this note.');
+    localStorage.setItem('cybexos-demo-notes-v1', 'Keep this note.');
     render(<Desktop />);
     const panel = await openUsage(user);
     const initialPersonal = remaining('Codex Personal');
@@ -193,7 +193,7 @@ describe('model usage desktop experience', () => {
     await user.click(within(panel).getByRole('button', { name: 'Activity' }));
     expect(within(panel).getAllByRole('article')).toHaveLength(3);
     expect(localStorage.getItem(STORAGE_KEY)).toBe(preferences);
-    expect(localStorage.getItem('nerdos-demo-notes-v1')).toBe('Keep this note.');
+    expect(localStorage.getItem('cybexos-demo-notes-v1')).toBe('Keep this note.');
     expect(screen.getByRole('main')).toHaveClass('theme-light');
   });
 

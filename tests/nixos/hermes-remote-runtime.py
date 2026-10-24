@@ -1088,7 +1088,7 @@ async def scenario() -> None:
     previous_remote_url = os.environ.get("HERMES_REMOTE_URL")
     try:
         with RunningServer() as remote, tempfile.TemporaryDirectory(
-            prefix="nerdos-hermes-native-runtime."
+            prefix="cybexos-hermes-native-runtime."
         ) as temporary:
             os.environ["HERMES_REMOTE_URL"] = remote.url
             temporary_path = Path(temporary)
@@ -1797,7 +1797,7 @@ async def delete_refresh_race_scenario() -> None:
     delete_received, release_delete = asyncio.Event(), asyncio.Event()
     list_received, release_list = asyncio.Event(), asyncio.Event()
     hold = {"delete": False, "list": False}
-    with tempfile.TemporaryDirectory(prefix="nerdos-hermes-delete-race.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-hermes-delete-race.") as temporary:
         registry = BRIDGE.ConversationRegistry(Path(temporary) / "conversations.json")
         registry.save()
         bridge = BRIDGE.HermesBridge(

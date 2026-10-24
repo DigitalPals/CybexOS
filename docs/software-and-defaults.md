@@ -29,7 +29,7 @@ personal associations remain intact. A missing saved choice is retained and
 shown as unavailable, while an available application handles launches. An
 explicit association changed outside Settings takes precedence.
 
-NerdOS browser/terminal shortcuts, agent windows, maintenance and firmware
+Cybex OS browser/terminal shortcuts, agent windows, maintenance and firmware
 terminals, web apps, and dock suggestions use the same defaults. Chromium-based
 selected browsers can open web apps in app mode; other browsers open their URL
 normally. Private browsing uses the selected browser's advertised desktop action;
@@ -37,7 +37,7 @@ unsupported private actions produce a notification. Explicit `VISUAL`/`EDITOR`
 values and personal shortcuts retain their precedence. Arguments are passed as
 argv, including filenames and URLs containing spaces; they are not shell code.
 
-The `nerdos-apps` helper offers `status`, `set ROLE DESKTOP_ID`, `browser`,
+The `cybexos-apps` helper offers `status`, `set ROLE DESKTOP_ID`, `browser`,
 `browser --private`, `webapp URL`, `terminal [OPTIONS] [-- COMMAND ARGS…]`, and
-`edit FILE…`. `nerd software list`, `search QUERY`, `stage JSON` and `request ID`
+`edit FILE…`. `cybex software list`, `search QUERY`, `stage JSON` and `request ID`
 expose the native package workflow for scripting.

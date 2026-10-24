@@ -1,5 +1,5 @@
 {
-  description = "NerdOS: a personal, independently updatable NixOS desktop";
+  description = "Cybex OS: a personal, independently updatable NixOS desktop";
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     lanzaboote = {
@@ -32,7 +32,7 @@
         # NixOS VM tests can supply an already-configured, read-only pkgs.
         # Normal installations must receive the same exported compatibility overlay.
         nixpkgs.overlays = lib.mkIf (options.nixpkgs.overlays.type.name != "unique") [ compatibility ];
-        nerdos.release = {
+        cybexos.release = {
           version = nixpkgs.lib.mkDefault (nixpkgs.lib.trim (builtins.readFile ./VERSION));
           revision = nixpkgs.lib.mkDefault (self.rev or "uncommitted");
           narHash = nixpkgs.lib.mkDefault (self.narHash or "unavailable");
@@ -40,7 +40,7 @@
       };
     in {
       overlays.default = compatibility;
-      nixosModules = { default = module; nerdos = module; installer = ./nix/modules/installer.nix; };
+      nixosModules = { default = module; cybexos = module; installer = ./nix/modules/installer.nix; };
       packages = each (system: let pkgs = import nixpkgs { inherit system; overlays = [ compatibility ]; config.allowUnfree = true; }; in rec {
         desktop = pkgs.callPackage ./nix/packages/desktop.nix { source = self; };
         updater = pkgs.callPackage ./nix/packages/updater.nix { source = self; };
@@ -56,9 +56,9 @@
       nixosConfigurations.installer = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [ module ./nix/modules/installer.nix {
-          nerdos.installer.payload = installerPayload;
+          cybexos.installer.payload = installerPayload;
           system.extraDependencies = inputSources;
-          environment.etc."nerdos/installer-inputs.json".text = builtins.toJSON
+          environment.etc."cybexos/installer-inputs.json".text = builtins.toJSON
             (map builtins.unsafeDiscardStringContext inputSources);
         } ];
       };
@@ -67,15 +67,15 @@
           inherit nixpkgs pkgs module system inputSources inputNarHashes;
           installer = self.nixosConfigurations.installer.config;
         };
-        lifecycle = pkgs.runCommand "nerdos-lifecycle-tests" {
+        lifecycle = pkgs.runCommand "cybexos-lifecycle-tests" {
           nativeBuildInputs = [
             (pkgs.python3.withPackages (p: [ p.websockets p.pygobject3 p.pillow p.dbus-python ]))
             pkgs.openssl pkgs.git pkgs.dbus pkgs.restic pkgs.quickshell pkgs.systemd
             pkgs.xdg-terminal-exec pkgs.desktop-file-utils
           ];
           GI_TYPELIB_PATH = pkgs.lib.makeSearchPath "lib/girepository-1.0" [ pkgs.networkmanager pkgs.glib ];
-          NERDOS_DBUS_SESSION_CONFIG = "${pkgs.dbus}/share/dbus-1/session.conf";
-          NERDOS_LIBCRYPT = "${pkgs.libxcrypt}/lib/libcrypt.so.2";
+          CYBEXOS_DBUS_SESSION_CONFIG = "${pkgs.dbus}/share/dbus-1/session.conf";
+          CYBEXOS_LIBCRYPT = "${pkgs.libxcrypt}/lib/libcrypt.so.2";
         } ''
           cp -r ${self} source; chmod -R u+w source
           # Tests execute the same portable helper scripts as the packages.
@@ -101,18 +101,18 @@
         product = (nixpkgs.lib.nixosSystem {
           inherit system;
           modules = [ module ./nix/tests/machine.nix ({ lib, ... }: {
-            nerdos.features = {
+            cybexos.features = {
               proprietary = lib.mkForce true;
               steam = lib.mkForce true;
               docker = lib.mkForce true;
             };
           }) ];
         }).config.system.build.toplevel;
-        nvidia-evaluation = pkgs.writeText "nerdos-nvidia-application-independence" (builtins.unsafeDiscardStringContext (
+        nvidia-evaluation = pkgs.writeText "cybexos-nvidia-application-independence" (builtins.unsafeDiscardStringContext (
           (nixpkgs.lib.nixosSystem {
             inherit system;
             modules = [ module ./nix/tests/machine.nix {
-              nerdos.hardware.nvidia = true;
+              cybexos.hardware.nvidia = true;
             } ];
           }).config.system.build.toplevel.drvPath));
         # Build the complete matched hardware profile: generic product builds
@@ -121,7 +121,7 @@
         xps-system = (nixpkgs.lib.nixosSystem {
           inherit system;
           modules = [ module ./nix/tests/machine.nix {
-            nerdos.hardware.xps = { enable = true; sku = "0DB9"; camera = true; };
+            cybexos.hardware.xps = { enable = true; sku = "0DB9"; camera = true; };
           } ];
         }).config.system.build.toplevel;
         vm = import ./nix/tests/lifecycle.nix {
@@ -134,16 +134,17 @@
           packages = with pkgs; [ openssl nixfmt git nodejs quickshell qt6.qtdeclarative restic systemd
             qt6.qttools cmake ninja pkg-config qt6.qtbase sway qemu OVMF dbus util-linux lua5_4 jq procps hyprland xorriso mtools squashfsTools xdg-terminal-exec desktop-file-utils
             (python3.withPackages (p: [ p.pexpect p.pillow p.pygobject3 p.dbus-python p.websockets p.pyside6 ])) ];
-          NERDOS_OVMF = "${pkgs.OVMF.fd}/FV";
+          CYBEXOS_OVMF = "${pkgs.OVMF.fd}/FV";
+          CYBEXOS_LIBCRYPT = "${pkgs.libxcrypt}/lib/libcrypt.so.2";
           GI_TYPELIB_PATH = pkgs.lib.makeSearchPath "lib/girepository-1.0" [ pkgs.networkmanager pkgs.glib ];
-          NERDOS_DBUS_SESSION_CONFIG = "${pkgs.dbus}/share/dbus-1/session.conf";
-          NERDOS_SWAY_BINARY = "${pkgs.sway-unwrapped}/bin/sway";
-          NERDOS_QML_IMPORT_PATH = "${pkgs.qt6.qtdeclarative}/lib/qt-6/qml:${pkgs.qt6.qtmultimedia}/lib/qt-6/qml:${pkgs.qt6.qtwebsockets}/lib/qt-6/qml:${pkgs.qt6.qt5compat}/lib/qt-6/qml:${pkgs.quickshell}/lib/qt-6/qml";
-          NERDOS_QT_PLUGIN_PATH = "${pkgs.qt6.qtsvg}/lib/qt-6/plugins";
+          CYBEXOS_DBUS_SESSION_CONFIG = "${pkgs.dbus}/share/dbus-1/session.conf";
+          CYBEXOS_SWAY_BINARY = "${pkgs.sway-unwrapped}/bin/sway";
+          CYBEXOS_QML_IMPORT_PATH = "${pkgs.qt6.qtdeclarative}/lib/qt-6/qml:${pkgs.qt6.qtmultimedia}/lib/qt-6/qml:${pkgs.qt6.qtwebsockets}/lib/qt-6/qml:${pkgs.qt6.qt5compat}/lib/qt-6/qml:${pkgs.quickshell}/lib/qt-6/qml";
+          CYBEXOS_QT_PLUGIN_PATH = "${pkgs.qt6.qtsvg}/lib/qt-6/plugins";
           QT_QPA_PLATFORM = "offscreen";
           QT_QUICK_BACKEND = "software";
         };
       });
-      templates.default = { path = ./templates/machine; description = "Machine-owned NerdOS configuration"; };
+      templates.default = { path = ./templates/machine; description = "Machine-owned Cybex OS configuration"; };
     };
 }

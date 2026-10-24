@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'lifecycle'))
-from nerdos.common import Failure, atomic, read
+from cybexos.common import Failure, atomic, read
 
 
 def load(name, path):
@@ -30,7 +30,7 @@ NAR = 'sha256-' + 'A' * 43 + '='
 
 class ReleaseTests(unittest.TestCase):
     def setUp(self):
-        temporary = tempfile.TemporaryDirectory(prefix='nerdos-release-tests-')
+        temporary = tempfile.TemporaryDirectory(prefix='cybexos-release-tests-')
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         self.key = self.root / 'key'
@@ -46,7 +46,7 @@ class ReleaseTests(unittest.TestCase):
     def prepare(self, version):
         directory = self.root / version
         directory.mkdir()
-        for name in ('nerdos-source.tar.gz', 'release-notes.md', 'SHA256SUMS', f'nerdos-{version}-x86_64-linux.iso'):
+        for name in ('cybexos-source.tar.gz', 'release-notes.md', 'SHA256SUMS', f'cybexos-{version}-x86_64-linux.iso'):
             (directory / name).write_bytes(b'regression fixture, not release evidence\n')
         atomic(directory / 'qualification.json', self.report())
         manage.manifest(directory, version, REVISION, NAR, 'Test notes', ['lanzaboote'])
@@ -86,17 +86,17 @@ class ReleaseTests(unittest.TestCase):
         workflow = (ROOT / '.github/workflows/release.yml').read_text()
         commands = [line.strip() for line in workflow.splitlines() if line.strip().startswith('cp "$image" ')]
         self.assertEqual(len(commands), 1, 'Release workflow must stage exactly one qualified ISO')
-        image = self.root / f'nerdos-{REVISION}-123-1.iso'
+        image = self.root / f'cybexos-{REVISION}-123-1.iso'
         image.write_bytes(b'qualified ISO fixture bytes\n')
         directory = self.root / 'release-output'
         directory.mkdir()
         subprocess.run(['bash', '-euc', commands[0]], cwd=self.root,
                        env=dict(os.environ, TAG='v1.2.3-beta.1', image=str(image)), check=True)
-        for name in ('nerdos-source.tar.gz', 'release-notes.md', 'SHA256SUMS'):
+        for name in ('cybexos-source.tar.gz', 'release-notes.md', 'SHA256SUMS'):
             (directory / name).write_bytes(b'regression fixture, not release evidence\n')
         atomic(directory / 'qualification.json', self.report())
         manage.manifest(directory, '1.2.3-beta.1', REVISION, NAR, 'Test notes', ['lanzaboote'])
-        staged = directory / 'nerdos-1.2.3-beta.1-x86_64-linux.iso'
+        staged = directory / 'cybexos-1.2.3-beta.1-x86_64-linux.iso'
         self.assertEqual(staged.read_bytes(), image.read_bytes())
         declared = next(asset for asset in read(directory / 'manifest.json')['assets'] if asset['name'] == staged.name)
         self.assertEqual(declared['sha256'], hashlib.sha256(image.read_bytes()).hexdigest())
@@ -106,7 +106,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(assets.verify_assets(manifest, self.trust, local=True)['revision'], REVISION)
         with self.assertRaises(Failure):
             assets.verify_assets(manifest, {'keys': {}}, local=True)
-        (manifest.parent / 'nerdos-source.tar.gz').write_bytes(b'changed')
+        (manifest.parent / 'cybexos-source.tar.gz').write_bytes(b'changed')
         with self.assertRaises(Failure):
             assets.verify_assets(manifest, self.trust, local=True)
 
@@ -161,7 +161,7 @@ class ImmutablePolicyPreflight(unittest.TestCase):
     """Exercise the real publisher guard with an isolated GitHub CLI boundary."""
 
     def setUp(self):
-        temporary = tempfile.TemporaryDirectory(prefix='nerdos-immutable-policy-')
+        temporary = tempfile.TemporaryDirectory(prefix='cybexos-immutable-policy-')
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         command = self.root / 'gh'
@@ -176,7 +176,7 @@ sys.exit(int(os.environ.get('QA_API_EXIT','0')))
             'PATH': str(self.root) + os.pathsep + os.environ.get('PATH', ''),
             'GH_TOKEN': 'fixture-publishing-credential',
             'IMMUTABILITY_CHECK_TOKEN': 'fixture-policy-credential',
-            'GITHUB_REPOSITORY': 'example/nerdos',
+            'GITHUB_REPOSITORY': 'example/cybexos',
             'QA_API_RECORD': str(self.root / 'request.json'),
         }
 
@@ -189,7 +189,7 @@ sys.exit(int(os.environ.get('QA_API_EXIT','0')))
         result = self.run_guard()
         self.assertEqual(result.returncode, 0, result.stderr)
         request = json.loads((self.root / 'request.json').read_text())
-        self.assertEqual(request['args'], ['api', 'repos/example/nerdos/immutable-releases', '--jq', '.enabled'])
+        self.assertEqual(request['args'], ['api', 'repos/example/cybexos/immutable-releases', '--jq', '.enabled'])
         self.assertEqual(request['token'], 'fixture-policy-credential')
         self.assertEqual(self.environment['GH_TOKEN'], 'fixture-publishing-credential')
 

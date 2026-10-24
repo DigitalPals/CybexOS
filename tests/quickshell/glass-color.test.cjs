@@ -191,14 +191,14 @@ test("the named Hyprland blur rule persists and applies without remapping surfac
 const luajit = ["/usr/bin/luajit", "/usr/local/bin/luajit"].find(file => fs.existsSync(file));
 
 function persistedBlur(t, settings) {
-    const root = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "nerdos-tests.glass."));
+    const root = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "cybexos-tests.glass."));
     t.after(() => fs.rmSync(root, { recursive: true, force: true }));
     const template = untranslated(fs.readFileSync(
         path.resolve(shellDir, "../hypr/looknfeel.lua"), "utf8"));
     fs.writeFileSync(path.join(root, "looknfeel.lua"), template.replace(/\{\{.*?\}\}/g, "false"));
     if (settings !== undefined) {
-        fs.mkdirSync(path.join(root, ".config/nerdos"), { recursive: true });
-        fs.writeFileSync(path.join(root, ".config/nerdos/shell.json"), settings);
+        fs.mkdirSync(path.join(root, ".config/cybexos"), { recursive: true });
+        fs.writeFileSync(path.join(root, ".config/cybexos/shell.json"), settings);
     }
     const driver = `
 local rules = {}

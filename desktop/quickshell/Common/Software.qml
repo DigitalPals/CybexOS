@@ -26,7 +26,7 @@ Singleton {
     function show() { if (open) present(); else open = true; refresh(); }
     function close() { open = false; }
     function refresh() {
-        loader.run(["nerd", "software", "list"]);
+        loader.run(["cybex", "software", "list"]);
         searchDelay.restart();
     }
     function discard() { conflict = false; draft = (inventory.desired || []).slice(); refresh(); }
@@ -36,10 +36,10 @@ Singleton {
     function stage() {
         if (!canStage) return;
         requestError = "";
-        requester.run(["nerd", "software", "stage", JSON.stringify({packages: draft, previous: inventory.desired || []})]);
+        requester.run(["cybex", "software", "stage", JSON.stringify({packages: draft, previous: inventory.desired || []})]);
     }
     onQueryChanged: searchDelay.restart()
-    Timer { id: searchDelay; interval: 250; onTriggered: { if (!catalogue.run(["nerd", "software", "search", root.query])) restart(); } }
+    Timer { id: searchDelay; interval: 250; onTriggered: { if (!catalogue.run(["cybex", "software", "search", root.query])) restart(); } }
     JsonCommand {
         id: loader
         onCompleted: value => {
@@ -64,5 +64,5 @@ Singleton {
             if (["done", "failed"].includes(value.state)) { root.requestPending = false; root.refresh(); }
         }
     }
-    Timer { interval: 1500; repeat: true; running: root.requestPending; onTriggered: requestStatus.run(["nerd", "software", "request", root.requestId]) }
+    Timer { interval: 1500; repeat: true; running: root.requestPending; onTriggered: requestStatus.run(["cybex", "software", "request", root.requestId]) }
 }

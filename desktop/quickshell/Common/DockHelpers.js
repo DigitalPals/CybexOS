@@ -50,7 +50,7 @@ function webAppEntryId(appId, apps) {
             && /^[A-Za-z0-9_.-]+$/.test(match[1].slice(name.length + 1));
     });
     // URLs differing only by query/port (or sanitized path) are ambiguous.
-    return matches.length === 1 ? "nerdos-webapp-" + matches[0].id : "";
+    return matches.length === 1 ? "cybexos-webapp-" + matches[0].id : "";
 }
 
 function validId(id) {

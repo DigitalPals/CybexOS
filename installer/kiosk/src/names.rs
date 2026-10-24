@@ -103,10 +103,11 @@ pub fn suggest(full_name: &str) -> String {
 }
 
 pub fn hostname_for(username: &str) -> String {
+    const SUFFIX: &str = "-cybexos";
     if username.is_empty() {
-        "nerdos".to_string()
+        "cybexos".to_string()
     } else {
-        format!("{}-nerdos", &username[..username.len().min(24)])
+        format!("{}{SUFFIX}", &username[..username.len().min(MAX_LEN - SUFFIX.len())])
     }
 }
 
@@ -180,8 +181,8 @@ mod tests {
         assert_eq!(suggest("José García"), "jose");
         assert_eq!(suggest("J. Doe"), "jdoe");
         assert_eq!(suggest("  "), "");
-        assert_eq!(hostname_for("ada"), "ada-nerdos");
-        assert_eq!(hostname_for(""), "nerdos");
+        assert_eq!(hostname_for("ada"), "ada-cybexos");
+        assert_eq!(hostname_for(""), "cybexos");
         assert_eq!(hostname_for(&"a".repeat(31)).len(), 31);
         assert!(full_name_problem("Ada Lovelace").is_none());
         assert!(full_name_problem("O'Brien-Smith").is_none());

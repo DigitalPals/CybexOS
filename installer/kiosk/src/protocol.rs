@@ -1,4 +1,4 @@
-//! Messages from `nerdos-installerd` (`nerdos.installer-state.v1`).
+//! Messages from `cybexos-installerd` (`cybexos.installer-state.v1`).
 //!
 //! Every field is optional and unknown fields are ignored, so an older screen
 //! keeps working against a newer daemon. A message with another schema is
@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use serde_json::Value;
 
-pub const SCHEMA: &str = "nerdos.installer-state.v1";
+pub const SCHEMA: &str = "cybexos.installer-state.v1";
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
@@ -249,7 +249,7 @@ mod tests {
 
     #[test]
     fn state_parses_with_unknown_fields_and_rejects_other_schemas() {
-        let line = r#"{"type":"state","schema":"nerdos.installer-state.v1","phase":"setup","future":1,
+        let line = r#"{"type":"state","schema":"cybexos.installer-state.v1","phase":"setup","future":1,
             "disks":[{"path":"/dev/vda","size":85899345920,"available":true}],
             "draft":{"username":"ada","fullName":"Ada"},"hardware":{"nvidia":true}}"#;
         let Some(Message::State(state)) = parse(line) else { panic!("state") };

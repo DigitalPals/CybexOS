@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root { --background: #0f1012; --foreground: #e9e8e2; --muted-foreground: #9a9c95; --border: #2c2e33;
-          --primary: #c8ff1f; --primary-foreground: #1a1b1e; --radius: 10px; --code-background: #1d1e22; --code-foreground: #e9e8e2;
+          --primary: #60a5fa; --primary-foreground: #1a1b1e; --radius: 10px; --code-background: #1d1e22; --code-foreground: #e9e8e2;
           --font-sans: "Space Grotesk", system-ui, sans-serif; --font-mono: "JetBrains Mono", ui-monospace, monospace; }
   body { margin: 0; padding: 24px; background: var(--background); color: var(--foreground); }
   .page { max-width: 1312px; margin: 0 auto; }
@@ -56,9 +56,9 @@
   table.t td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
   table.t td:first-child { font-weight: 600; white-space: nowrap; }
 
-  /* ───────────── Kiosk canvas (fixed NerdOS brand colours) ───────────── */
+  /* ───────────── Kiosk canvas (fixed Cybex OS brand colours) ───────────── */
   .k { --bg: #1A1B1E; --bg-deep: #141517; --card: #202125; --card-2: #26272c; --line: #2f3136; --line-2: #3b3d43;
-       --ink: #F3F2EC; --fog: #A6A8A1; --faint: #6E7069; --lime: #C8FF1F; --red: #FF6B57; --amber: #F2C14E;
+       --ink: #F3F2EC; --fog: #A6A8A1; --faint: #6E7069; --accent: #60A5FA; --red: #FF6B57; --amber: #F2C14E;
        position: absolute; left: 0; top: 0; width: 1280px; height: 800px; transform-origin: 0 0; overflow: hidden;
        background: var(--bg); color: var(--ink); font-family: "Space Grotesk", var(--font-sans, system-ui, sans-serif); font-size: 16px; line-height: 1.4;
        -webkit-font-smoothing: antialiased; user-select: none; }
@@ -66,14 +66,14 @@
   .k button { font-family: inherit; color: inherit; }
   .k .mono { font-family: "JetBrains Mono", var(--font-mono, ui-monospace, monospace); }
   .k .top { position: absolute; left: 0; right: 0; top: 0; height: 72px; display: flex; align-items: center; padding: 0 40px; gap: 24px; }
-  .k .top .logo svg { height: 22px; width: auto; display: block; }
+  .k .top .logo svg { height: 39px; width: auto; display: block; }
   .k .steps { flex: 1; display: flex; justify-content: center; align-items: center; gap: 10px; }
   .k .steps .s { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--faint); font-weight: 500; }
   .k .steps .s b { width: 24px; height: 24px; border-radius: 12px; border: 1.5px solid var(--line-2); display: grid; place-items: center; font: 600 12px "JetBrains Mono", monospace; color: var(--faint); }
   .k .steps .s.cur { color: var(--ink); }
-  .k .steps .s.cur b { border-color: var(--lime); color: var(--lime); }
+  .k .steps .s.cur b { border-color: var(--accent); color: var(--accent); }
   .k .steps .s.done { color: var(--fog); }
-  .k .steps .s.done b { background: rgba(200,255,31,.12); border-color: transparent; color: var(--lime); }
+  .k .steps .s.done b { background: rgba(96, 165, 250,.12); border-color: transparent; color: var(--accent); }
   .k .steps .bar { width: 40px; height: 1.5px; background: var(--line-2); }
   .k .chips { display: flex; gap: 8px; margin-left: auto; }
   .k .chip { height: 36px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); padding: 0 14px; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--fog); cursor: pointer; }
@@ -87,7 +87,7 @@
   .k .foot .note { flex: 1; color: var(--faint); font-size: 14px; display: flex; align-items: center; gap: 8px; }
   .k .foot .note svg { width: 16px; height: 16px; }
   .k .kicker { font: 500 12px "JetBrains Mono", monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--fog); }
-  .k .kicker.lime { color: var(--lime); }
+  .k .kicker.accent { color: var(--accent); }
   .k .kicker.amber { color: var(--amber); }
   .k h1 { font-size: 50px; line-height: 1.04; font-weight: 600; letter-spacing: -0.025em; margin: 12px 0 12px; }
   .k h1.mid { font-size: 40px; margin: 6px 0 8px; }
@@ -95,31 +95,31 @@
   .k .btn { height: 52px; border-radius: 12px; padding: 0 26px; font-size: 17px; font-weight: 600; border: 1px solid var(--line-2); background: transparent; cursor: pointer; display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; }
   .k .btn:hover { border-color: var(--fog); }
   .k .btn svg { width: 18px; height: 18px; }
-  .k .btn.primary { background: var(--lime); color: #1A1B1E; border-color: var(--lime); }
+  .k .btn.primary { background: var(--accent); color: #1A1B1E; border-color: var(--accent); }
   .k .btn.danger { background: var(--red); color: #1A1B1E; border-color: var(--red); }
   .k .btn[disabled] { opacity: .35; cursor: default; }
   .k .btn.small { height: 38px; padding: 0 14px; font-size: 14px; border-radius: 10px; font-weight: 500; }
-  .k .link { background: none; border: 0; color: var(--lime); font-size: 14px; font-weight: 500; cursor: pointer; padding: 0; }
+  .k .link { background: none; border: 0; color: var(--accent); font-size: 14px; font-weight: 500; cursor: pointer; padding: 0; }
   .k .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; }
   .k .lbl { font: 500 12px "JetBrains Mono", monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--fog); display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .k .lbl .aux { letter-spacing: 0; text-transform: none; color: var(--faint); }
   .k .field { position: relative; margin-bottom: 20px; }
   .k input.in { width: 100%; height: 52px; border-radius: 12px; background: var(--bg-deep); border: 1px solid var(--line-2); color: var(--ink); font: 400 18px "Space Grotesk", sans-serif; padding: 0 16px; outline: none; user-select: text; }
   .k input.in::placeholder { color: var(--faint); }
-  .k input.in:focus { border-color: var(--lime); box-shadow: 0 0 0 3px rgba(200,255,31,.16); }
+  .k input.in:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(96, 165, 250,.16); }
   .k input.in.bad { border-color: var(--red); box-shadow: 0 0 0 3px rgba(255,107,87,.14); }
   .k input.in.mono { font-family: "JetBrains Mono", monospace; font-size: 17px; }
   .k .help { font-size: 13.5px; color: var(--faint); margin-top: 7px; min-height: 19px; display: flex; gap: 8px; align-items: center; }
   .k .help.bad { color: var(--red); }
-  .k .help.ok { color: var(--lime); }
+  .k .help.ok { color: var(--accent); }
   .k .help .flash { color: var(--amber); }
   .k .tag { font: 500 11px "JetBrains Mono", monospace; padding: 2px 7px; border-radius: 6px; background: var(--card-2); color: var(--fog); letter-spacing: .04em; }
-  .k .tag.lime { background: rgba(200,255,31,.12); color: var(--lime); }
+  .k .tag.accent { background: rgba(96, 165, 250,.12); color: var(--accent); }
   .k .tag.red { background: rgba(255,107,87,.12); color: var(--red); }
   .k .tag.amber { background: rgba(242,193,78,.12); color: var(--amber); }
   .k .toggle { width: 48px; height: 28px; border-radius: 14px; background: var(--line-2); position: relative; border: 0; cursor: pointer; flex: none; }
   .k .toggle::after { content: ""; position: absolute; left: 3px; top: 3px; width: 22px; height: 22px; border-radius: 11px; background: var(--fog); }
-  .k .toggle[aria-checked="true"] { background: var(--lime); }
+  .k .toggle[aria-checked="true"] { background: var(--accent); }
   .k .toggle[aria-checked="true"]::after { left: 23px; background: #1A1B1E; }
   .k .row { display: flex; align-items: center; gap: 14px; }
 
@@ -132,8 +132,8 @@
   .k .check .v small { display: block; color: var(--faint); font-size: 13px; }
   .k .mk { width: 24px; height: 24px; border-radius: 12px; display: grid; place-items: center; flex: none; }
   .k .mk svg { width: 14px; height: 14px; }
-  .k .mk.ok { background: rgba(200,255,31,.13); color: var(--lime); }
-  .k .mk.run { border: 2px solid var(--line-2); border-top-color: var(--lime); animation: kspin 1s steps(8) infinite; }
+  .k .mk.ok { background: rgba(96, 165, 250,.13); color: var(--accent); }
+  .k .mk.run { border: 2px solid var(--line-2); border-top-color: var(--accent); animation: kspin 1s steps(8) infinite; }
   .k .mk.wait { border: 1.5px dashed var(--line-2); }
   .k .mk.warn { background: rgba(242,193,78,.14); color: var(--amber); }
   .k .mk.bad { background: rgba(255,107,87,.14); color: var(--red); }
@@ -149,7 +149,7 @@
   /* disks */
   .k .disk { width: 100%; border-radius: 18px; background: var(--card); border: 1.5px solid var(--line); display: flex; align-items: center; gap: 18px; padding: 18px 22px; cursor: pointer; text-align: left; margin-bottom: 12px; }
   .k .disk:hover { border-color: var(--line-2); }
-  .k .disk.sel { border-color: var(--lime); box-shadow: 0 0 0 3px rgba(200,255,31,.10); }
+  .k .disk.sel { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(96, 165, 250,.10); }
   .k .disk.off { opacity: .55; cursor: default; }
   .k .disk .ic { width: 52px; height: 52px; border-radius: 14px; background: var(--bg-deep); display: grid; place-items: center; color: var(--fog); flex: none; }
   .k .disk .ic svg { width: 26px; height: 26px; }
@@ -158,7 +158,7 @@
   .k .disk .sz { margin-left: auto; text-align: right; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
   .k .disk .sz small { display: block; font: 400 12px "JetBrains Mono", monospace; color: var(--faint); letter-spacing: 0; }
   .k .disk .radio { width: 24px; height: 24px; border-radius: 12px; border: 1.5px solid var(--line-2); flex: none; display: grid; place-items: center; }
-  .k .disk.sel .radio { border-color: var(--lime); background: var(--lime); color: #1A1B1E; }
+  .k .disk.sel .radio { border-color: var(--accent); background: var(--accent); color: #1A1B1E; }
   .k .disk .radio svg { width: 14px; height: 14px; }
   .k .more { margin-top: 6px; }
   .k .more-btn { background: none; border: 0; color: var(--fog); font-size: 15px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; padding: 6px 0; }
@@ -181,9 +181,9 @@
   .k .meter { display: flex; gap: 4px; margin-top: 9px; }
   .k .meter i { flex: 1; height: 4px; border-radius: 2px; background: var(--line-2); }
   .k .meter.l1 i:nth-child(-n+1) { background: var(--amber); }
-  .k .meter.l2 i:nth-child(-n+2) { background: var(--lime); }
-  .k .meter.l3 i:nth-child(-n+3) { background: var(--lime); }
-  .k .meter.l4 i { background: var(--lime); }
+  .k .meter.l2 i:nth-child(-n+2) { background: var(--accent); }
+  .k .meter.l3 i:nth-child(-n+3) { background: var(--accent); }
+  .k .meter.l4 i { background: var(--accent); }
   .k .eye { position: absolute; right: 8px; top: 8px; height: 36px; border-radius: 8px; background: var(--card-2); border: 0; padding: 0 12px; font-size: 13px; color: var(--fog); cursor: pointer; }
   .k .home { font: 400 13.5px "JetBrains Mono", monospace; color: var(--faint); }
   .k .home b { color: var(--fog); font-weight: 500; }
@@ -209,13 +209,13 @@
   .k .ps.done .tx { color: var(--fog); }
   .k .ps.cur .tx { color: var(--ink); font-weight: 600; }
   .k .ps .tx small { display: block; font-weight: 400; font-size: 13.5px; color: var(--fog); margin-top: 2px; }
-  .k .dots i { display: inline-block; width: 6px; height: 6px; border-radius: 3px; background: var(--lime); margin-left: 4px; animation: kblink 3s steps(1) infinite; opacity: .2; }
+  .k .dots i { display: inline-block; width: 6px; height: 6px; border-radius: 3px; background: var(--accent); margin-left: 4px; animation: kblink 3s steps(1) infinite; opacity: .2; }
   .k .dots i:nth-child(2) { animation-delay: 1s; } .k .dots i:nth-child(3) { animation-delay: 2s; }
   @keyframes kblink { 0% { opacity: 1; } 33% { opacity: .2; } }
   .k .seg { display: flex; gap: 6px; margin: 26px 0 10px; max-width: 520px; }
   .k .seg i { flex: 1; height: 6px; border-radius: 3px; background: var(--line-2); }
-  .k .seg i.on { background: var(--lime); }
-  .k .seg i.cur { background: rgba(200,255,31,.45); }
+  .k .seg i.on { background: var(--accent); }
+  .k .seg i.cur { background: rgba(96, 165, 250,.45); }
   .k .tip { padding: 22px 24px; margin-top: 26px; max-width: 520px; }
   .k .keys { display: flex; gap: 6px; align-items: center; margin: 12px 0 8px; color: var(--faint); }
   .k .key { font: 600 15px "JetBrains Mono", monospace; padding: 6px 11px; border-radius: 8px; background: var(--bg-deep); border: 1px solid var(--line-2); border-bottom-width: 3px; color: var(--ink); }
@@ -225,20 +225,20 @@
   .k .center .symbol svg { width: 150px; height: auto; }
   .k .next { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 34px 0 30px; width: 900px; }
   .k .next .card { padding: 20px 22px; text-align: left; }
-  .k .next .card .n { font: 600 13px "JetBrains Mono", monospace; color: var(--lime); }
+  .k .next .card .n { font: 600 13px "JetBrains Mono", monospace; color: var(--accent); }
   .k .next .card b { display: block; font-size: 18px; margin: 8px 0 4px; font-weight: 600; }
   .k .next .card span { color: var(--fog); font-size: 14.5px; }
   .k .stopbox { display: flex; gap: 14px; align-items: center; padding: 16px 20px; border-radius: 14px; background: rgba(255,107,87,.08); border: 1px solid rgba(255,107,87,.3); margin: 26px 0; max-width: 560px; }
   .k .stopbox .t { color: var(--fog); width: 120px; }
   .k ol.howto { margin: 0 0 28px; padding: 0; list-style: none; counter-reset: s; max-width: 600px; }
   .k ol.howto li { counter-increment: s; display: flex; gap: 14px; padding: 10px 0; font-size: 17px; color: var(--ink); }
-  .k ol.howto li::before { content: counter(s); font: 600 13px "JetBrains Mono", monospace; color: var(--lime); width: 26px; height: 26px; border-radius: 13px; background: rgba(200,255,31,.1); display: grid; place-items: center; flex: none; }
+  .k ol.howto li::before { content: counter(s); font: 600 13px "JetBrains Mono", monospace; color: var(--accent); width: 26px; height: 26px; border-radius: 13px; background: rgba(96, 165, 250,.1); display: grid; place-items: center; flex: none; }
 
   /* boot menu */
   .k.boot { background: #0d0d0d; }
   .k .grub { position: absolute; left: 192px; right: 192px; top: 280px; }
   .k .grub .it { font: 400 19px "JetBrains Mono", monospace; color: #F3F2EC; padding: 10px 18px; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; }
-  .k .grub .it.sel { color: var(--lime); background: rgba(200,255,31,.07); }
+  .k .grub .it.sel { color: var(--accent); background: rgba(96, 165, 250,.07); }
   .k .grub .it small { color: var(--faint); font-size: 14px; }
   .k .grub-foot { position: absolute; left: 0; right: 0; bottom: 70px; text-align: center; font: 400 15px "JetBrains Mono", monospace; color: var(--faint); }
   .k .splash { position: absolute; inset: 0; display: grid; place-items: center; background: #0d0d0d; }
@@ -257,7 +257,7 @@
   .k .list::-webkit-scrollbar { width: 6px; } .k .list::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 3px; }
   .k .li { display: flex; align-items: center; gap: 12px; padding: 0 14px; height: 54px; border-radius: 12px; cursor: pointer; border: 1px solid transparent; }
   .k .li:hover { background: var(--card-2); }
-  .k .li.sel { background: rgba(200,255,31,.08); border-color: rgba(200,255,31,.35); }
+  .k .li.sel { background: rgba(96, 165, 250,.08); border-color: rgba(96, 165, 250,.35); }
   .k .li .a { flex: 1; min-width: 0; }
   .k .li .a b { font-weight: 600; font-size: 16px; }
   .k .li .a span { color: var(--fog); font-size: 13.5px; margin-left: 8px; }
@@ -281,17 +281,17 @@
   .k .tzsel .z span { color: var(--fog); font-size: 14px; }
   .k .check2 { display: flex; gap: 10px; align-items: center; color: var(--fog); font-size: 14px; cursor: pointer; margin: 10px 2px 0; }
   .k .check2 .bx { width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--line-2); display: grid; place-items: center; }
-  .k .check2 .bx.on { background: var(--lime); border-color: var(--lime); color: #1A1B1E; }
+  .k .check2 .bx.on { background: var(--accent); border-color: var(--accent); color: #1A1B1E; }
   .k .check2 .bx svg { width: 13px; height: 13px; }
   .k .log { flex: 1; overflow: auto; background: var(--bg-deep); border-radius: 14px; border: 1px solid var(--line); padding: 14px 16px; font: 400 12.5px/1.65 "JetBrains Mono", monospace; color: var(--fog); white-space: pre; user-select: text; }
   .k .log b { color: var(--ink); font-weight: 500; }
-  .k .log .loc { color: var(--lime); }
+  .k .log .loc { color: var(--accent); }
   .k .toast { position: absolute; left: 50%; bottom: 112px; transform: translateX(-50%); background: var(--ink); color: #1A1B1E; padding: 10px 18px; border-radius: 12px; font-size: 15px; font-weight: 500; display: none; z-index: 5; }
 </style>
 </head>
 <body>
 <div class="page">
-  <h1 style="font: 600 20px var(--font-sans); margin: 0 0 4px">NerdOS installer: design reference</h1>
+  <h1 style="font: 600 20px var(--font-sans); margin: 0 0 4px">Cybex OS installer: design reference</h1>
   <p style="margin: 0 0 16px; color: var(--muted-foreground); font-size: 14px">The interactive comp the native screen
   (<code>installer/kiosk</code>, Rust and Slint) was built from. Compare with <code>installer-preview</code> renders; the
   native screen and <code>docs/installation.md</code> are authoritative where they differ.</p>
@@ -305,8 +305,8 @@
 <script>
 function main(D) {
 if (D.map.rle) D.map.rows = D.map.rle.map(r => { let out = "", v = 0; for (const n of r.split(".")) { out += (v ? "1" : "0").repeat(+n); v ^= 1; } return out; });
-const LOGO = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1331.74 176.73" width="1331.74" height="176.73" aria-hidden="true"> <g id="symbol"> <path id="frames" fill="#F3F2EC" d="M312.36 77.84 337.19 34.84C341.19 27.92 339.33 19.24 333.17 14.5C340.58 9.11 349.71 5.93 359.58 5.93H498.92C514.61 5.93 528.42 13.97 536.46 26.15H553.98C560.8 26.15 566.34 31.69 566.34 38.52V54.25C566.34 61.07 560.8 66.61 553.98 66.61H543.86V104.81C543.86 144.53 511.67 176.73 471.95 176.73H386.55C346.83 176.73 314.63 144.53 314.63 104.81V77.84H312.36ZM67.42 5.93H206.76C224.31 5.93 239.51 15.98 246.91 30.65H253.97L229.14 73.66C224.8 81.18 227.38 90.8 234.9 95.15L251.71 104.85C251.69 144.55 219.49 176.73 179.79 176.73H94.39C54.67 176.73 22.47 144.53 22.47 104.81V66.61H12.36C5.53 66.61 0 61.07 0 54.25V38.52C0 31.69 5.53 26.15 12.36 26.15H29.88C37.92 13.97 51.73 5.93 67.42 5.93ZM377.56 50.88C367.63 50.88 359.58 58.93 359.58 68.85V91.33C359.58 113.67 377.69 131.78 400.03 131.78H458.46C480.8 131.78 498.92 113.67 498.92 91.33V68.85C498.92 58.93 490.87 50.88 480.94 50.88ZM85.4 50.88C75.47 50.88 67.42 58.93 67.42 68.85V91.33C67.42 113.67 85.53 131.78 107.87 131.78H166.31C188.65 131.78 206.76 113.67 206.76 91.33V68.85C206.76 58.93 198.71 50.88 188.78 50.88Z"/> <path id="tape" fill="#C8FF1F" d="M289.4 0.75 326.38 22.1C329.07 23.66 329.99 27.09 328.44 29.78L284.61 105.68C283.06 108.37 279.62 109.29 276.94 107.74L239.96 86.39C237.27 84.84 236.35 81.4 237.9 78.72L281.72 2.81C283.28 0.12 286.71 -0.8 289.4 0.75Z"/> </g> <path id="wordmark" fill="#F3F2EC" d="M1144.94 164.04Q1117.59 164.04 1101.3 149.4Q1084.94 134.69 1084.94 107.57V75.09Q1084.94 47.97 1101.3 33.26Q1117.59 18.62 1144.94 18.62Q1172.28 18.62 1188.57 33.26Q1204.94 47.97 1204.94 75.09V107.57Q1204.94 134.69 1188.57 149.4Q1172.28 164.04 1144.94 164.04ZM630.74 21.33H685.25L712.34 136.25V21.33H743.14V161.33H688.62L661.54 46.4V161.33H630.74ZM999.34 164.04Q986.9 164.04 976.04 158.02Q965.15 151.99 958.63 140.39Q952.14 128.85 952.14 112.6V109.51Q952.14 93.25 958.63 81.71Q965.15 70.12 975.94 64.08Q986.69 58.07 999.34 58.07Q1008.74 58.07 1015.22 60.23Q1021.74 62.4 1025.88 65.77Q1029.24 68.51 1031.34 71.56V21.33H1061.34V161.33H1031.74V149.88Q1028.08 155 1021.34 159.22Q1013.65 164.04 999.34 164.04ZM1276.34 164.04Q1259.6 164.04 1246.72 158.21Q1233.7 152.32 1226.32 141.32Q1218.94 130.3 1218.94 114.92V107.18H1249.74V114.92Q1249.74 125.99 1256.64 131.39Q1263.79 136.96 1276.34 136.96Q1289.09 136.96 1295.13 132.26Q1300.94 127.73 1300.94 120.72Q1300.94 116.02 1298.27 113.2Q1295.36 110.14 1289.61 108.11Q1283.46 105.94 1274.62 104.04L1270.03 103.07Q1255.35 99.92 1244.81 95.07Q1233.92 90.06 1228.06 81.81Q1222.14 73.49 1222.14 60.39Q1222.14 47.31 1228.64 37.92Q1235.13 28.57 1246.87 23.56Q1258.43 18.62 1273.94 18.62Q1289.44 18.62 1301.6 23.75Q1313.95 28.95 1321.04 39.29Q1328.14 49.63 1328.14 65.03V73.15H1297.34V65.03Q1297.34 57.97 1294.61 53.8Q1291.93 49.7 1286.85 47.75Q1281.48 45.69 1273.94 45.69Q1262.77 45.69 1257.72 49.54Q1252.94 53.2 1252.94 59.62Q1252.94 63.87 1255.16 66.73Q1257.48 69.73 1262.31 71.8Q1267.48 74.03 1275.64 75.72L1280.25 76.69Q1295.49 79.83 1306.82 84.77Q1318.48 89.84 1325.05 98.24Q1331.74 106.79 1331.74 119.95Q1331.74 133.03 1324.83 142.99Q1317.96 152.91 1305.44 158.5Q1293.06 164.04 1276.34 164.04ZM814.34 164.04Q798.91 164.04 787.07 157.65Q775.16 151.23 768.53 139.53Q761.94 127.89 761.94 112.21V109.89Q761.94 94.22 768.42 82.59Q774.95 70.88 786.76 64.46Q798.51 58.07 813.94 58.07Q829.2 58.07 840.57 64.69Q851.95 71.31 858.26 83Q864.54 94.63 864.54 109.89V120.53H792.55Q793.59 127.76 799.13 132.52Q805.65 138.12 815.14 138.12Q824.8 138.12 829.11 134.29Q833.76 130.15 836.16 125.16L837.22 122.95L862.2 135.61L861.05 137.68Q858.12 142.93 852.65 149.02Q847.03 155.28 837.79 159.64Q828.49 164.04 814.34 164.04ZM1144.94 136.58Q1158.71 136.58 1166.2 128.98Q1173.74 121.34 1173.74 108.34V74.31Q1173.74 61.32 1166.2 53.68Q1158.71 46.08 1144.94 46.08Q1131.36 46.08 1123.76 53.69Q1116.14 61.33 1116.14 74.31V108.34Q1116.14 121.33 1123.76 128.97Q1131.36 136.58 1144.94 136.58ZM912.94 60.78V70.78Q915.49 65.93 920.28 63.38Q925.92 60.39 933.34 60.39H947.74V86.69H932.94Q924.2 86.69 918.66 91.09Q913.34 95.32 913.34 104.48V161.33H883.34V60.78ZM1006.94 138.12Q1017.57 138.12 1024.67 131.52Q1031.74 124.95 1031.74 112.02V110.09Q1031.74 97.14 1024.76 90.57Q1017.76 83.98 1006.94 83.98Q996.3 83.98 989.2 90.58Q982.14 97.15 982.14 110.09V112.02Q982.14 124.95 989.2 131.52Q996.3 138.12 1006.94 138.12ZM793.12 97.71H833.75Q832.48 92.08 828.08 88.45Q822.65 83.98 813.74 83.98Q804.43 83.98 799.11 88.44Q794.76 92.08 793.12 97.71Z"/> </svg>`;
-const SYMBOL = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 504 157.28" width="504" height="157.28" aria-hidden="true"> <g id="symbol"> <path id="frames" fill="#F3F2EC" d="M277.98 69.28 300.08 31C303.63 24.85 301.98 17.12 296.5 12.91C303.09 8.11 311.22 5.28 320 5.28H444C457.96 5.28 470.26 12.43 477.41 23.28H493C499.08 23.28 504 28.2 504 34.28V48.28C504 54.35 499.08 59.28 493 59.28H484V93.28C484 128.62 455.35 157.28 420 157.28H344C308.65 157.28 280 128.62 280 93.28V69.28H277.98ZM60 5.28H184C199.62 5.28 213.14 14.23 219.73 27.28H226.02L203.92 65.55C200.06 72.25 202.35 80.81 209.05 84.68L224 93.31C223.98 128.64 195.34 157.28 160 157.28H84C48.65 157.28 20 128.62 20 93.28V59.28H11C4.92 59.28 0 54.35 0 48.28V34.28C0 28.2 4.92 23.28 11 23.28H26.59C33.74 12.43 46.04 5.28 60 5.28ZM336 45.28C327.16 45.28 320 52.44 320 61.28V81.28C320 101.16 336.12 117.28 356 117.28H408C427.88 117.28 444 101.16 444 81.28V61.28C444 52.44 436.84 45.28 428 45.28ZM76 45.28C67.16 45.28 60 52.44 60 61.28V81.28C60 101.16 76.12 117.28 96 117.28H148C167.88 117.28 184 101.16 184 81.28V61.28C184 52.44 176.84 45.28 168 45.28Z"/> <path id="tape" fill="#C8FF1F" d="M257.55 0.67 290.45 19.67C292.85 21.05 293.67 24.11 292.28 26.5L253.28 94.05C251.9 96.44 248.85 97.26 246.45 95.88L213.55 76.88C211.15 75.5 210.33 72.44 211.72 70.05L250.72 2.5C252.1 0.11 255.15 -0.71 257.55 0.67Z"/> </g> </svg>`;
+const LOGO = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 198 46.6"><path fill="#F3F2EC" fill-rule="evenodd" d="m35.08,2.4c.7,0,1.06.35,1.06,1.06v4.7c0,.74-.35,1.1-1.06,1.1H13.72c-1.25,0-2.28.1-3.1.31-.82.21-1.46.56-1.94,1.06-.48.5-.82,1.16-1.03,1.99-.21.83-.31,1.89-.31,3.17v6.81c0,1.28.1,2.34.31,3.19.21.85.55,1.52,1.03,2.02.48.5,1.13.85,1.94,1.06.82.21,1.85.31,3.1.31h21.36c.7,0,1.06.35,1.06,1.06v4.7c0,.7-.35,1.06-1.06,1.06H13.44c-2.43,0-4.49-.22-6.19-.67-1.7-.45-3.08-1.18-4.15-2.18-1.07-1.01-1.86-2.32-2.35-3.93-.5-1.62-.74-3.58-.74-5.88v-8.25c0-2.3.25-4.26.74-5.85.5-1.6,1.28-2.9,2.35-3.91,1.07-1.01,2.46-1.74,4.15-2.21,1.7-.46,3.76-.7,6.19-.7h21.64Z"/><path fill="#F3F2EC" fill-rule="evenodd" d="m74.14,9.65c.35,0,.58.12.7.36.11.24.09.52-.07.84l-18.43,32.49c-.64,1.12-1.54,1.94-2.71,2.47-1.17.53-2.79.79-4.87.79h-3.36c-.58,0-.86-.29-.86-.86v-3.93c0-.58.29-.86.86-.86h2.83c1.22,0,2.03-.37,2.45-1.1l2.59-4.56c-.8-.06-1.42-.26-1.85-.58-.43-.32-.84-.82-1.22-1.49l-12.96-22.36c-.16-.32-.18-.6-.07-.84.11-.24.34-.36.7-.36h5.52c.54,0,.93.22,1.15.67l10.65,18.48c.26.45.46.74.6.89.14.14.33.22.55.22l11.28-19.58c.22-.45.61-.67,1.15-.67h5.37Z"/><path fill="#F3F2EC" fill-rule="evenodd" d="m82.2,0c.7,0,1.06.35,1.06,1.06v8.59h18c2.14,0,3.95.18,5.42.55,1.47.37,2.65.94,3.53,1.73.88.78,1.51,1.79,1.9,3.02.38,1.23.58,2.71.58,4.44v6.91c0,1.73-.19,3.21-.58,4.44-.38,1.23-1.02,2.24-1.9,3.02-.88.78-2.06,1.35-3.53,1.7-1.47.35-3.28.53-5.42.53h-13.44c-2.18,0-3.99-.18-5.45-.53-1.46-.35-2.62-.92-3.5-1.7-.88-.78-1.51-1.79-1.9-3.02-.38-1.23-.58-2.71-.58-4.44V1.06c0-.7.37-1.06,1.1-1.06h4.7Zm1.06,15.4v9.55c0,1.02.08,1.87.24,2.54.16.67.44,1.21.84,1.61.4.4.94.69,1.61.86.67.18,1.52.26,2.54.26h12.09c1.06,0,1.92-.09,2.59-.26.67-.18,1.21-.46,1.61-.86.4-.4.68-.94.84-1.61.16-.67.24-1.52.24-2.54v-4.27c0-.99-.08-1.83-.24-2.52-.16-.69-.44-1.23-.84-1.63-.4-.4-.94-.69-1.61-.86-.67-.18-1.54-.26-2.59-.26h-17.32Z"/><path fill="#F3F2EC" fill-rule="evenodd" d="m141.08,9.65c1.63,0,2.98.14,4.05.41,1.07.27,1.92.72,2.54,1.34.62.62,1.06,1.44,1.32,2.45.26,1.01.38,2.23.38,3.67v4.56c0,1.02-.22,1.74-.67,2.14-.45.4-1.14.6-2.06.6h-24.23v1.15c0,1.5.36,2.59,1.08,3.26.72.67,2.12,1.01,4.2,1.01h20.01c.58,0,.86.29.86.86v4.03c0,.58-.29.86-.86.86h-20.68c-2.18,0-3.99-.18-5.45-.53-1.46-.35-2.62-.92-3.5-1.7-.88-.78-1.51-1.79-1.9-3.02-.38-1.23-.58-2.71-.58-4.44v-6.91c0-1.73.19-3.21.58-4.44.38-1.23,1.02-2.24,1.9-3.02.88-.78,2.05-1.36,3.5-1.73,1.46-.37,3.27-.55,5.45-.55h14.06Zm-18.67,10.89h19.44c.54,0,.82-.27.82-.82v-2.02c0-.99-.21-1.7-.62-2.11-.42-.42-1.18-.62-2.3-.62h-12.05c-2.08,0-3.48.33-4.2.98-.72.66-1.08,1.75-1.08,3.29v1.3Z"/><path fill="#60A5FA" fill-rule="evenodd" d="m171.53,16.96l7.55-6.73c.19-.17.34-.34.53-.43.19-.1.46-.14.82-.14h5.42c.45,0,.71.15.79.46.08.3,0,.6-.26.84l-10.71,9.81-4.13-3.8Z"/><path fill="#F3F2EC" fill-rule="evenodd" d="m158.54,9.65c.35,0,.62.05.82.14.19.1.37.25.58.43l26.83,24.52c.25.23.3.53.24.82-.06.29-.32.43-.77.43h-6.09c-.35,0-.63-.05-.84-.14-.21-.1-.39-.22-.55-.38l-10.17-9.31-10.46,9.31c-.16.16-.34.29-.53.38-.19.1-.46.14-.82.14h-5.42c-.45,0-.71-.14-.79-.43-.08-.29,0-.56.26-.82l13.53-12.43-12.38-11.37c-.26-.26-.35-.54-.29-.84.06-.3.32-.46.77-.46h6.09Z"/><path fill="#F3F2EC" fill-rule="evenodd" d="m190.76,14.81v-4.34h1.53v-.67h-3.85v.67h1.53v4.34h.78Zm7.24,0v-5.02h-.9l-1.62,3.96h-.03l-1.62-3.96h-.9v5.02h.71v-3.69h.02l1.51,3.65h.58l1.51-3.65h.02v3.69h.71Z"/></svg>`;
+const SYMBOL = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="147 3 44 44"><path fill="#60A5FA" fill-rule="evenodd" d="m171.53,16.96l7.55-6.73c.19-.17.34-.34.53-.43.19-.1.46-.14.82-.14h5.42c.45,0,.71.15.79.46.08.3,0,.6-.26.84l-10.71,9.81-4.13-3.8Z"/><path fill="#F3F2EC" fill-rule="evenodd" d="m158.54,9.65c.35,0,.62.05.82.14.19.1.37.25.58.43l26.83,24.52c.25.23.3.53.24.82-.06.29-.32.43-.77.43h-6.09c-.35,0-.63-.05-.84-.14-.21-.1-.39-.22-.55-.38l-10.17-9.31-10.46,9.31c-.16.16-.34.29-.53.38-.19.1-.46.14-.82.14h-5.42c-.45,0-.71-.14-.79-.43-.08-.29,0-.56.26-.82l13.53-12.43-12.38-11.37c-.26-.26-.35-.54-.29-.84.06-.3.32-.46.77-.46h6.09Z"/></svg>`;
 const VERSION = "1.0.0-beta.2";
 const INITIAL = "boot";
 
@@ -347,17 +347,17 @@ const I = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
 const LANGS = [["en_US.UTF-8", "English (US)"], ["en_GB.UTF-8", "English (UK)"], ["nl_NL.UTF-8", "Nederlands"], ["de_DE.UTF-8", "Deutsch"], ["fr_FR.UTF-8", "Français"], ["es_ES.UTF-8", "Español"], ["it_IT.UTF-8", "Italiano"], ["pt_PT.UTF-8", "Português"], ["sv_SE.UTF-8", "Svenska"], ["nb_NO.UTF-8", "Norsk"], ["da_DK.UTF-8", "Dansk"], ["fi_FI.UTF-8", "Suomi"], ["pl_PL.UTF-8", "Polski"], ["cs_CZ.UTF-8", "Čeština"]];
 const LAYOUTS = [["us", "English (US)"], ["gb", "English (UK)"], ["nl", "Dutch"], ["de", "German"], ["fr", "French"], ["es", "Spanish"], ["it", "Italian"], ["pt", "Portuguese"], ["se", "Swedish"], ["no", "Norwegian"], ["dk", "Danish"], ["fi", "Finnish"], ["pl", "Polish"], ["cz", "Czech"]];
 const CONSOLE = { gb: "uk", de: "de-latin1", fr: "fr-latin9", se: "sv-latin1", no: "no-latin1", dk: "dk-latin1" };
-const APPS = [["developer", "Development tools", "Editors, compilers and dev shells"], ["proprietary", "Proprietary applications", "Unfree licenses · downloaded during install"], ["steam", "Steam and gaming", "Unfree · downloaded during install"], ["docker", "Docker", "Container engine"], ["podman", "Podman", "Rootless containers"], ["tailscale", "Tailscale", "Mesh VPN"], ["connectedWidgets", "Connected desktop widgets", "Widgets for online services"], ["assistant", "NerdOS Assistant", "Super + I"], ["localNetworkServices", "Local network discovery", "Avahi, .local names, LAN ports"]];
+const APPS = [["developer", "Development tools", "Editors, compilers and dev shells"], ["proprietary", "Proprietary applications", "Unfree licenses · downloaded during install"], ["steam", "Steam and gaming", "Unfree · downloaded during install"], ["docker", "Docker", "Container engine"], ["podman", "Podman", "Rootless containers"], ["tailscale", "Tailscale", "Mesh VPN"], ["connectedWidgets", "Connected desktop widgets", "Widgets for online services"], ["assistant", "Cybex OS Assistant", "Super + I"], ["localNetworkServices", "Local network discovery", "Avahi, .local names, LAN ports"]];
 const DISKS = [
   { path: "/dev/nvme0n1", model: "Samsung SSD 990 PRO 1TB", bus: "NVMe", size: 1000204886016, serial: "S6Z1NJ0W812345L", contents: ["Windows (NTFS)", "EFI system"], available: true },
   { path: "/dev/nvme1n1", model: "WD Blue SN580 500GB", bus: "NVMe", size: 500107862016, serial: "24125A800123", contents: ["Linux (ext4)", "swap"], available: true },
-  { path: "/dev/sda", model: "SanDisk Ultra USB 3.0", bus: "USB", size: 30752636928, serial: "4C530001230824118312", contents: ["NerdOS installer"], available: false, reason: "In use by this installer · smaller than 64 GiB" },
+  { path: "/dev/sda", model: "SanDisk Ultra USB 3.0", bus: "USB", size: 30752636928, serial: "4C530001230824118312", contents: ["Cybex OS installer"], available: false, reason: "In use by this installer · smaller than 64 GiB" },
 ];
 const WIFI = [["Lovelace-5G", 4, true], ["Lovelace", 3, true], ["Ziggo-A1B2C", 2, true], ["Café Babbage", 2, false], ["eduroam", 1, "802.1X"]];
 const RESERVED = ["root", "nixos", "nobody", "nogroup", "messagebus", "polkituser", "sddm", "avahi", "rtkit", "geoclue", "pipewire", "sshd", "wheel", "users", "nscd", "dhcpcd", "fwupd-refresh"];
-const STAGES = [["Preparing the selected disk", "GPT · 16 GiB EFI system + NerdOS root"], ["Creating filesystems and LUKS2 encryption", "Your password becomes the disk key"], ["Recording hardware and your machine configuration", "Your settings go into /etc/nixos; your password never enters the Nix store"], ["Building and installing your complete desktop", "Most of it is copied from this USB drive; the rest downloads"], ["Setting up your account and keyboard preferences", ""], ["Retaining the tested sources and finishing installation", "Unmounting and closing encryption before reporting done"]];
+const STAGES = [["Preparing the selected disk", "GPT · 16 GiB EFI system + Cybex OS root"], ["Creating filesystems and LUKS2 encryption", "Your password becomes the disk key"], ["Recording hardware and your machine configuration", "Your settings go into /etc/nixos; your password never enters the Nix store"], ["Building and installing your complete desktop", "Most of it is copied from this USB drive; the rest downloads"], ["Setting up your account and keyboard preferences", ""], ["Retaining the tested sources and finishing installation", "Unmounting and closing encryption before reporting done"]];
 const STAGE_MS = [1600, 2200, 1800, 9000, 1600, 2600];
-const TIPS = [["Super", "Space", "opens the launcher: apps, files, calculator and web apps in one place."], ["Super", "Return", "opens a terminal. Fish is already set up."], ["Super", "K", "shows every keyboard shortcut the desktop actually has."], ["Super", "Tab", "opens the window overview with live thumbnails."], ["Super", "I", "talks to the NerdOS Assistant. Hold it to dictate."], ["Super", "Ctrl", "V", "opens clipboard history. Ctrl+P pins an entry."]];
+const TIPS = [["Super", "Space", "opens the launcher: apps, files, calculator and web apps in one place."], ["Super", "Return", "opens a terminal. Fish is already set up."], ["Super", "K", "shows every keyboard shortcut the desktop actually has."], ["Super", "Tab", "opens the window overview with live thumbnails."], ["Super", "I", "talks to the Cybex OS Assistant. Hold it to dictate."], ["Super", "Ctrl", "V", "opens clipboard history. Ctrl+P pins an entry."]];
 
 /* ── time zones ── */
 const norm = s => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[_/]/g, " ").replace(/\s+/g, " ").trim();
@@ -447,7 +447,7 @@ const gb = b => b >= 1e12 ? (b / 1e12).toFixed(1) + " TB" : Math.round(b / 1e9) 
 const gib = b => Math.round(b / 1073741824) + " GiB";
 const langName = () => LANGS.find(l => l[0] === S.lang)[1];
 const kbName = () => LAYOUTS.find(l => l[0] === S.kb)[1];
-const hostname = () => S.hostEdited ? S.hostname : (S.username ? (S.username.slice(0, 24) + "-nerdos") : "nerdos");
+const hostname = () => S.hostEdited ? S.hostname : (S.username ? (S.username.slice(0, 31 - "-cybexos".length) + "-cybexos") : "cybexos");
 
 /* ── username filter (mirrors the worker's [a-z][a-z0-9-]{0,30}) ── */
 function filterName(raw) {
@@ -496,10 +496,10 @@ const foot = (back, next, note = "") => `<div class="foot"><button class="btn" d
 /* ── screens ── */
 const SCREENS = {
   boot() {
-    const items = [["Install NerdOS " + VERSION, "default"], ["Install NerdOS — safe graphics", "nomodeset"], ["Install NerdOS — text mode", ""], ["Verbose boot diagnostics", ""], ["UEFI firmware settings", ""]];
+    const items = [["Install Cybex OS " + VERSION, "default"], ["Install Cybex OS — safe graphics", "nomodeset"], ["Install Cybex OS — text mode", ""], ["Verbose boot diagnostics", ""], ["UEFI firmware settings", ""]];
     return `<div style="position:absolute;inset:0">
       <div style="position:absolute;left:0;right:0;top:120px;display:flex;justify-content:center"><div class="logo" style="height:40px">${LOGO.replace('height="176.73"', 'height="40"').replace('width="1331.74"', 'width="301"')}</div></div>
-      <div class="mono" style="position:absolute;left:0;right:0;top:186px;text-align:center;color:#F3F2EC;font-size:17px;letter-spacing:.04em">NerdOS – Opinionated System</div>
+      <div class="mono" style="position:absolute;left:0;right:0;top:186px;text-align:center;color:#F3F2EC;font-size:17px;letter-spacing:.04em">Cybex OS</div>
       <div class="grub">${items.map((it, i) => `<div class="it ${i === S.bootSel ? "sel" : ""}" data-act="bootsel" data-v="${i}">${i === S.bootSel ? "▸ " : "  "}${it[0]}<small>${it[1]}</small></div>`).join("")}</div>
       <div class="grub-foot" id="grubfoot">↑ ↓ choose · Enter starts · starting in 5 s</div></div>`;
   },
@@ -508,7 +508,7 @@ const SCREENS = {
     const rows = [
       ["Firmware", S.checks > 0 ? "ok" : "run", "UEFI · Secure Boot off", ""],
       ["Network", !ok ? "warn" : S.checks > 1 ? "ok" : "run", ok ? (S.wifi ? `Wi-Fi · ${esc(S.wifi)}` : "Ethernet · enp5s0 · 192.168.1.42") : "Not connected", ok ? "" : "Connect to verify the release and download parts of your desktop"],
-      ["Release", !ok ? "wait" : S.checks > 2 ? "ok" : S.checks > 1 ? "run" : "wait", ok && S.checks > 2 ? `NerdOS ${VERSION} · signature verified` : "Waiting for the network", ok && S.checks > 2 ? "beta channel · exact revision 9dce94a…" : ""],
+      ["Release", !ok ? "wait" : S.checks > 2 ? "ok" : S.checks > 1 ? "run" : "wait", ok && S.checks > 2 ? `Cybex OS ${VERSION} · signature verified` : "Waiting for the network", ok && S.checks > 2 ? "beta channel · exact revision 9dce94a…" : ""],
       ["Disks", S.checks > 3 ? "ok" : "run", "3 found · 2 can be used", ""],
       ["Graphics", S.checks > 3 ? "ok" : "run", S.nvidia ? "Intel Arc + NVIDIA GeForce RTX 4070" : "AMD Radeon 780M", S.nvidia ? "NVIDIA driver choice on the review page" : ""],
     ];
@@ -516,7 +516,7 @@ const SCREENS = {
     return `${topBar(0)}<div class="body full" style="padding-top:60px">
       <div style="display:grid;grid-template-columns:1fr 470px;gap:64px">
         <div>
-          <div class="kicker lime">Fresh installation · ${VERSION}</div>
+          <div class="kicker accent">Fresh installation · ${VERSION}</div>
           <h1>Let's make this<br>computer yours.</h1>
           <div class="lead">Three short steps. Your disks stay untouched until you review everything and confirm.</div>
           <div style="margin-top:34px;max-width:520px">
@@ -539,8 +539,8 @@ const SCREENS = {
   disk() {
     const usable = DISKS.filter(d => d.available || S.diskMore);
     return `${topBar(1)}<div class="body">
-      <h1 class="mid">Where should NerdOS live?</h1>
-      <div class="lead" style="margin-bottom:22px">NerdOS uses the whole disk. You'll review everything before anything is erased.</div>
+      <h1 class="mid">Where should Cybex OS live?</h1>
+      <div class="lead" style="margin-bottom:22px">Cybex OS uses the whole disk. You'll review everything before anything is erased.</div>
       <div style="display:grid;grid-template-columns:1fr 400px;gap:36px">
         <div>${usable.map(d => `<button class="disk ${d.path === S.disk ? "sel" : ""} ${d.available ? "" : "off"}" data-act="${d.available ? "disk" : ""}" data-v="${d.path}">
             <span class="ic">${I(d.bus === "USB" ? "usb" : "disk")}</span>
@@ -550,7 +550,7 @@ const SCREENS = {
           ${S.diskMore ? `<button class="link" data-act="toast" data-v="Disks rescanned. Nothing changed." style="margin-left:18px">${"Refresh disks"}</button>` : ""}</div>
         </div>
         <div class="card" style="align-self:start">
-          <div class="opt">${I("lock")}<div class="tx"><b>Encrypt the disk</b><span>Recommended. Your password unlocks NerdOS at startup. Without it, anyone holding the disk can read your files.</span></div><button class="toggle" role="switch" aria-checked="${S.encrypted}" data-act="encrypt"></button></div>
+          <div class="opt">${I("lock")}<div class="tx"><b>Encrypt the disk</b><span>Recommended. Your password unlocks Cybex OS at startup. Without it, anyone holding the disk can read your files.</span></div><button class="toggle" role="switch" aria-checked="${S.encrypted}" data-act="encrypt"></button></div>
           <div class="opt">${I("disk")}<div class="tx"><b>Layout</b><span class="mono" style="font-size:13px">GPT · 16 GiB EFI (FAT32)<br>rest: ext4${S.encrypted ? " inside LUKS2" : ""}</span><br><span style="font-size:13px;color:var(--faint)">Set by the release. Minimum disk 64 GiB.</span></div></div>
         </div>
       </div></div>
@@ -600,7 +600,7 @@ const SCREENS = {
       ["Encryption", S.encrypted ? "On · LUKS2" : `<span style="color:var(--amber)">Off · files are readable by anyone with the disk</span>`, "disk", S.encrypted ? "unlocked with your password at startup" : ""],
       ["Applications", appsOn === APPS.length ? "Everything included" : `${appsOn} of ${APPS.length} groups`, "apps", APPS.filter(a => !S.apps[a[0]]).map(a => a[1]).join(", ") ? "off: " + APPS.filter(a => !S.apps[a[0]]).map(a => a[1]).join(", ") : "all 9 groups · change any time later"],
       ...(S.nvidia ? [["Graphics", `NVIDIA · ${S.nvidiaOpen ? "open kernel driver" : "proprietary legacy driver"}`, "gpu", S.nvidiaOpen ? "Turing or newer (GTX 16, RTX 20 and up)" : "Maxwell, Pascal or Volta"]] : []),
-      ["Release", `NerdOS ${VERSION}`, "", "signature verified · beta channel"],
+      ["Release", `Cybex OS ${VERSION}`, "", "signature verified · beta channel"],
     ];
     return `${topBar(3)}<div class="body">
       <h1 class="mid">Ready when you are.</h1>
@@ -615,7 +615,7 @@ const SCREENS = {
     return `${topBar(0).replace('class="chips"', 'class="chips" style="pointer-events:none;opacity:.6"')}<div class="body full" style="padding-top:56px">
       <div style="display:grid;grid-template-columns:1fr 560px;gap:56px">
         <div>
-          <div class="kicker lime">Installing · step ${st} of 6</div>
+          <div class="kicker accent">Installing · step ${st} of 6</div>
           <h1>Your desktop is<br>on its way.</h1>
           <div class="lead">Keep the power and internet connected. It finishes on its own, so you can step away.</div>
           <div class="seg">${STAGES.map((_, i) => `<i class="${i + 1 < st ? "on" : i + 1 === st ? "cur" : ""}"></i>`).join("")}</div>
@@ -636,7 +636,7 @@ const SCREENS = {
     return `<div class="top"><div class="logo">${LOGO}</div></div><div class="body full center" style="padding-top:56px">
       <div class="symbol">${SYMBOL}</div>
       <h1 style="margin-top:30px">Welcome home, ${esc(u)}.</h1>
-      <div class="lead">NerdOS ${VERSION} is installed on <span class="mono" style="color:var(--ink)">${esc(hostname())}</span>.</div>
+      <div class="lead">Cybex OS ${VERSION} is installed on <span class="mono" style="color:var(--ink)">${esc(hostname())}</span>.</div>
       <div class="next">
         <div class="card"><div class="n">01</div><b>Remove the USB drive</b><span>or choose the internal disk if this computer booted over the network.</span></div>
         <div class="card"><div class="n">02</div><b>${S.encrypted ? "Unlock the disk" : "Wait for the login screen"}</b><span>${S.encrypted ? `Type your password at startup, using the ${kbName()} layout.` : "The disk is not encrypted."}</span></div>
@@ -651,7 +651,7 @@ const SCREENS = {
       <h1>Secure Boot is turned on.</h1>
       <div class="lead">This installer isn't signed for Secure Boot yet, and it never turns Secure Boot off for you. None of your disks have been touched.</div>
       <div class="stopbox"><span class="mk bad">${I("x")}</span><span class="t">Secure Boot</span><span class="mono">Enabled</span></div>
-      <ol class="howto"><li>Restart into your firmware settings (the button below does that).</li><li>Turn Secure Boot off, then save and exit.</li><li>Start the NerdOS installer again from this USB drive.</li></ol>
+      <ol class="howto"><li>Restart into your firmware settings (the button below does that).</li><li>Turn Secure Boot off, then save and exit.</li><li>Start the Cybex OS installer again from this USB drive.</li></ol>
       <div style="display:flex;gap:14px"><button class="btn primary" data-act="toast" data-v="Restarting into firmware settings…">${I("fw")}Restart into firmware settings</button><button class="btn" data-act="toast" data-v="Powering off…">${I("power")}Power off</button></div>
     </div>`;
   },
@@ -691,22 +691,22 @@ const SHEETS = {
       `<b>${t}:03</b> · HTTPS check: github.com reachable, certificate verified`,
       `<b>${t}:04</b> · Release manifest v${VERSION}: signature ok, revision 9dce94a…`,
       `<b>${t}:06</b> · sgdisk --zap-all ${disk().path}`,
-      `<b>${t}:06</b> · sgdisk -n 1:1MiB:+16GiB -t 1:ef00 -c "1:NerdOS EFI" -n 2:0:0 …`,
+      `<b>${t}:06</b> · sgdisk -n 1:1MiB:+16GiB -t 1:ef00 -c "1:Cybex OS EFI" -n 2:0:0 …`,
       `<b>${t}:08</b> · cryptsetup luksFormat --type luks2 (key on stdin)`,
-      `<b>${t}:13</b> · mkfs.ext4 -L nerdos-root /dev/mapper/nerdos-install-root`,
-      `<b>${t}:21</b> · nixos-generate-config --root /run/nerdos-install-q3k/target`,
-      `<b>${t}:30</b> · nix flake lock path:/run/nerdos-install-q3k/target/var/lib/nerdos/working/initial`,
-      `<b>${t}:41</b> · nixos-install --root … --flake path:…#nerdos --no-root-passwd`,
+      `<b>${t}:13</b> · mkfs.ext4 -L cybexos-root /dev/mapper/cybexos-install-root`,
+      `<b>${t}:21</b> · nixos-generate-config --root /run/cybexos-install-q3k/target`,
+      `<b>${t}:30</b> · nix flake lock path:/run/cybexos-install-q3k/target/var/lib/cybexos/working/initial`,
+      `<b>${t}:41</b> · nixos-install --root … --flake path:…#cybexos --no-root-passwd`,
       `copying path '/nix/store/7xk…-linux-7.2.4' <span class="loc">from the USB payload</span>`,
       `copying path '/nix/store/m2c…-hyprland-0.52.1' <span class="loc">from the USB payload</span>`,
       `copying path '/nix/store/c0q…-quickshell-0.3.0' <span class="loc">from the USB payload</span>`,
       `copying path '/nix/store/s9a…-steam-1.0.0.85' from 'https://cache.nixos.org'`,
-      `building '/nix/store/f1b…-nerdos-system-${VERSION}.drv'…`,
+      `building '/nix/store/f1b…-cybexos-system-${VERSION}.drv'…`,
     ];
     return `<div class="sheet wide"><button class="x" data-act="close">${I("x")}</button><h3>Installation details</h3>
-      <div class="sub">Most recent 256 KiB of the private log <span class="mono">/run/nerdos-installer.log</span>. Passwords never appear here.</div>
+      <div class="sub">Most recent 256 KiB of the private log <span class="mono">/run/cybexos-installer.log</span>. Passwords never appear here.</div>
       <div class="log">${lines.join("\n")}</div>
-      <div class="row" style="margin-top:14px"><button class="btn small" data-act="toast" data-v="Saved to KINGSTON (sdb1) as nerdos-install-2026-10-23.log">Save to another USB stick</button><span style="flex:1"></span><button class="btn small" data-act="close">Close</button></div></div>`;
+      <div class="row" style="margin-top:14px"><button class="btn small" data-act="toast" data-v="Saved to KINGSTON (sdb1) as cybexos-install-2026-10-23.log">Save to another USB stick</button><span style="flex:1"></span><button class="btn small" data-act="close">Close</button></div></div>`;
   },
   apps() {
     return `<div class="sheet"><button class="x" data-act="close">${I("x")}</button><h3>Applications</h3>
@@ -732,7 +732,7 @@ const SHEETS = {
         </div>
         <div>
           <div class="mapbox"><canvas id="bigmap" width="1392" height="542"></canvas><div class="hov" id="hov"></div>
-            <div class="maplegend"><span><i style="background:#b4b7ac"></i>day</span><span><i style="background:#34363b;box-shadow:0 0 0 1px #4a4c52"></i>night</span><span><i style="background:#C8FF1F"></i>selected</span><span>tzdata ${D.tzdata}</span></div></div>
+            <div class="maplegend"><span><i style="background:#b4b7ac"></i>day</span><span><i style="background:#34363b;box-shadow:0 0 0 1px #4a4c52"></i>night</span><span><i style="background:#60A5FA"></i>selected</span><span>tzdata ${D.tzdata}</span></div></div>
           <div class="tzsel" id="tzsel"></div>
         </div>
       </div></div>`;
@@ -771,10 +771,10 @@ function drawMap(cv, selId, pins = []) {
   const sel = BYID[selId];
   if (sel && sel.lat != null) {
     const [x, y] = mapXY(sel.lat, sel.lon, W, H);
-    ctx.strokeStyle = "rgba(200,255,31,.22)"; ctx.lineWidth = Math.max(1, W / 900);
+    ctx.strokeStyle = "rgba(96, 165, 250,.22)"; ctx.lineWidth = Math.max(1, W / 900);
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-    ctx.fillStyle = "rgba(200,255,31,.18)"; ctx.beginPath(); ctx.arc(x, y, r * 5, 0, 6.2832); ctx.fill();
-    ctx.fillStyle = "#C8FF1F"; ctx.beginPath(); ctx.arc(x, y, r * 1.8, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = "rgba(96, 165, 250,.18)"; ctx.beginPath(); ctx.arc(x, y, r * 5, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = "#60A5FA"; ctx.beginPath(); ctx.arc(x, y, r * 1.8, 0, 6.2832); ctx.fill();
   }
 }
 function nearestZone(lat, lon) {
@@ -930,7 +930,7 @@ let booting = false;
 function bootStart() {
   clearInterval(bootTimer);
   if (booting) return;
-  if (S.bootSel === 2) { toast("Text mode starts nerdos-install --terminal on tty1"); return; }
+  if (S.bootSel === 2) { toast("Text mode starts cybexos-install --terminal on tty1"); return; }
   if (S.bootSel >= 3) { toast(S.bootSel === 3 ? "Verbose boot: kernel and systemd messages, then the same installer" : "Opening UEFI firmware settings"); return; }
   booting = true;
   stage.innerHTML = `<div class="splash"><div class="symbol">${SYMBOL}</div></div>`;

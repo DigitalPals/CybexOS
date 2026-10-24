@@ -29,10 +29,10 @@ FINGERS = ('right-index-finger', 'left-index-finger', 'right-thumb', 'left-thumb
            'right-middle-finger', 'left-middle-finger', 'right-ring-finger',
            'left-ring-finger', 'right-little-finger', 'left-little-finger')
 # Must match nix/modules/security.nix: credentials registered for
-# another relying party never verify with the NerdOS PAM steps.
-ORIGIN = 'pam://nerdos'
-FINGERPRINT_POLICY = Path('/etc/nerdos/fingerprint-enabled')
-PAM_FILES = (Path('/etc/pam.d/sudo'), Path('/etc/pam.d/polkit-1'), Path('/etc/pam.d/nerdos-lock'))
+# another relying party never verify with the Cybex OS PAM steps.
+ORIGIN = 'pam://cybexos'
+FINGERPRINT_POLICY = Path('/etc/cybexos/fingerprint-enabled')
+PAM_FILES = (Path('/etc/pam.d/sudo'), Path('/etc/pam.d/polkit-1'), Path('/etc/pam.d/cybexos-lock'))
 # KeyHandle,UserKey,CoseType,Options as pamu2fcfg writes them; '*' is the key
 # handle of a resident credential.
 CREDENTIAL = re.compile(r'^(?:\*|[A-Za-z0-9+/=_-]{8,1024}),[A-Za-z0-9+/=_-]{8,1024},[a-z0-9]{2,16},[+a-z]{0,64}$')
@@ -241,7 +241,7 @@ class SecuritySettings:
         enabled = request.get('enabled')
         if not isinstance(enabled, bool):
             raise ValueError('Invalid fingerprint setting')
-        raise ValueError('Set nerdos.authentication.fingerprint in /etc/nixos/local, then preview and apply with nerd update stage local. Enrolment remains available here.')
+        raise ValueError('Set cybexos.authentication.fingerprint in /etc/nixos/local, then preview and apply with cybex update stage local. Enrolment remains available here.')
 
     # ── security keys ───────────────────────────────────────────────────
     def key_state(self, features):
@@ -318,7 +318,7 @@ class SecuritySettings:
         credential = output.strip()
         credential = credential[1:] if credential.startswith(':') else credential.split(':', 1)[-1]
         if not CREDENTIAL.match(credential):
-            raise ValueError('The key returned a registration NerdOS does not recognise.')
+            raise ValueError('The key returned a registration Cybex OS does not recognise.')
         credentials, others = self.credentials()
         if credential not in credentials:
             credentials.append(credential)

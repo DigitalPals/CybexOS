@@ -2,7 +2,7 @@
 -- displays.lua (Settings -> Displays) can start a saved choice from the rule
 -- it overrides and keep fields the page does not own, such as bitdepth.
 local vendor_monitor_rules = {}
-_G.__nerdos_vendor_monitor_rules = vendor_monitor_rules
+_G.__cybexos_vendor_monitor_rules = vendor_monitor_rules
 local function monitor(rule)
   table.insert(vendor_monitor_rules, rule)
   hl.monitor(rule)

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Software
+Comment=Install and remove native packages through reviewed Cybex OS deployments
+Exec=cybexos-software
+Icon=cybexos
+Type=Application
+Categories=System;PackageManager;
+Keywords=install;remove;packages;applications;

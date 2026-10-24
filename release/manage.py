@@ -12,11 +12,11 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lifecycle'))
-from nerdos.common import Failure, atomic, read
-from nerdos.trust import Fetcher, REPO, validate_release, verify, version
+from cybexos.common import Failure, atomic, read
+from cybexos.trust import Fetcher, REPO, validate_release, verify, version
 
 REQUIRED = {
-    'encrypted-install', 'plain-install', 'installation-parity', 'upstream-only', 'nerdos-only',
+    'encrypted-install', 'plain-install', 'installation-parity', 'upstream-only', 'cybexos-only',
     'combined', 'channel-unavailable', 'invalid-signature', 'failed-build', 'interrupted-update',
     'activation-recovery', 'boot-recovery', 'personal-persistence', 'plugin-api', 'desktop-login',
     'xps-camera-frames', 'xps-suspend-audio', 'nvidia', 'secure-boot', 'authentication',
@@ -51,8 +51,8 @@ def sign(path, key, key_id, trust, purpose):
 
 def manifest(directory, release_version, revision, nar_hash, notes, dependencies):
     version(release_version)
-    expected = {'nerdos-source.tar.gz', 'release-notes.md', 'qualification.json', 'SHA256SUMS',
-                f'nerdos-{release_version}-x86_64-linux.iso'}
+    expected = {'cybexos-source.tar.gz', 'release-notes.md', 'qualification.json', 'SHA256SUMS',
+                f'cybexos-{release_version}-x86_64-linux.iso'}
     if not expected.issubset(path.name for path in directory.iterdir() if path.is_file()):
         raise Failure('Release is missing required source, ISO, notes, checksums or qualification assets')
     gate(read(directory / 'qualification.json'), revision, nar_hash)
@@ -124,7 +124,7 @@ def main():
     elif args.action == 'sign':
         sign(args.path, args.key, args.key_id, read(args.trust), args.purpose)
     else:
-        with tempfile.TemporaryDirectory(prefix='nerdos-channel-') as cache:
+        with tempfile.TemporaryDirectory(prefix='cybexos-channel-') as cache:
             result = channel(args.manifest, args.channel, args.sequence, args.previous, read(args.trust), Fetcher(cache))
         atomic(args.output, result, 0o644)
 
