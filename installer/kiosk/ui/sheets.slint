@@ -84,6 +84,7 @@ component Panel inherits Rectangle {
         }
     }
     init => { content.focus(); }
+    public function reset-focus() { content.focus(); }
 }
 
 component ListArea inherits Rectangle {
@@ -127,6 +128,12 @@ component ListArea inherits Rectangle {
 // ── network ──────────────────────────────────────────────────────────────────
 
 export component WifiSheet inherits Panel {
+    property <int> selection: Store.wifi-selected;
+    changed selection => {
+        // Submitting or replacing a network removes its focused password
+        // field. Keep Escape and Tab inside the surviving network panel.
+        if (root.selection < 0) { root.reset-focus(); }
+    }
     property <length> list-height: 54px * Store.wifi.length + (Store.wifi-selected >= 0 ? 130px : 0px);
     VerticalLayout {
         alignment: start;

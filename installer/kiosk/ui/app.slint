@@ -98,7 +98,6 @@ component TopBar inherits Rectangle {
                 text: Store.net-connected ? (Store.net-kind == "wifi" ? Store.net-name : "Ethernet") : "Offline";
                 icon: Store.net-connected ? (Store.net-kind == "wifi" ? Icons.wifi : Icons.ethernet) : Icons.offline;
                 warn: !Store.net-connected;
-                enabled: !root.locked;
                 clicked => { Store.open-sheet("wifi"); }
             }
         }

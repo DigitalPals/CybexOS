@@ -22,7 +22,7 @@ from urllib.parse import urlencode
 from cybexos.common import CommandFailure, Failure, Runner, atomic, parse, read
 from cybexos.engine import copy_config
 from cybexos.credentials import validate_password
-from cybexos.installer_network import ensure_internet
+from cybexos.installer_network import ensure_internet, retry_download
 from cybexos.trust import REPO, Fetcher, validate_release, verify, version
 
 ETC = Path('/etc/cybexos')
@@ -32,6 +32,7 @@ DISK_PATTERN = r'/dev/(sd[a-z]+|vd[a-z]+|nvme[0-9]+n[0-9]+)'
 JSON_UI = False
 INSTALL_LOG = Path('/run/cybexos-installer.log')
 MAX_DETAILS = 256 * 1024
+NETWORK_WAITING = threading.Event()
 
 
 def installation_details():
@@ -67,7 +68,7 @@ def event(kind, **values):
                 sys.stdout = open(os.devnull, 'w')
 
 
-def ensure_network(run):
+def ensure_network(run, *, disk_touched=False):
     def notify(message):
         event('network', message=message)
         if not JSON_UI:
@@ -84,7 +85,25 @@ def ensure_network(run):
     except OSError:
         servers = []
     note('Configured DNS servers: ' + (', '.join(servers) or 'none'))
-    return ensure_internet(run, notify, note)
+    return ensure_internet(run, notify, note, disk_touched=disk_touched)
+
+
+def download(run, *arguments, **options):
+    """Keep the mounted target while recovering a repeatable network step."""
+    def check():
+        NETWORK_WAITING.set()
+        ensure_network(run, disk_touched=True)
+        NETWORK_WAITING.clear()
+
+    def notify(message):
+        event('activity', message=message)
+        if not JSON_UI:
+            print(message, flush=True)
+
+    try:
+        return retry_download(lambda: run(*arguments, **options), check, notify)
+    finally:
+        NETWORK_WAITING.clear()
 
 
 def stage(number, message):
@@ -145,6 +164,8 @@ def build_progress():
     started = time.monotonic()
     def report():
         while not finished.wait(20):
+            if NETWORK_WAITING.is_set():
+                continue
             elapsed = int(time.monotonic() - started)
             event('activity', elapsed=elapsed, message='Building and downloading packages')
             if not JSON_UI:
@@ -382,7 +403,9 @@ def check_platform(secure_boot=False):
 
 
 def disks():
-    return parse(subprocess.check_output(['lsblk', '--json', '--bytes', '--output', 'PATH,TYPE,SIZE,MODEL,SERIAL,FSTYPE,MOUNTPOINTS,RO']))['blockdevices']
+    # PATH alone does not enable lsblk's JSON children. The safety checks must
+    # see mounted partitions and open mappings beneath each whole disk.
+    return parse(subprocess.check_output(['lsblk', '--json', '--tree', '--bytes', '--output', 'PATH,TYPE,SIZE,MODEL,SERIAL,FSTYPE,MOUNTPOINTS,RO']))['blockdevices']
 
 
 def layout():
@@ -404,9 +427,13 @@ def disk_guard(plan):
         return any(node.get('mountpoints', [])) or any(mounted(c) for c in node.get('children', []))
     if mounted(found) or found['size'] < minimum * 1024**3:
         raise Failure(f'Selected disk is mounted or smaller than {minimum} GiB. Nothing has been erased.')
-    swap_devices = {s.split()[0] for s in Path('/proc/swaps').read_text().splitlines()[1:]}
+    def mapped(node):
+        return node.get('type', 'part') not in ('disk', 'part') or any(mapped(c) for c in node.get('children', []))
+    if mapped(found):
+        raise Failure('Selected disk has active device mappings. Close its encryption, LVM or RAID mappings first. Nothing has been erased.')
+    swap_devices = {os.path.realpath(s.split()[0]) for s in Path('/proc/swaps').read_text().splitlines()[1:]}
     nodes = subprocess.check_output(['lsblk', '-nrpo', 'PATH', plan['disk']], text=True).splitlines()
-    if swap_devices.intersection(nodes):
+    if swap_devices.intersection(map(os.path.realpath, nodes)):
         raise Failure('Selected disk contains active swap. Nothing has been erased.')
 
 
@@ -557,9 +584,11 @@ def install(plan, secrets, source, revision, nar_hash, run=Runner(), *, channel)
         target.chmod(0o755)
         try:
             stage(1, 'Preparing the selected disk…')
+            event('disk-writing')
             run('sgdisk', '--zap-all', plan['disk'])
             run('sgdisk', '-n', f'1:1MiB:+{layout()["espGiB"]}GiB', '-t', '1:ef00', '-c', '1:Cybex OS EFI',
                 '-n', '2:0:0', '-t', '2:8300', '-c', '2:Cybex OS root', plan['disk'])
+            run('blockdev', '--rereadpt', plan['disk'])
             run('udevadm', 'settle')
             stage(2, 'Creating filesystems' + (' and LUKS2 encryption…' if plan['encrypted'] else '…'))
             run('mkfs.vfat', '-F', '32', '-n', 'CYBEXOS_EFI', esp)
@@ -620,7 +649,7 @@ def install(plan, secrets, source, revision, nar_hash, run=Runner(), *, channel)
             # fills the Cybex OS input and its vendor graph around it.
             atomic(config / 'flake.lock', {'version': 7, 'root': 'root', 'nodes': {
                 'root': {'inputs': {'nixpkgs': 'nixpkgs'}}, 'nixpkgs': nixpkgs}}, 0o644)
-            run('nix', 'flake', 'lock', f'path:{config}')
+            download(run, 'nix', 'flake', 'lock', f'path:{config}')
             lock = read(config / 'flake.lock')
             from cybexos.inputs import identity, resolved, validate_machine
             validate_machine(lock)
@@ -637,7 +666,7 @@ def install(plan, secrets, source, revision, nar_hash, run=Runner(), *, channel)
             print('  Keep power and internet connected. Downloads and builds may take a while.\n'
                   '  Private build log: sudo tail -f /run/cybexos-installer.log', flush=True)
             with build_progress():
-                run('nixos-install', '--root', target, '--flake', f'path:{config}#cybexos', '--no-root-passwd', '--no-channel-copy', timeout=10800)
+                download(run, 'nixos-install', '--root', target, '--flake', f'path:{config}#cybexos', '--no-root-passwd', '--no-channel-copy', timeout=10800)
             stage(5, 'Setting up your account and keyboard preferences…')
             # Set the initial mutable account credential once. A declarative
             # hashedPasswordFile would reset subsequent passwd changes at every
@@ -661,7 +690,7 @@ def install(plan, secrets, source, revision, nar_hash, run=Runner(), *, channel)
             copy_config(config, deployed)
             (target / 'var/lib/cybexos/deployed').symlink_to('/var/lib/cybexos/initial-deployed')
             stage(6, 'Retaining the tested sources and finishing installation…')
-            archived = parse(run('nix', 'flake', 'archive', '--json', '--no-update-lock-file', f'path:{deployed}'))
+            archived = parse(download(run, 'nix', 'flake', 'archive', '--json', '--no-update-lock-file', f'path:{deployed}'))
             copy_initial_inputs(archived, target, run)
         finally:
             try:

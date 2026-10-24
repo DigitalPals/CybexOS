@@ -129,6 +129,22 @@ interface. NetworkManager and Tailscale share systemd-resolved on installed
 systems; signing in to Tailscale can add MagicDNS. See Tailscale's
 [Linux DNS guidance](https://tailscale.com/kb/1188/linux-dns).
 
+The network sheet's **Refresh** requests a new Wi-Fi scan. Joining a secured
+network creates a profile and supplies its password privately over stdin.
+NetworkManager retains that profile for this live boot and reconnects when the
+access point returns. Ethernet reconnects automatically when its cable returns.
+As the sheet states, these live Wi-Fi credentials are used for installation;
+join the network again in the installed desktop.
+
+If a download fails after disk preparation, the installer keeps the mounted
+target and waits up to 15 minutes for verified connectivity to return. Open
+the network chip to join Wi-Fi, or reconnect Ethernet. It then repeats only the
+failed Nix lock, desktop installation or source archive operation, preserving
+completed downloads; it never repeats partitioning or formatting. Transfer
+failures get at most three attempts. Ordinary build errors still stop and open
+the installation details. A failure before disk preparation reports that no
+disk was erased; a later failure reports that the selected disk was changed.
+
 ### Recovery and other interfaces
 
 The serial console and tty2 are root shells on the physical medium; there is no
@@ -177,8 +193,9 @@ release authentication and packages not bundled on the medium require internet.
 
 Use a backed-up target disk of at least 64 GiB. Installation erases only the
 explicitly selected whole disk after its graphical confirmation. Its serial is
-checked automatically; it is never a typing exercise. Mounted disks,
-active swap and changed identities are rejected. Passwords use private input,
+checked automatically; it is never a typing exercise. Mounted or read-only disks,
+active swap, open encryption/LVM/RAID mappings and changed identities are
+rejected. Passwords use private input,
 not arguments or configuration source. The installer creates a 16 GiB ESP and
 an ext4 root, optionally under LUKS2, with zram rather than persistent plaintext
 swap. Root stays locked; the chosen wheel user authorizes administration.
@@ -251,3 +268,18 @@ groups; it does not qualify the standard application selection. VM files are
 removed when the tool exits. Screenshots and JSON evidence are retained only
 when requested. `--serial-console` is an installer option for this isolated test;
 normal interactive installations do not enable a serial console.
+
+The separate network test uses the actual ISO's installer daemon, network helper
+and NetworkManager with simulated Wi-Fi radios, WPA2, DHCP and internet routing:
+
+```sh
+scripts/qualify-installer-network /path/to/completed.iso \
+  --work-dir /path/to/task/vms --output /path/to/task/network.json
+```
+
+Run it in `nix develop` and inside the host's managed disposable-resource
+workflow. It checks Ethernet unplug/replug, scanning, wrong-password rejection,
+HTTPS using Wi-Fi as the sole route, and automatic reconnection after access
+point loss and NetworkManager restart. It does not qualify physical adapters or
+firmware. The [2026-10-24 installer audit](measurements/installer-network-partitioning-2026-10-24.md)
+records additional real GUI, WPA3, partitioning and completed-installation tests.

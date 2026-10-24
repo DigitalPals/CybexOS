@@ -367,6 +367,15 @@ class DiskSafetyTests(unittest.TestCase):
         with patch.object(installer, 'disks', return_value=[self.disk()]), patch.object(installer, 'Path', side_effect=path), patch.object(installer.subprocess, 'check_output', return_value='/dev/vda\n/dev/vda2\n'), self.assertRaises(installer.Failure):
             installer.disk_guard(plan())
 
+    def test_unmounted_encryption_lvm_and_raid_mappings_are_rejected(self):
+        for kind in ('crypt', 'lvm', 'raid1', 'mpath'):
+            disk = self.disk()
+            disk['children'] = [{'type': 'part', 'mountpoints': [None],
+                                 'children': [{'type': kind, 'mountpoints': [None]}]}]
+            with self.subTest(kind=kind), patch.object(installer, 'disks', return_value=[disk]), \
+                    self.assertRaisesRegex(installer.Failure, 'active device mappings'):
+                installer.disk_guard(plan())
+
     def test_secure_boot_rejected_before_any_disk_command(self):
         efi = Mock(); efi.exists.return_value = True
         variables = Mock(); flag = Mock(); flag.read_bytes.return_value = b'\x07\x00\x00\x00\x01'
@@ -425,6 +434,39 @@ class DiskSafetyTests(unittest.TestCase):
             installer.install(choice, {'password':'qualification-password-123'}, f'path:{ROOT}', 'revision', 'nar', run, channel='beta')
         mount = next(args for args in calls if args[0] == 'mount')
         self.assertEqual(mount[:4], ('mount', '-t', 'ext4', '/dev/vda2'))
+
+    def test_download_recovery_reuses_target_and_never_repeats_disk_preparation(self):
+        calls, builds = [], []
+        def run(*args, **kwargs):
+            calls.append(args)
+            if args[0] == 'nixos-generate-config':
+                (Path(args[-1]) / 'hardware-configuration.nix').write_text('{}')
+            elif args[:3] == ('nix', 'flake', 'lock'):
+                nix_lock(Path(str(args[-1]).removeprefix('path:')))
+            elif args[0] == 'nixos-install':
+                builds.append(args)
+                if len(builds) == 1:
+                    raise installer.CommandFailure('nixos-install', 1, 'unable to download: connection reset by peer')
+                raise installer.Failure('stop after resumed build')
+            return 'unused-credential-hash'
+        retry = installer.retry_download
+        choice = plan(); choice.update(encrypted=False, autoLogin=False)
+        with self.trusted_install_directory(), \
+                patch.dict(os.environ, {'CYBEXOS_UPDATER_SHARE': str(ROOT / 'templates')}), \
+                patch.object(installer, 'check_platform'), patch.object(installer, 'disk_guard'), \
+                patch.object(installer, 'detect', return_value={'camera': False, 'nvidia': False, 'nvidiaPrime': {'enable': False}, 'xps': False}), \
+                patch('cybexos.inputs.validate_machine'), patch('cybexos.inputs.identity', return_value={}), \
+                patch.object(installer, 'ensure_network') as network, \
+                patch.object(installer, 'retry_download', side_effect=lambda operation, check, notify: retry(operation, check, notify, wait=lambda _: None)), \
+                self.assertRaisesRegex(installer.Failure, 'stop after resumed build'):
+            installer.install(choice, {'password': 'qualification-password-123'}, f'path:{ROOT}', 'revision', 'nar', run, channel='beta')
+        self.assertEqual(len(builds), 2)
+        self.assertEqual(builds[0], builds[1])
+        self.assertEqual(sum(args[0] == 'sgdisk' and '--zap-all' in args for args in calls), 1)
+        self.assertEqual(sum(args[0] == 'mkfs.ext4' for args in calls), 1)
+        self.assertEqual(sum(args[0] == 'mkfs.vfat' for args in calls), 1)
+        self.assertEqual(network.call_args.kwargs, {'disk_touched': True})
+        self.assertFalse(installer.NETWORK_WAITING.is_set())
 
 
     def test_install_public_ancestry_is_traversable_with_private_secrets(self):

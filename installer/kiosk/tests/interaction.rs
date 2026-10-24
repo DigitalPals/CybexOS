@@ -7,7 +7,7 @@ use cybexos_installer::{
 };
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
 use slint::platform::{Key, Platform, WindowAdapter, WindowEvent};
-use slint::{ComponentHandle, PhysicalSize};
+use slint::{ComponentHandle, Model, PhysicalSize};
 use std::{cell::Cell, rc::Rc};
 
 struct Headless(Rc<MinimalSoftwareWindow>);
@@ -235,6 +235,61 @@ fn log_scrolls_with_keyboard_and_refresh_keeps_the_reading_position() {
         head == log_pixels(&surface),
         "refresh moved the reader to the end"
     );
+}
+
+#[test]
+fn network_panel_stays_available_while_installation_waits_for_reconnection() {
+    let (ui, app, surface) = setup();
+    let store = ui.global::<Store>();
+    let mut state = State {
+        phase: "installing".into(),
+        stage: 4,
+        message: "Connection interrupted. Reconnect Ethernet or Wi-Fi; installation will resume automatically.".into(),
+        ..State::default()
+    };
+    app.borrow_mut().apply_state(state.clone());
+    draw(&surface);
+    let position = slint::LogicalPosition::new(990.0, 36.0);
+    ui.window().dispatch_event(WindowEvent::PointerPressed {
+        position,
+        button: slint::platform::PointerEventButton::Left,
+    });
+    ui.window().dispatch_event(WindowEvent::PointerReleased {
+        position,
+        button: slint::platform::PointerEventButton::Left,
+    });
+    draw(&surface);
+    assert_eq!(store.get_sheet(), "wifi", "the network chip was disabled during installation");
+    state.elapsed = 30;
+    state.network.busy = true;
+    app.borrow_mut().apply_state(state.clone());
+    draw(&surface);
+    assert_eq!(store.get_sheet(), "wifi", "a background snapshot closed network recovery");
+    assert_eq!(store.get_stages().row_data(3).unwrap().detail, state.message);
+}
+
+#[test]
+fn wifi_submission_keeps_keyboard_focus_in_the_network_panel() {
+    use cybexos_installer::protocol::WifiNetwork;
+    let (ui, app, surface) = setup();
+    let store = ui.global::<Store>();
+    let mut state = State { phase: "setup".into(), ..State::default() };
+    state.network.wifi.interface = "wlan0".into();
+    state.network.wifi.networks = vec![WifiNetwork {
+        ssid: "Test network".into(), security: "WPA2".into(), ..WifiNetwork::default()
+    }];
+    app.borrow_mut().apply_state(state);
+    store.invoke_open_sheet("wifi".into());
+    draw(&surface);
+    for _ in 0..3 { key(&ui, &surface, Key::Tab); }
+    key(&ui, &surface, Key::Return);
+    key(&ui, &surface, Key::Tab);
+    for letter in "testsecret".chars() { key(&ui, &surface, letter.to_string()); }
+    key(&ui, &surface, Key::Return);
+    assert_eq!(store.get_wifi_selected(), -1);
+    draw(&surface);
+    key(&ui, &surface, Key::Escape);
+    assert_eq!(store.get_sheet(), "", "submitting removed the focused field and stranded Escape");
 }
 
 #[test]

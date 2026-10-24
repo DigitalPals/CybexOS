@@ -1,0 +1,928 @@
+{
+  "kind": "installer-network-partitioning-audit",
+  "recordedAt": "2026-10-24T19:53:06.767507+00:00",
+  "result": "passed-for-exercised-scopes",
+  "identity": {
+    "version": "1.0.0-beta.2",
+    "nixos": "26.05",
+    "architecture": "x86_64-linux",
+    "baseCommit": "2c0c4bcab02f1432129dc2480c468813ea59a965",
+    "revision": "uncommitted",
+    "sourceNarHash": "sha256-mI5CKPcHh1U8GyiiJ7wjS3IUP1OWVUauDbE/Yf7Kn88=",
+    "iso": "/data/pxe/iso/cybexos-1.0.0-beta.2-20261024-wifi-audit-v4.iso",
+    "isoSha256": "5206b0bbe61c705a9897a0895f334805e18b8fa5cb6c34f29789eea458cbcdad",
+    "isoBytes": 7120576512
+  },
+  "network": {
+    "kind": "isolated-installer-network-evidence",
+    "checks": {
+      "initial": {
+        "phase": "development",
+        "diskTouched": false
+      },
+      "ethernetReplug": {
+        "result": "passed",
+        "interface": "enp0s2"
+      },
+      "wifiScan": {
+        "result": "passed",
+        "security": "WPA2"
+      },
+      "wrongPassword": {
+        "result": "passed",
+        "error": "Wi-Fi activation failed",
+        "failedProfileRemoved": true
+      },
+      "httpsOverWifi": {
+        "result": "passed",
+        "address": "192.168.88.12",
+        "onlyDefaultRoute": "wlan0"
+      },
+      "accessPointReturn": {
+        "result": "passed",
+        "automatic": true,
+        "verifiedHttps": true
+      },
+      "networkManagerRestart": {
+        "result": "passed",
+        "automatic": true,
+        "verifiedHttps": true
+      },
+      "noDiskChanges": {
+        "result": "passed",
+        "diskTouched": false
+      },
+      "guiWifiPasswordEntry": {
+        "result": "passed",
+        "attempts": 2,
+        "interface": "real Slint kiosk, QMP keyboard and pointer"
+      },
+      "wpa3Sae": {
+        "result": "passed",
+        "verifiedHttps": true,
+        "protectedManagementFrames": true
+      },
+      "result": "passed"
+    },
+    "isoSha256": "5206b0bbe61c705a9897a0895f334805e18b8fa5cb6c34f29789eea458cbcdad",
+    "scope": "actual ISO installer and NetworkManager with simulated Wi-Fi radios; no physical radio or installation qualification"
+  },
+  "networkPanelDuringInstallation": {
+    "result": "passed",
+    "stage": 4,
+    "method": "actual final ISO Slint kiosk; QMP USB pointer opens the network chip, panel stays open across 12 seconds of installer/background updates, Escape closes it and restores the installation view",
+    "capturesInspected": true
+  },
+  "realDownloadRecovery": {
+    "attempts": 2,
+    "messages": [
+      "Connection interrupted. Reconnect Ethernet or Wi-Fi; installation will resume automatically.",
+      "Connection restored. Resuming installation\u2026"
+    ],
+    "result": "passed",
+    "download": {
+      "hash": "sha256-LJ3jc651pScWN2NQNERaXNOmrjWsbDBtQMDgZ2R4WJc=",
+      "storePath": "/nix/store/kafk9kay95hx7qnbx56p81qih2282isv-nix-cache-info"
+    }
+  },
+  "encryptedGraphicalInstallation": {
+    "checks": {
+      "diskInventory": {
+        "oldFilesystemRecognized": true,
+        "63GiBRejected": true
+      },
+      "mountedDiskRejected": {
+        "path": "/dev/vda",
+        "serial": "CYBEXOS-QA-DISK",
+        "model": "",
+        "size": 85899345920,
+        "available": false,
+        "reason": "Selected disk is mounted or smaller than 64 GiB. Nothing has been erased.",
+        "filesystems": [
+          "ext4"
+        ],
+        "bus": "Virtual"
+      },
+      "readOnlyDiskRejected": {
+        "path": "/dev/vda",
+        "serial": "CYBEXOS-QA-DISK",
+        "model": "",
+        "size": 85899345920,
+        "available": false,
+        "reason": "Disk identity changed or is unavailable. Nothing has been erased.",
+        "filesystems": [
+          "ext4"
+        ],
+        "bus": "Virtual"
+      },
+      "activeSwapRejected": {
+        "path": "/dev/vda",
+        "serial": "CYBEXOS-QA-DISK",
+        "model": "",
+        "size": 85899345920,
+        "available": false,
+        "reason": "Selected disk is mounted or smaller than 64 GiB. Nothing has been erased.",
+        "filesystems": [
+          "swap"
+        ],
+        "bus": "Virtual"
+      },
+      "unmountedEncryptionMappingRejected": {
+        "path": "/dev/vda",
+        "serial": "CYBEXOS-QA-DISK",
+        "model": "",
+        "size": 85899345920,
+        "available": false,
+        "reason": "Selected disk has active device mappings. Close its encryption, LVM or RAID mappings first. Nothing has been erased.",
+        "filesystems": [
+          "crypto_LUKS"
+        ],
+        "bus": "Virtual"
+      },
+      "networkFailureInjection": {
+        "nixDownloadAttempts": 1,
+        "nixConnectTimeoutSeconds": 3,
+        "scope": "disposable live guest only, so transfer failures reach installer recovery promptly"
+      },
+      "networkOutageStarted": {
+        "stage": 4,
+        "diskTouched": true
+      },
+      "networkRestored": {
+        "secondsDisconnected": 101.3,
+        "workerWaitObserved": false
+      },
+      "resumedWithoutRepartitioning": {
+        "result": "passed",
+        "partitionTablePreserved": true,
+        "filesystemUUIDsPreserved": true,
+        "espGiB": 16,
+        "otherDiskUnchanged": true,
+        "uuidScope": "ESP FAT UUID and outer LUKS UUID"
+      },
+      "installedDesktopShell": {
+        "result": "passed",
+        "soleServiceProcess": true,
+        "currentJournalChecked": true
+      },
+      "result": "passed"
+    },
+    "milestones": {
+      "isoSourceIdentity": {
+        "result": "passed"
+      },
+      "nativeGuiAssertions": {
+        "result": "passed",
+        "installerOnlyRuntime": "tty1 kiosk as cybexos-installer; no live account, compositor or display manager",
+        "display": [
+          1280,
+          800
+        ],
+        "developmentConsent": "Enter on the screen",
+        "lowercaseUsername": "typed CybexQA; the screen kept cybexqa",
+        "reviewedPlan": {
+          "username": "cybexqa",
+          "fullName": "Cybex QA",
+          "hostname": "cybexqa-cybexos",
+          "timezone": "Europe/Amsterdam",
+          "keyboard": "us",
+          "encrypted": true,
+          "features": {
+            "developer": true,
+            "proprietary": true,
+            "steam": true,
+            "docker": true,
+            "podman": true,
+            "tailscale": true,
+            "connectedWidgets": true,
+            "assistant": true,
+            "localNetworkServices": true
+          }
+        },
+        "completed": {
+          "username": "cybexqa",
+          "hostname": "cybexqa-cybexos",
+          "encrypted": true
+        }
+      },
+      "installerCompleted": {
+        "result": "passed",
+        "interface": "tty1 Slint screen with real QMP keyboard and pointer input",
+        "applications": "standard"
+      },
+      "installedBootAndSerialPasswordLogin": {
+        "result": "passed"
+      },
+      "installedSourceIdentity": {
+        "result": "passed",
+        "isoRelease": {
+          "architecture": "x86_64-linux",
+          "configurationApi": 1,
+          "narHash": "sha256-mI5CKPcHh1U8GyiiJ7wjS3IUP1OWVUauDbE/Yf7Kn88=",
+          "nixos": "26.05",
+          "pluginApi": 1,
+          "revision": "uncommitted",
+          "updaterApi": 1,
+          "version": "1.0.0-beta.2"
+        },
+        "installedRelease": {
+          "architecture": "x86_64-linux",
+          "configurationApi": 1,
+          "narHash": "sha256-mI5CKPcHh1U8GyiiJ7wjS3IUP1OWVUauDbE/Yf7Kn88=",
+          "nixos": "26.05",
+          "pluginApi": 1,
+          "revision": "uncommitted",
+          "updaterApi": 1,
+          "version": "1.0.0-beta.2"
+        },
+        "installedSource": {
+          "lastModified": 0,
+          "narHash": "sha256-mI5CKPcHh1U8GyiiJ7wjS3IUP1OWVUauDbE/Yf7Kn88=",
+          "path": "/nix/store/g8mizffwx5c2qc3n97wxhhabdg6xb097-source",
+          "type": "path"
+        },
+        "scope": "same exact source NAR; bundled path inputs have no Git revision metadata"
+      },
+      "runtimeEncryption": {
+        "result": "passed",
+        "encrypted": true
+      },
+      "desktopConfigurationCheck": {
+        "result": "passed"
+      },
+      "authenticatedDesktopHealth": {
+        "result": "passed",
+        "login": "SDDM password login after disk unlock"
+      },
+      "sharedPasswordChanges": {
+        "result": "passed",
+        "encrypted": true,
+        "roundTrips": 2,
+        "keyringStored": true,
+        "accountChanges": 2,
+        "checks": [
+          "real packaged worker and PAM",
+          "old disk key rejected",
+          "reboot and password desktop login",
+          "login keyring unlocked with changed password"
+        ]
+      }
+    },
+    "isoReleaseIdentity": {
+      "architecture": "x86_64-linux",
+      "configurationApi": 1,
+      "narHash": "sha256-mI5CKPcHh1U8GyiiJ7wjS3IUP1OWVUauDbE/Yf7Kn88=",
+      "nixos": "26.05",
+      "pluginApi": 1,
+      "revision": "uncommitted",
+      "updaterApi": 1,
+      "version": "1.0.0-beta.2"
+    },
+    "result": "passed",
+    "scope": "actual ISO install, installed boot/login, encryption; no update application"
+  },
+  "plainNvmeInstallation": {
+    "milestones": {
+      "isoSourceIdentity": {
+        "result": "passed"
+      },
+      "installerCompleted": {
+        "result": "passed",
+        "interface": "JSON plan",
+        "applications": "minimal"
+      },
+      "installedBootAndSerialPasswordLogin": {
+        "result": "passed"
+      },
+      "installedSourceIdentity": {
+        "result": "passed",
+        "isoRelease": {
+          "architecture": "x86_64-linux",
+          "configurationApi": 1,
+          "narHash": "sha256-mI5CKPcHh1U8GyiiJ7wjS3IUP1OWVUauDbE/Yf7Kn88=",
+          "nixos": "26.05",
+          "pluginApi": 1,
+          "revision": "uncommitted",
+          "updaterApi": 1,
+          "version": "1.0.0-beta.2"
+        },
+        "installedRelease": {
+          "architecture": "x86_64-linux",
+          "configurationApi": 1,
+          "narHash": "sha256-mI5CKPcHh1U8GyiiJ7wjS3IUP1OWVUauDbE/Yf7Kn88=",
+          "nixos": "26.05",
+          "pluginApi": 1,
+          "revision": "uncommitted",
+          "updaterApi": 1,
+          "version": "1.0.0-beta.2"
+        },
+        "installedSource": {
+          "lastModified": 0,
+          "narHash": "sha256-mI5CKPcHh1U8GyiiJ7wjS3IUP1OWVUauDbE/Yf7Kn88=",
+          "path": "/nix/store/g8mizffwx5c2qc3n97wxhhabdg6xb097-source",
+          "type": "path"
+        },
+        "scope": "same exact source NAR; bundled path inputs have no Git revision metadata"
+      },
+      "runtimeEncryption": {
+        "result": "passed",
+        "encrypted": false
+      },
+      "desktopConfigurationCheck": {
+        "result": "passed"
+      },
+      "authenticatedDesktopHealth": {
+        "result": "passed",
+        "login": "SDDM password login"
+      },
+      "sharedPasswordChanges": {
+        "result": "passed",
+        "encrypted": false,
+        "roundTrips": 2,
+        "keyringStored": true,
+        "accountChanges": 2,
+        "checks": [
+          "real packaged worker and PAM",
+          "no disk change",
+          "reboot and password desktop login",
+          "login keyring unlocked with changed password"
+        ]
+      }
+    },
+    "isoReleaseIdentity": {
+      "architecture": "x86_64-linux",
+      "configurationApi": 1,
+      "narHash": "sha256-mI5CKPcHh1U8GyiiJ7wjS3IUP1OWVUauDbE/Yf7Kn88=",
+      "nixos": "26.05",
+      "pluginApi": 1,
+      "revision": "uncommitted",
+      "updaterApi": 1,
+      "version": "1.0.0-beta.2"
+    },
+    "result": "passed",
+    "scope": "actual ISO install, installed boot/login, encryption; no update application"
+  },
+  "isoSourceParity": {
+    "kind": "image-source-parity-evidence",
+    "result": "passed",
+    "isoSha256": "5206b0bbe61c705a9897a0895f334805e18b8fa5cb6c34f29789eea458cbcdad",
+    "sourceNarHash": "sha256-mI5CKPcHh1U8GyiiJ7wjS3IUP1OWVUauDbE/Yf7Kn88=",
+    "sourceRevision": "uncommitted",
+    "release": {
+      "architecture": "x86_64-linux",
+      "configurationApi": 1,
+      "narHash": "sha256-mI5CKPcHh1U8GyiiJ7wjS3IUP1OWVUauDbE/Yf7Kn88=",
+      "nixos": "26.05",
+      "pluginApi": 1,
+      "revision": "uncommitted",
+      "updaterApi": 1,
+      "version": "1.0.0-beta.2"
+    },
+    "checks": {
+      "source": {
+        "files": 1270,
+        "sha256": "9b364a5956f6f20c2d42eda7fa33fdd7e86f536b768fcd93ff7ea40195c212c8"
+      },
+      "desktop": {
+        "files": 706,
+        "sha256": "63d0f9a63c1526f6d95a77955f63f44da37112b744893df7882dcb7bbb09a14b"
+      },
+      "updater": {
+        "files": 80,
+        "sha256": "e6839659917c0e59368ce9b59fea4ea47cd2d045378fe4e8c85233b8ca26f52c"
+      },
+      "installerUi": {
+        "files": 4,
+        "sha256": "331bc732dd14178ea343df0b66f674c58a91c93935f3d38c473622a5ada724f1"
+      },
+      "installerScreen": {
+        "files": 1,
+        "sha256": "b1e6b25fa4968fad2f9b5ddf51f0f410fe9eae6305f4c2a302f19f2d7137d527"
+      },
+      "payloadSystemPath": {
+        "files": 929,
+        "sha256": "a44fda8df0b1977475f26a7a0653b2483e31e51c69da06192755bb0e146884bb"
+      },
+      "payloadEtc": {
+        "files": 12,
+        "sha256": "a9aebfca7328e9ce7049f9d46d570103dabae9d2df7e2ad7a98dac317fe3d104"
+      },
+      "system": {
+        "files": 10,
+        "sha256": "604b0eb056f06ed415ef3f10ff1c6d8a19a210942bfab85c8ec200c12ad8b494"
+      },
+      "etc": {
+        "files": 6,
+        "sha256": "d684126ffcab202893e8c3172104e619d78ef3e6f619ac64ec0b439436f19d59"
+      },
+      "releaseFile": {
+        "files": 1,
+        "sha256": "69b7d76f4c046ed460920b2b32d6ee95515a3653f359093b8a35d86e1529571b"
+      },
+      "installerSourceFile": {
+        "files": 1,
+        "sha256": "3774abcb9c30fcfdae50a171a777c7d0662979dbe91beb344e42cce1e2ba0475"
+      },
+      "installerInputsFile": {
+        "files": 1,
+        "sha256": "5ae614bc4765b97585858db4c33da52bdcca9a034d1b75e96ba842da3fd99b83"
+      },
+      "inputSource:0": {
+        "files": 92,
+        "sha256": "3b906e5ef19206b26c7dd6a27bf1c2bb4b95d144c9ab8cccd457637d0e5c1c19"
+      },
+      "inputSource:1": {
+        "files": 52926,
+        "sha256": "7ecff51d0af685a538f07a26b1c3a749fbe74758aec40bde9b6d182b3a9a7f0d"
+      },
+      "inputSource:2": {
+        "files": 669,
+        "sha256": "ac16267ad0dc4dfb43e5d887588da649d309df5f7375376f3f773da98e360046"
+      },
+      "inputSource:3": {
+        "files": 5,
+        "sha256": "61cc1022d5187e2dd48d294334f9d711418283d362b725e3774bacfd9ca9cd24"
+      },
+      "inputSource:4": {
+        "files": 56,
+        "sha256": "e166c809e0f33fe979d6643976e7183124cba81b29172ffe5e2fdbdc351fe2b7"
+      },
+      "inputSource:5": {
+        "files": 35,
+        "sha256": "0783f834cf11613b628dacb18313aa6639478f02164af1f1c8626c8b1b89850d"
+      },
+      "inputSource:6": {
+        "files": 934,
+        "sha256": "462679237e67879418e1c4e092e34453312916c748295752646df271d1abbb46"
+      },
+      "inputSource:7": {
+        "files": 24,
+        "sha256": "76237c4886edab782e8b7d44ff726c27080bc3a006e2d8c9ba5ca5b121189d7c"
+      },
+      "quickshell": {
+        "files": 561,
+        "sha256": "a91f236968a32344f342bee0a88cab5b89a421b57b5b7979bf5d4e27f1f775d8"
+      },
+      "hyprlandConfiguration": {
+        "files": 16,
+        "sha256": "61f1591c664fd2b281d528be752e96d105cd18dd8fccfa36b95de0ad2c52367e"
+      },
+      "wallpapers": {
+        "files": 7,
+        "sha256": "3280a4ab2f4cda733e6012bb85efe64fabd4b7e7b225df921ed0c7a9fe28dd23"
+      },
+      "desktopSkill": {
+        "files": 5,
+        "sha256": "167d562fff4f6c29730cefbc0c50b1780ffe2f776995b0df0613c707f2e43bcd"
+      },
+      "updaterSkill": {
+        "files": 5,
+        "sha256": "167d562fff4f6c29730cefbc0c50b1780ffe2f776995b0df0613c707f2e43bcd"
+      },
+      "machineTemplate": {
+        "files": 8,
+        "sha256": "de4565e2718fdd2565120b7540246ab244a448a27a12ac0b762d7b21fab8d4de"
+      },
+      "updaterCode": {
+        "files": 16,
+        "sha256": "96c398cfd4ef4075ae0fea0988cfd8535f2680be4bc2f198737fc69e5a0dce37"
+      },
+      "installerService": {
+        "files": 1,
+        "sha256": "18a0c26a603ac2130b9fab1d37ca3e08557899cc02e4ae3b60ac5ff65aff2971"
+      },
+      "installerNetworkHelper": {
+        "files": 1,
+        "sha256": "0031b648511832f80b5ff5642b5ee2f14cfc876e4e99ce9e3a86e9eab15f487d"
+      },
+      "updaterExecutable:cybexos-verify-encryption": {
+        "files": 1,
+        "sha256": "a1e9a50041170ad3a5e9fca95939050b1b64bf01f0ab437599e42fddec4b1870"
+      },
+      "updaterExecutable:cybexos-desktop-check": {
+        "files": 1,
+        "sha256": "0b6d1307d7af28b3fbbd9191c4576a9dbce7ca2378e2eb5f653f8b39eb1862dd"
+      },
+      "updaterExecutable:cybexos-boot-trial": {
+        "files": 1,
+        "sha256": "c51762ea9f7d92cdee673526832fc536489ccb92381377c78d275c6c0bcc69db"
+      },
+      "updaterExecutable:cybexos-personal-init": {
+        "files": 1,
+        "sha256": "a6531401986e3d2175ff573c08ac34767b9fa15967658b506caeec22c1b4bb12"
+      },
+      "updaterExecutable:cybexos-health": {
+        "files": 1,
+        "sha256": "1077581b4d977d2b0b550c45697f74eb88580f5cb0e18d4eea10447a942a952b"
+      },
+      "updaterExecutable:cybex": {
+        "files": 1,
+        "sha256": "dc04583bedbed5d622984582c77db08293b1419b13e9940a5de350517f132319"
+      },
+      "updaterExecutable:cybexos-request": {
+        "files": 1,
+        "sha256": "14b9b6bc3a0af50f11784a18ff6fe5668d1e181f9febd7ca1c091596c3e8d296"
+      },
+      "updaterExecutable:cybexos-password-worker": {
+        "files": 1,
+        "sha256": "5fa1de4e00bb8557e48ff2a9a59ae07ae45285aeeb7f5f9ed5ad6f372dd740fd"
+      },
+      "updaterExecutable:cybexos-admin": {
+        "files": 1,
+        "sha256": "a6ddcf8792dd6a969ba20908569c1f951bbd99e1bbb1fde612b0d8b1a3e3f220"
+      },
+      "updaterExecutable:cybexos-install": {
+        "files": 1,
+        "sha256": "2e4e0c3e10e9d6d3404d45590514ef4e77ab3f329e77780b5e3e05bd87dcb06e"
+      }
+    },
+    "scope": "static source/image/package identity, installer screen/service and offline payload parity; no installation/runtime qualification"
+  },
+  "stagedUpdater": {
+    "result": "passed",
+    "sourceNarHash": "sha256-mI5CKPcHh1U8GyiiJ7wjS3IUP1OWVUauDbE/Yf7Kn88=",
+    "driver": "/nix/store/4wsx0v0zfi4ifr5hkdqwxqbkn71n7xnl-nixos-test-driver-cybexos-lifecycle",
+    "seconds": 131.41,
+    "testScript": "/nix/store/62050p3d2k3ksj2kj648cyppxbc17bcv-test-script",
+    "testScriptSha256": "883dee995274889368684ee7d3beb9cb813343fbee9fa518176a38f4d60845f8",
+    "checks": [
+      "actual software and maintenance staging through updater",
+      "candidate desktop checks",
+      "machine locks and personal file preservation",
+      "real Nix transfer with link down and up"
+    ],
+    "scope": "candidates reached ready; no update applied or signed channel qualified"
+  },
+  "regressions": {
+    "result": "passed",
+    "sourceTests": 573,
+    "settingsTests": 21,
+    "rustTests": {
+      "unit": 20,
+      "renderedInteraction": 8,
+      "presentation": 4
+    },
+    "unchangedNetworkHelperNodeTests": 62,
+    "sourceTestDerivation": "/nix/store/h8psy34p2yc6r7wpsbzl0czgp41myqlp-cybexos-lifecycle-tests.drv",
+    "installerDerivation": "/nix/store/4gl5izccqca2sgh2h3f74qply2g018gp-cybexos-installer-screen-1.0.0-beta.2.drv"
+  },
+  "visualInspection": {
+    "result": "passed",
+    "realIsoCapturesInspected": [
+      "Wi-Fi connected with Ethernet unavailable",
+      "network panel remains open during installation and Escape restores progress",
+      "review identifies the selected disk and existing ext4 data",
+      "completion logo is separated from its heading",
+      "installed desktop has one managed menubar"
+    ]
+  },
+  "pxe": {
+    "checksumVerified": true,
+    "refresh": {
+      "result": "success"
+    },
+    "status": {
+      "status": "running"
+    },
+    "service": "active",
+    "images": [
+      {
+        "name": "cybexos-1.0.0-beta.2-20261024-2c0c4bcab02f.iso",
+        "checked": false,
+        "imgid": 11,
+        "icon": "/static/ztree/img/iso.png"
+      },
+      {
+        "name": "cybexos-1.0.0-beta.2-20261024-wifi-audit-v4.iso",
+        "checked": false,
+        "imgid": 15,
+        "icon": "/static/ztree/img/iso.png"
+      }
+    ],
+    "expectedImagePresent": true,
+    "supersededTaskImagesAbsent": true,
+    "previousUnrelatedImagePreserved": true,
+    "checksumBytes": 114
+  },
+  "cleanup": {
+    "leaseCount": 33,
+    "leases": [
+      {
+        "lease": "034471652e0a4c759f2cbfbae7c01c9e",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "046f2f79a5e545d4b762a212a2f35d33",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "06987527c9f64defbebf8b3bbbbca8b7",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "0bb6325139ba404ca6919c83e4873ac3",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "12310ef51cd54ba5b5d0d410e259f6f3",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "152760975156492cbf8d54c571eced7d",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "44968b07a2ea4719939888c3b4ca8e67",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "55c4525ef9a54127bca3564ba6018acf",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "60abb166c5c743498a646929a26a5423",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "612b801272f14b8bb72f5ed99b2bae52",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "670878ff9c6d4e7ea8c7998971b36cb8",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "6754a86843f2460c8672308cdc0f6d98",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "6d1dd5ee3f3740a7b6efdb3c2cab2a4f",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "7372440a55944fd7aca7622ddacee3b7",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "7c17d614e00641889ea523f8181603dd",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "7d34564a330f42b9854c2a9724a9c9e1",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "90cb0a063e2f4bf690622be82358317f",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "a1c63521162a48bf9098c483053ec969",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "a8aa04dabd6745f4aa34e802caaec7d9",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "ac6181ef67f14372a6a80adc5980efff",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "b7767a7640714718b3de743b5205ecb3",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "ba4debf302e64984a32fae21cb7e2919",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "c01a788c23204694a99dc20137fd62a1",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "c2d4bc0b70f440c6b618ef5f04b27a10",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "c437199054144a20b309f9822ae804c8",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "c51de6fd30844830bbaea8878644bfae",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "ca9ea88b342c4bc5bf2d6f46c15dfd7c",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "caec564bed1943fe9e0a9b37ea84939e",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "d099575c57a14a61820358afb8644658",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "d73a4be4b8284fb6977fed8dcfa606b2",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "dea926b8cf664fcebcebabbc2845a007",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "f4b2322961a4471abe714a39ff1a54a6",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "fd58ec4921d34f5d85ac01ce3111bb89",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      }
+    ],
+    "remainingTaskProcesses": [],
+    "remainingTaskMounts": [],
+    "removedKnownControlDirectories": [],
+    "stagingDirectory": "/data/tmp/cybexos-installer-audit-20261024-upyyha15",
+    "stagingDiskBytes": 204718080,
+    "stagingRemoved": true,
+    "removedSupersededDelivery": [
+      {
+        "path": "/data/pxe/iso/cybexos-1.0.0-beta.2-20261024-wifi-audit-v3.iso",
+        "bytes": 7120576512
+      },
+      {
+        "path": "/data/pxe/iso/cybexos-1.0.0-beta.2-20261024-wifi-audit-v3.iso.sha256",
+        "bytes": 114
+      }
+    ],
+    "removedDuplicateNixIsoOutputs": [
+      {
+        "path": "/nix/store/5cxfdf88gpgaqrm9my2zp4q2661g3jas-cybexos-1.0.0-beta.2-x86_64-linux.iso",
+        "isoBytes": 7120576512
+      },
+      {
+        "path": "/nix/store/j339277y3y8fm95yl26w6n6amqjrpcy6-cybexos-1.0.0-beta.2-x86_64-linux.iso",
+        "isoBytes": 7120576512
+      }
+    ],
+    "removedVerifiedDisposableControlDirectories": [
+      {
+        "path": "/tmp/ndvm.ddav90pr",
+        "bytes": 0,
+        "reason": "empty owned test-control directory; no process/cwd or kernel Unix reference; removed with rmdir only"
+      },
+      {
+        "path": "/tmp/ndvm.earik571",
+        "bytes": 0,
+        "reason": "empty owned test-control directory; no process/cwd or kernel Unix reference; removed with rmdir only"
+      },
+      {
+        "path": "/tmp/ndvm.j6vdntga",
+        "bytes": 0,
+        "reason": "empty owned test-control directory; no process/cwd or kernel Unix reference; removed with rmdir only"
+      },
+      {
+        "path": "/tmp/ndvm.ufa9_4rf",
+        "bytes": 0,
+        "reason": "empty owned test-control directory; no process/cwd or kernel Unix reference; removed with rmdir only"
+      },
+      {
+        "path": "/tmp/ndvm.1pb_23p5",
+        "bytes": 0,
+        "reason": "empty owned test-control directory; no process/cwd or kernel Unix reference; removed with rmdir only"
+      }
+    ],
+    "stagingDiskBytesAfter": 0,
+    "workspaceDiskBytesAfter": 0,
+    "completedAt": "2026-10-24T19:54:44.373392+00:00"
+  },
+  "limits": [
+    "Wi-Fi radios were mac80211_hwsim; physical adapters, firmware and radio conditions were not qualified",
+    "Enterprise/802.1X, hidden networks and captive portals were not exercised",
+    "Live Wi-Fi credentials are intentionally installation-only; reconnect after installed boot",
+    "Development source/ISO; no signed production installation, applied channel update, Secure Boot enrollment or physical hardware qualification",
+    "Full-install outage did not observe the worker wait message; the distinct real Nix transfer did observe interruption and resumption"
+  ],
+  "retainedArtifacts": [
+    {
+      "path": "/data/pxe/iso/cybexos-1.0.0-beta.2-20261024-wifi-audit-v4.iso",
+      "bytes": 7120576512,
+      "reason": "final verified testing ISO for physical follow-up"
+    },
+    {
+      "path": "/data/pxe/iso/cybexos-1.0.0-beta.2-20261024-wifi-audit-v4.iso.sha256",
+      "bytes": 114,
+      "reason": "testing ISO checksum"
+    },
+    {
+      "path": "/home/john/Code/CybexOS/docs/measurements/installer-network-partitioning-2026-10-24.md",
+      "bytes": 10742,
+      "reason": "human-readable audit"
+    },
+    {
+      "path": "/home/john/Code/CybexOS/docs/measurements/installer-network-partitioning-2026-10-24.json",
+      "bytes": 29518,
+      "reason": "bounded machine-readable evidence"
+    }
+  ]
+}

@@ -18,7 +18,7 @@ ShellRoot {
         onTriggered: {
             if (typeof UserPlugins.plugins !== "undefined" && typeof OmarchyPlugins.records !== "undefined") {
                 console.warn("CYBEXOS_DESKTOP_CHECK_PASS");
-                Quickshell.execDetached(["bash", "-c", "sleep .1; kill -TERM -- \"$1\"", "qualification", String(Quickshell.processId)]);
+                Qt.quit();
             }
         }
     }

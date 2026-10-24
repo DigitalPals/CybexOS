@@ -248,6 +248,7 @@ class Daemon:
         self.region_attempted = False
         self.region_task = None
         self.network_task = None
+        self.pending_network = None
         self.pending_push = None
         self.queries = {}
 
@@ -377,7 +378,9 @@ class Daemon:
             self.update(phase='review', review=self.public_plan(self.reviewed), error='')
         elif kind == 'started':
             self.started_at = time.monotonic()
-            self.update(phase='installing', message='Preparing installation…', error='', stage=0, diskTouched=True)
+            self.update(phase='installing', message='Preparing installation…', error='', stage=0)
+        elif kind == 'disk-writing':
+            self.update(diskTouched=True)
         elif kind in ('stage', 'activity'):
             stage = value.get('stage', self.state['stage'])
             self.update(message=str(value.get('message', ''))[:200], stage=stage if isinstance(stage, int) else self.state['stage'])
@@ -551,7 +554,7 @@ class Daemon:
             self.set_keyboard(request['layout'])
             self.send_all({'type': 'restart', 'reason': 'keyboard'})
         elif action == 'network-refresh':
-            self.network('snapshot', None)
+            self.network('scan', None)
         elif action == 'network-connect' and isinstance(request.get('network'), dict):
             self.network('wifi', request['network'])
         elif action == 'detect-region':
@@ -594,23 +597,54 @@ class Daemon:
     # ── network ──────────────────────────────────────────────────────────────
     def network(self, command, request):
         if self.network_task is not None and not self.network_task.done():
+            # A user action must not disappear behind the periodic snapshot.
+            # Keep at most one pending action, and release superseded secrets.
+            if command != 'snapshot':
+                if command == 'scan' and self.pending_network and self.pending_network[0] == 'wifi':
+                    return
+                if self.pending_network and self.pending_network[1]:
+                    self.pending_network[1].clear()
+                self.pending_network = (command, dict(request) if request else None)
             return
-        self.state['network'] = {**self.state['network'], 'busy': True, 'error': ''}
-        self.push()
-        self.network_task = asyncio.create_task(self.run_network(command, request))
+        self.network_task = asyncio.create_task(self.network_sequence(command, request))
+
+    async def network_sequence(self, command, request):
+        while True:
+            self.state['network'] = {**self.state['network'], 'busy': True}
+            if command != 'snapshot':
+                self.state['network']['error'] = ''
+            self.push()
+            await self.run_network(command, request)
+            if self.pending_network is not None:
+                command, request = self.pending_network
+                self.pending_network = None
+            elif command != 'snapshot':
+                command, request = 'snapshot', None
+            else:
+                return
 
     async def run_network(self, command, request):
         result = {'success': False, 'error': 'Network setup is unavailable on this medium.'}
+        process = None
+        payload = None
         if self.network_helper:
-            payload = None
-            if command == 'wifi':
+            helper_command = command
+            if command in ('wifi', 'scan'):
                 wifi = self.state['network'].get('wifi') or {}
-                payload = {key: request.get(key) for key in ('ssid', 'security', 'password', 'identity', 'hidden', 'uuid', 'saved')}
-                payload.update(action='connect', interface=wifi.get('interface', ''))
+                if command == 'wifi':
+                    payload = {key: request.get(key) for key in ('ssid', 'security', 'password', 'identity', 'hidden', 'uuid', 'saved')}
+                    payload.update(action='connect', interface=wifi.get('interface', ''))
+                elif wifi.get('interface'):
+                    payload = {'action': 'rescan', 'interface': wifi['interface']}
+                else:
+                    helper_command = 'snapshot'
+                if payload is not None:
+                    helper_command = 'wifi'
             try:
                 process = await asyncio.create_subprocess_exec(
-                    self.python, '-B', self.network_helper, command, stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, limit=MAX_LINE)
+                    self.python, '-B', self.network_helper, helper_command, stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, limit=MAX_LINE,
+                    start_new_session=True)
                 output, _ = await asyncio.wait_for(process.communicate(json.dumps(payload).encode() if payload else b''), 60)
                 result = json.loads(output)
             except (OSError, ValueError, asyncio.TimeoutError):
@@ -618,14 +652,23 @@ class Daemon:
             finally:
                 if payload:
                     payload.clear()
+                if request:
+                    request.clear()
+                if process is not None:
+                    with contextlib.suppress(ProcessLookupError):
+                        os.killpg(process.pid, signal.SIGKILL)
+                    await process.wait()
         network = {**self.state['network'], 'busy': False}
         if not isinstance(result, dict) or not result.get('success'):
-            network['error'] = str((result or {}).get('error') or 'Connection failed. Check the password and retry.')[:300]
+            error = result.get('error') if isinstance(result, dict) else None
+            network['error'] = str(error or 'Connection failed. Check the password and retry.')[:300]
             self.state['network'] = network
             self.push()
             return
-        if command == 'snapshot':
-            self.state['network'] = {**network, **summarize_network(result), 'error': ''}
+        if command == 'snapshot' or helper_command == 'snapshot':
+            self.state['network'] = {**network, **summarize_network(result)}
+            if self.state['network'].get('connected') and not network.get('connected'):
+                self.state['network']['error'] = ''
             self.push()
             if self.state['network'].get('connected'):
                 if not self.region_attempted:
@@ -635,10 +678,8 @@ class Daemon:
                         self.update(phase='loading', message='Checking this installation medium…', error='')
                         self.worker_send({'action': 'retry'})
             return
-        # A completed Wi-Fi connection is reported by the next snapshot.
         self.state['network'] = network
-        self.network_task = None
-        self.network('snapshot', None)
+        self.push()
 
     async def watch_network(self):
         # NetworkManager can connect Ethernet at any time; keep the welcome
@@ -802,6 +843,13 @@ class Daemon:
         await stop.wait()
         for task in tasks:
             task.cancel()
+        if self.network_task is not None:
+            self.network_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self.network_task
+        if self.pending_network and self.pending_network[1]:
+            self.pending_network[1].clear()
+        self.pending_network = None
         # Closing the clients first lets the process exit promptly; the server
         # would otherwise wait for the screen's open connection.
         for writer in list(self.clients):

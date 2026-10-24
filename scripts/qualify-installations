@@ -46,8 +46,9 @@ def check_installed_identity(media, installed, source):
 
 
 class VM:
-    def __init__(self, directory, disk, iso=None):
+    def __init__(self, directory, disk, iso=None, *, extra_qemu_args=()):
         self.directory, self.disk, self.iso = directory, disk, iso
+        self.extra_qemu_args = list(extra_qemu_args)
         self.process = None
         self.control_directory = None
         self.command_ready = False
@@ -74,6 +75,7 @@ class VM:
                 '-display','none','-serial','stdio','-no-reboot', '-qmp',f'unix:{self.qmp},server=on,wait=off']
         if self.iso:
             args += ['-cdrom',str(self.iso),'-boot','d']
+        args += self.extra_qemu_args
         self.process = pexpect.spawn('qemu-system-x86_64',args,encoding='utf-8',timeout=600,maxread=65536)
         self.process.delaybeforesend = 0.05
         # This private, disposable log contains only public QA credentials.
@@ -315,8 +317,11 @@ QA_DEFAULTS''', timeout=60)
         button = lambda down: {'type': 'btn', 'data': {'down': down, 'button': 'left'}}
         self.qmp_commands({'execute': 'input-send-event', 'arguments': {'events': position}})
         time.sleep(0.2)
-        self.qmp_commands({'execute': 'input-send-event', 'arguments': {'events': [button(True)]}},
-                          {'execute': 'input-send-event', 'arguments': {'events': [button(False)]}})
+        self.qmp_commands({'execute': 'input-send-event', 'arguments': {'events': [button(True)]}})
+        # USB polls button reports; a press and release in one polling interval
+        # can collapse into a pointer move without a click.
+        time.sleep(0.1)
+        self.qmp_commands({'execute': 'input-send-event', 'arguments': {'events': [button(False)]}})
         time.sleep(0.3)
 
     def installer_state(self, timeout=20):
@@ -678,7 +683,7 @@ def qualify(iso, encrypted, base, lifecycle=True, evidence=None, *, interactive=
                 milestones['nativeGuiAssertions'] = vm.graphical_install(encrypted, applications, screenshots)
             else:
                 vm.command('systemctl stop cybexos-installer-ui.service cybexos-installerd.service\n'
-                           'for n in $(seq 1 30); do pgrep -f "cybexos-install --json-ui" >/dev/null || exit 0; sleep 1; done; exit 1', timeout=90)
+                           'for n in $(seq 1 30); do pgrep -f "[c]ybexos-install --json-ui" >/dev/null || exit 0; sleep 1; done; exit 1', timeout=90)
                 vm.command('cybexos-install --plan-file /run/qa-plan.json --secrets-fd 3 --development-source "$(cat /etc/cybexos/installer-source)" 3< <(printf %s '+shlex.quote(secrets)+')',timeout=10800)
         except RuntimeError as error:
             diagnostics = vm.command('tail -c 6000 /run/cybexos-installer.log 2>/dev/null || true')

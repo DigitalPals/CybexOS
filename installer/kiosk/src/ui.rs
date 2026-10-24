@@ -255,7 +255,7 @@ impl App {
             store.set_screen(s(&screen));
         }
         if matches!(state.phase.as_str(), "installing" | "complete") && !store.get_sheet().is_empty()
-            && store.get_sheet() != "log" && store.get_sheet() != "tools"
+            && store.get_sheet() != "log" && store.get_sheet() != "tools" && store.get_sheet() != "wifi"
         {
             store.set_sheet(s(""));
         }
@@ -626,7 +626,7 @@ impl App {
                 let current = n == stage.max(1) && state.phase == "installing";
                 StageRow {
                     title: s(*title),
-                    detail: s(if current && state.message.contains("Building and downloading") { "Building and downloading packages" } else { detail }),
+                    detail: s(if current && !state.message.is_empty() { state.message.as_str() } else { detail }),
                     state: if n < stage || state.phase == "complete" { 0 } else if current { 1 } else { 2 },
                 }
             })

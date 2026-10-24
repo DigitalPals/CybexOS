@@ -33,10 +33,18 @@ try:
                    XDG_STATE_HOME=str(work / 'state'), XDG_RUNTIME_DIR=str(work / 'run'),
                    QT_QPA_PLATFORM='offscreen', QT_QUICK_BACKEND='software', CYBEXOS_PLUGIN_ROOT=str(work / 'plugins'))
         (work / 'run').mkdir(mode=0o700)
-        result = subprocess.run(['qs', '-p', str(target)], env=env, capture_output=True, text=True, timeout=40)
+        # QML helpers can detach and keep writing after qs exits. A private
+        # PID namespace reaps all of them before the temporary home is removed.
+        result = subprocess.run([shutil.which('bwrap'), '--unshare-pid', '--die-with-parent', '--new-session',
+                                 '--bind', '/', '/', '--proc', '/proc', '--', 'qs', '-p', str(target)],
+                                env=env, capture_output=True, text=True, timeout=40)
         body = result.stdout + result.stderr
-        if 'CYBEXOS_DESKTOP_CHECK_PASS' not in body or any(x in body for x in ('ReferenceError', 'TypeError', 'Failed to load configuration', 'Syntax error', 'Type UserWidgetHost unavailable')):
+        if result.returncode or 'CYBEXOS_DESKTOP_CHECK_PASS' not in body or any(x in body for x in ('ReferenceError', 'TypeError', 'Failed to load configuration', 'Syntax error', 'Type UserWidgetHost unavailable')):
             raise ValueError('Candidate desktop/plugin API smoke check failed: ' + body[-3000:])
 except Exception as error:
     print(str(error), file=sys.stderr)
+    if isinstance(error, subprocess.TimeoutExpired):
+        for output in (error.stdout, error.stderr):
+            if output:
+                print(output.decode(errors='replace')[-3000:] if isinstance(output, bytes) else output[-3000:], file=sys.stderr)
     sys.exit(1)

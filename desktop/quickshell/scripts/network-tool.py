@@ -893,6 +893,11 @@ def inherit_dns_for_new_profile(profile_uuid: str, previous_profiles: list[dict[
 
 def wifi_action(request: dict[str, Any]) -> dict[str, Any]:
     action = str(request.get("action", ""))
+    if action == "rescan":
+        interface = require_interface(request.get("interface"))
+        run(["nmcli", "--wait", "10", "device", "wifi", "rescan", "ifname", interface],
+            seconds=15, label="Wi-Fi rescan")
+        return {"success": True, "action": action, "interface": interface}
     if action == "disconnect":
         interface = require_interface(request.get("interface"))
         run(["nmcli", "--wait", "15", "device", "disconnect", interface],
@@ -906,7 +911,7 @@ def wifi_action(request: dict[str, Any]) -> dict[str, Any]:
         raise ToolError("invalid_request", "Unknown Wi-Fi action")
 
     interface = require_interface(request.get("interface"))
-    profile_uuid = str(request.get("uuid", ""))
+    profile_uuid = str(request.get("uuid") or "")
     kind = security_kind(request.get("security"))
     # A known profile normally obtains its saved secret from NetworkManager.
     # passwd-file is still used for activation, but an empty file lets NM use

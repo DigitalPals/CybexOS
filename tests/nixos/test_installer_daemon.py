@@ -55,6 +55,7 @@ for line in sys.stdin:
         if request.get('token') != token or request.get('confirmed') is not True:
             emit(event='error', message='unconfirmed'); break
         emit(event='started')
+        emit(event='disk-writing')
         for stage in range(1, 7):
             emit(event='stage', stage=stage, total=6, message='Stage %d' % stage)
         emit(event='complete', username='ada', encrypted=True, hostname='ada-cybexos')
@@ -192,6 +193,86 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(static['version'], '1.0.0-test')
         self.assertIn('messagebus', static['reserved'])
         return await self.until(lambda m: m['type'] == 'state' and m['phase'] == 'setup' and m['draft']['timezone'] == 'Europe/Amsterdam')
+
+    async def test_wifi_connect_waits_for_background_poll_and_errors_survive_polling(self):
+        await self.setup_phase()
+        if self.service.network_task:
+            await self.service.network_task
+        entered, release = asyncio.Event(), asyncio.Event()
+        commands = []
+
+        async def network(command, request):
+            commands.append((command, dict(request) if request else None))
+            if len(commands) == 1:
+                entered.set()
+                await release.wait()
+
+        with patch.object(self.service, 'run_network', side_effect=network):
+            self.service.network('snapshot', None)
+            await entered.wait()
+            await self.send(action='network-connect', network={'ssid': 'Home', 'password': PASSWORD})
+            await self.send(action='draft', values={'username': 'responsive'})
+            await self.until(lambda m: m['type'] == 'state' and m['draft']['username'] == 'responsive')
+            self.assertEqual(len(commands), 1)
+            release.set()
+            await self.service.network_task
+        self.assertEqual([c[0] for c in commands], ['snapshot', 'wifi', 'snapshot'])
+        self.assertEqual(commands[1][1], {'ssid': 'Home', 'password': PASSWORD})
+        self.assertNotIn(PASSWORD, ''.join(self.received))
+
+    async def test_snapshot_keeps_connection_error_and_explicit_refresh_requests_rescan(self):
+        await self.setup_phase()
+        if self.service.network_task:
+            await self.service.network_task
+        helper = self.root / 'network.py'
+        helper.write_text('import json; print(json.dumps({"success": True, "devices": [], "wifi": {}}))')
+        self.service.network_helper = str(helper)
+        self.service.state['network']['error'] = 'Check the password'
+        await self.service.run_network('snapshot', None)
+        self.assertEqual(self.service.state['network']['error'], 'Check the password')
+        with patch.object(self.service, 'network') as network:
+            await self.service.handle_request(self.writer, {'action': 'network-refresh'})
+        network.assert_called_once_with('scan', None)
+
+    async def test_malformed_network_result_is_an_actionable_error(self):
+        await self.setup_phase()
+        helper = self.root / 'network.py'
+        helper.write_text('print("[]")')
+        self.service.network_helper = str(helper)
+        await self.service.run_network('snapshot', None)
+        self.assertIn('Connection failed', self.service.state['network']['error'])
+        self.assertFalse(self.service.state['network']['busy'])
+
+    async def test_network_cancellation_kills_and_reaps_helper(self):
+        await self.setup_phase()
+        if self.service.network_task:
+            await self.service.network_task
+        pidfile = self.root / 'network.pid'
+        helper = self.root / 'network.py'
+        helper.write_text(f'import os, pathlib, time\npathlib.Path({str(pidfile)!r}).write_text(str(os.getpid()))\ntime.sleep(60)\n')
+        self.service.network_helper = str(helper)
+        task = asyncio.create_task(self.service.run_network('snapshot', None))
+        try:
+            for _ in range(100):
+                if pidfile.exists():
+                    break
+                await asyncio.sleep(.01)
+            self.assertTrue(pidfile.exists())
+        finally:
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+        with self.assertRaises(ProcessLookupError):
+            os.kill(int(pidfile.read_text()), 0)
+
+    async def test_started_event_does_not_claim_erasure_before_disk_writing(self):
+        await self.setup_phase()
+        self.service.handle_event({'event': 'started'})
+        self.assertFalse(self.service.state['diskTouched'])
+        self.service.handle_event({'event': 'error', 'message': 'Network unavailable. No disk has been erased.'})
+        self.assertFalse(self.service.state['diskTouched'])
+        self.service.handle_event({'event': 'disk-writing'})
+        self.assertTrue(self.service.state['diskTouched'])
 
     async def test_slow_details_do_not_block_edits_and_refreshes_are_coalesced(self):
         await self.setup_phase()

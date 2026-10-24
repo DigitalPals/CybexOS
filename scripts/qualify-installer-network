@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""Exercise the real ISO's NetworkManager and installer socket in a disposable VM.
+
+Uses mac80211_hwsim, a WPA2 hostapd access point and real DHCP/routing. Only
+the test access point tools come from a read-only host store; the installer
+screen, daemon, helper and worker all come from the ISO. Run in nix develop,
+inside the host's managed disposable-resource workflow. No host network changes.
+"""
+import argparse
+import hashlib
+import importlib.machinery
+import importlib.util
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+import tempfile
+
+sys.dont_write_bytecode = True
+loader = importlib.machinery.SourceFileLoader('installation_qa', str(Path(__file__).with_name('qualify-installations')))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+qa = importlib.util.module_from_spec(spec)
+loader.exec_module(qa)
+
+
+def qualify(vm, record):
+    vm.start()
+    vm.login(live=True)
+    state = vm.wait_installer(lambda s: s['phase'] in ('development', 'setup'), 'preflight')
+    record('initial', {'phase': state['phase'], 'diskTouched': state['diskTouched']})
+    vm.wait_installer(lambda s: s['network'].get('connected'), 'initial Ethernet connection')
+    vm.qmp_commands({'execute': 'set_link', 'arguments': {'name': 'net', 'up': False}})
+    vm.wait_installer(lambda s: not s['network'].get('connected'), 'Ethernet unplug')
+    vm.qmp_commands({'execute': 'set_link', 'arguments': {'name': 'net', 'up': True}})
+    state = vm.wait_installer(lambda s: s['network'].get('connected'), 'Ethernet replug')
+    record('ethernetReplug', {'result': 'passed', 'interface': state['network']['interface']})
+    hostapd = shlex.quote(os.environ['CYBEXOS_QA_HOSTAPD'])
+    dnsmasq = shlex.quote(os.environ['CYBEXOS_QA_DNSMASQ'])
+    iw = shlex.quote(os.environ['CYBEXOS_QA_IW'])
+    vm.command('''mkdir -p /mnt/qa-hoststore /run/qa-store/upper /run/qa-store/work
+mount -t 9p -o trans=virtio,version=9p2000.L,ro hoststore /mnt/qa-hoststore
+mount -t overlay overlay -o lowerdir=/nix/store:/mnt/qa-hoststore,upperdir=/run/qa-store/upper,workdir=/run/qa-store/work /nix/store
+modprobe mac80211_hwsim radios=2
+ip netns add qa-ap
+''' + f'{iw} phy phy1 set netns name qa-ap\n' + '''
+qa_eth=$(nmcli -t -f DEVICE,TYPE device status | awk -F: '$2 == "ethernet" {print $1; exit}')
+nmcli device set "$qa_eth" managed no
+ip link set "$qa_eth" netns qa-ap
+ip -n qa-ap link set lo up
+ip -n qa-ap link set "$qa_eth" up
+ip -n qa-ap address add 10.0.2.15/24 dev "$qa_eth"
+ip -n qa-ap route add default via 10.0.2.2
+ip -n qa-ap link set wlan1 up
+ip -n qa-ap address add 192.168.88.1/24 dev wlan1
+ip netns exec qa-ap sysctl -w net.ipv4.ip_forward=1
+ip netns exec qa-ap iptables -t nat -A POSTROUTING -s 192.168.88.0/24 -o "$qa_eth" -j MASQUERADE
+cat > /run/qa-hostapd.conf <<'AP'
+interface=wlan1
+driver=nl80211
+ssid=Cybex-QA-WiFi
+hw_mode=g
+channel=1
+wpa=2
+wpa_key_mgmt=WPA-PSK
+rsn_pairwise=CCMP
+wpa_passphrase=QualificationOnly8
+AP
+''' + f'ip netns exec qa-ap {hostapd} -B -P /run/qa-hostapd.pid /run/qa-hostapd.conf\n'
+        + f'ip netns exec qa-ap {dnsmasq} --interface=wlan1 --bind-interfaces --dhcp-range=192.168.88.10,192.168.88.30,255.255.255.0,1h --dhcp-option=6,8.8.8.8 --pid-file=/run/qa-dnsmasq.pid --log-facility=/run/qa-dnsmasq.log\n'
+        + 'nmcli radio wifi on', timeout=180)
+    vm.wait_installer(lambda s: s['network'].get('wifi', {}).get('interface') == 'wlan0', 'Wi-Fi adapter')
+    vm.installer_request({'action': 'network-refresh'})
+    vm.wait_installer(lambda s: any(n['ssid'] == 'Cybex-QA-WiFi' for n in s['network'].get('wifi', {}).get('networks', [])), 'Wi-Fi rescan')
+    record('wifiScan', {'result': 'passed', 'security': 'WPA2'})
+    vm.installer_request({'action': 'network-connect', 'network': {'ssid': 'Cybex-QA-WiFi', 'security': 'WPA2', 'password': 'WrongPassword8'}})
+    state = vm.wait_installer(lambda s: bool(s['network'].get('error')), 'wrong password rejection', timeout=120)
+    assert not state['network'].get('connected'), state['network']
+    assert 'UUID' not in state['network']['error'], state['network']['error']
+    vm.command("! nmcli -t -f NAME connection show | grep -Fx Cybex-QA-WiFi")
+    record('wrongPassword', {'result': 'passed', 'error': state['network']['error'], 'failedProfileRemoved': True})
+    vm.installer_request({'action': 'network-connect', 'network': {'ssid': 'Cybex-QA-WiFi', 'security': 'WPA2', 'password': 'QualificationOnly8'}})
+    state = vm.wait_installer(lambda s: s['network'].get('connected') and s['network'].get('kind') == 'wifi', 'Wi-Fi connection', timeout=150)
+    vm.command('test "$(ip -4 route show default | wc -l)" = 1\nip -4 route show default | grep "dev wlan0"\ncurl --fail --silent --show-error --max-time 20 https://cache.nixos.org/nix-cache-info')
+    record('httpsOverWifi', {'result': 'passed', 'address': state['network']['address'], 'onlyDefaultRoute': 'wlan0'})
+    vm.command("grep -q '^psk=QualificationOnly8$' /etc/NetworkManager/system-connections/*")
+    vm.command('kill $(cat /run/qa-hostapd.pid)')
+    vm.wait_installer(lambda s: not s['network'].get('connected'), 'AP disappearance', timeout=120)
+    vm.command(f'ip netns exec qa-ap {hostapd} -B -P /run/qa-hostapd.pid /run/qa-hostapd.conf')
+    vm.wait_installer(lambda s: s['network'].get('connected'), 'automatic Wi-Fi reconnection', timeout=180)
+    vm.command('curl --fail --silent --show-error --max-time 20 https://cache.nixos.org/nix-cache-info')
+    record('accessPointReturn', {'result': 'passed', 'automatic': True, 'verifiedHttps': True})
+    vm.command('systemctl restart NetworkManager.service\nnm-online --quiet --timeout 60', timeout=90)
+    vm.wait_installer(lambda s: s['network'].get('connected') and not s['network'].get('busy'), 'saved Wi-Fi profile after NetworkManager restart', timeout=180)
+    vm.command('nmcli -g GENERAL.STATE device show wlan0 | grep "100"\ncurl --fail --silent --show-error --max-time 20 https://cache.nixos.org/nix-cache-info')
+    record('networkManagerRestart', {'result': 'passed', 'automatic': True, 'verifiedHttps': True})
+    state = vm.installer_state()
+    assert not state['diskTouched'], state
+    vm.command('systemctl is-active cybexos-installerd.service cybexos-installer-ui.service\n'
+               '! journalctl -b --no-pager -u cybexos-installer-ui.service | grep -Ei "(QML|Slint).*(error|panic)"')
+    record('noDiskChanges', {'result': 'passed', 'diskTouched': state['diskTouched']})
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('iso', type=Path)
+    parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--work-dir', type=Path)
+    args = parser.parse_args()
+    iso = args.iso.resolve()
+    result = {'kind': 'isolated-installer-network-evidence', 'checks': {},
+              'isoSha256': hashlib.file_digest(iso.open('rb'), 'sha256').hexdigest(),
+              'scope': 'actual ISO installer and NetworkManager with simulated Wi-Fi radios; no physical radio or installation qualification'}
+    def record(name, value):
+        result['checks'][name] = value
+        args.output.write_text(json.dumps(result, indent=2) + '\n')
+        print(name + ': ' + json.dumps(value), flush=True)
+    with tempfile.TemporaryDirectory(prefix='cybexos-network-', dir=args.work_dir) as temporary:
+        directory = Path(temporary)
+        disk = directory / 'network.qcow2'
+        subprocess.run(['qemu-img', 'create', '-f', 'qcow2', str(disk), '80G'], check=True)
+        vm = qa.VM(directory, disk, iso, extra_qemu_args=[
+            '-virtfs', 'local,path=/nix/store,mount_tag=hoststore,security_model=none,readonly=on'])
+        try:
+            qualify(vm, record)
+            record('result', 'passed')
+        except Exception as error:
+            record('failure', str(error))
+            record('diagnostics', vm.failure_diagnostics())
+            raise
+        finally:
+            vm.stop()
+
+
+if __name__ == '__main__':
+    main()
