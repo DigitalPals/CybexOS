@@ -13,6 +13,10 @@ description without a group is listed under Other. Several bindings with the
 same description show as alternatives, and numbered bindings such as
 `Switch to workspace 1` to `10` are shown as one row.
 
+`Super+I` (**Shell: Assistant**) talks to the NerdOS Assistant: tap it to
+type a question, or hold it, speak, and release to send. See
+[NerdOS Assistant](assistant.md).
+
 `Super+Tab` (**Windows: Overview**) opens the window overview: every
 workspace's windows as live thumbnails, with arrow-key, filter and
 drag-to-move controls. See [Window overview, dock and top processes](overview-and-dock.md).

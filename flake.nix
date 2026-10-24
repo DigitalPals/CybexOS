@@ -22,6 +22,11 @@
       inputSources = map (node: node.key) inputNodes;
       inputNarHashes = map (node: node.value.narHash) inputNodes;
       compatibility = import ./nix/desktop-compatibility.nix;
+      # The default desktop the installation ISO carries as an offline payload.
+      installerPayload = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [ module ./nix/modules/installer-payload.nix ];
+      };
       module = { options, lib, ... }: {
         imports = [ ./nix/modules lanzaboote.nixosModules.lanzaboote ];
         # NixOS VM tests can supply an already-configured, read-only pkgs.
@@ -39,6 +44,7 @@
       packages = each (system: let pkgs = import nixpkgs { inherit system; overlays = [ compatibility ]; config.allowUnfree = true; }; in rec {
         desktop = pkgs.callPackage ./nix/packages/desktop.nix { source = self; };
         updater = pkgs.callPackage ./nix/packages/updater.nix { source = self; };
+        installer-ui = pkgs.callPackage ./nix/packages/installer.nix { source = self; };
         plymouth = pkgs.callPackage ./nix/packages/plymouth.nix { source = self; };
         xps-camera = (pkgs.callPackage ./nix/packages/ipu7.nix { kernel = pkgs.linuxPackages_latest.kernel; }).sensor;
         xps-psys = (pkgs.callPackage ./nix/packages/ipu7.nix { kernel = pkgs.linuxPackages_latest.kernel; }).psys;
@@ -50,6 +56,7 @@
       nixosConfigurations.installer = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [ module ./nix/modules/installer.nix {
+          nerdos.installer.payload = installerPayload;
           system.extraDependencies = inputSources;
           environment.etc."nerdos/installer-inputs.json".text = builtins.toJSON
             (map builtins.unsafeDiscardStringContext inputSources);
@@ -64,9 +71,11 @@
           nativeBuildInputs = [
             (pkgs.python3.withPackages (p: [ p.websockets p.pygobject3 p.pillow p.dbus-python ]))
             pkgs.openssl pkgs.git pkgs.dbus pkgs.restic pkgs.quickshell pkgs.systemd
+            pkgs.xdg-terminal-exec pkgs.desktop-file-utils
           ];
           GI_TYPELIB_PATH = pkgs.lib.makeSearchPath "lib/girepository-1.0" [ pkgs.networkmanager pkgs.glib ];
           NERDOS_DBUS_SESSION_CONFIG = "${pkgs.dbus}/share/dbus-1/session.conf";
+          NERDOS_LIBCRYPT = "${pkgs.libxcrypt}/lib/libcrypt.so.2";
         } ''
           cp -r ${self} source; chmod -R u+w source
           # Tests execute the same portable helper scripts as the packages.
@@ -123,13 +132,14 @@
       devShells = each (system: let pkgs = import nixpkgs { inherit system; overlays = [ compatibility ]; }; in {
         default = pkgs.mkShell {
           packages = with pkgs; [ openssl nixfmt git nodejs quickshell qt6.qtdeclarative restic systemd
-            qt6.qttools cmake ninja pkg-config qt6.qtbase sway qemu OVMF dbus util-linux lua5_4 jq procps hyprland xorriso squashfsTools
-            (python3.withPackages (p: [ p.pexpect p.pillow p.pygobject3 p.dbus-python p.websockets ])) ];
+            qt6.qttools cmake ninja pkg-config qt6.qtbase sway qemu OVMF dbus util-linux lua5_4 jq procps hyprland xorriso mtools squashfsTools xdg-terminal-exec desktop-file-utils
+            (python3.withPackages (p: [ p.pexpect p.pillow p.pygobject3 p.dbus-python p.websockets p.pyside6 ])) ];
           NERDOS_OVMF = "${pkgs.OVMF.fd}/FV";
           GI_TYPELIB_PATH = pkgs.lib.makeSearchPath "lib/girepository-1.0" [ pkgs.networkmanager pkgs.glib ];
           NERDOS_DBUS_SESSION_CONFIG = "${pkgs.dbus}/share/dbus-1/session.conf";
           NERDOS_SWAY_BINARY = "${pkgs.sway-unwrapped}/bin/sway";
           NERDOS_QML_IMPORT_PATH = "${pkgs.qt6.qtdeclarative}/lib/qt-6/qml:${pkgs.qt6.qtmultimedia}/lib/qt-6/qml:${pkgs.qt6.qtwebsockets}/lib/qt-6/qml:${pkgs.qt6.qt5compat}/lib/qt-6/qml:${pkgs.quickshell}/lib/qt-6/qml";
+          NERDOS_QT_PLUGIN_PATH = "${pkgs.qt6.qtsvg}/lib/qt-6/plugins";
           QT_QPA_PLATFORM = "offscreen";
           QT_QUICK_BACKEND = "software";
         };

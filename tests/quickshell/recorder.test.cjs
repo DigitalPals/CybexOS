@@ -73,6 +73,7 @@ test("recording and dictation state is watched, not reloaded on a timer", () => 
 
     assert.match(dictation, /onLoaded: \{\s*root\.stateMissing = false;/);
     assert.match(dictation, /onLoadFailed: \{\s*root\.stateMissing = true;/);
-    assert.match(dictation, /interval: 3000\s*running: root\.available && root\.stateMissing && !Activity\.idle/,
-        "without developer tooling there is no daemon to wait for");
+    assert.match(dictation, /interval: 3000\s*running: root\.watching && root\.stateMissing && !Activity\.idle/,
+        "only dictation or the assistant's push-to-talk waits for the daemon");
+    assert.match(dictation, /readonly property bool watching: available \|\| assistantWatching/);
 });

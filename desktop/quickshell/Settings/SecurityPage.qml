@@ -139,6 +139,18 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
+            title: I18n.tr("Password")
+            SettingsHint { width: parent.width; text: I18n.tr("Change your login and disk encryption password together. Use at least 8 characters.") }
+            SettingsAction {
+                text: I18n.tr("Change password")
+                glyph: "lock"
+                enabled: !Session.live
+                onTriggered: Quickshell.execDetached(["nerdos-password"])
+            }
+        }
+
+        SettingsGroup {
+            width: parent.width
             title: I18n.tr("Fingerprint")
 
             Item {

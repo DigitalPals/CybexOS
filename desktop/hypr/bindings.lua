@@ -1,16 +1,12 @@
 local mainMod = "SUPER"
-local terminal = "kitty"
+local terminal = "nerdos-apps terminal --"
 local home = os.getenv("HOME")
 local features = require("features")
-local browser = "firefox"
-local privateBrowser = "firefox --private-window"
-if features.proprietary_apps then
-  browser = "brave --enable-features=TouchpadOverscrollHistoryNavigation,PipeWireCamera --enable-wayland-ime --restore-last-session --hide-crash-restore-bubble"
-  privateBrowser = browser .. " --incognito"
-end
+local browser = "nerdos-apps browser"
+local privateBrowser = "nerdos-apps browser --private"
 
 -- Web apps are installed per account (nerdos-webapp; Install web app… in
--- the launcher). The helper picks the browser as Super+B does, and tells the
+-- the launcher). The helper follows the selected browser and tells the
 -- user how to reinstall one that was removed.
 local function web_app(id)
   return "nerdos-webapp launch " .. id
@@ -41,14 +37,20 @@ end
 
 bind(mainMod .. " + Return", hl.dsp.exec_cmd(terminal), { description = "Apps: Terminal" })
 if features.podman then
-  bind(mainMod .. " + SHIFT + F", hl.dsp.exec_cmd(terminal .. " -e " .. "dev-nix-shell"),
+  bind(mainMod .. " + SHIFT + F", hl.dsp.exec_cmd(terminal .. " dev-nix-shell"),
     { description = "Development: Nix development shell" })
-  bind(mainMod .. " + SHIFT + A", hl.dsp.exec_cmd(terminal .. " -e " .. "dev-arch-shell"),
+  bind(mainMod .. " + SHIFT + A", hl.dsp.exec_cmd(terminal .. " dev-arch-shell"),
     { description = "Development: Arch container shell" })
-  bind(mainMod .. " + SHIFT + D", hl.dsp.exec_cmd(terminal .. " -e " .. "dev-debian-shell"),
+  bind(mainMod .. " + SHIFT + D", hl.dsp.exec_cmd(terminal .. " dev-debian-shell"),
     { description = "Development: Debian container shell" })
 end
 bind(mainMod .. " + SPACE", hl.dsp.global("quickshell:launcherToggle"), { description = "Shell: Launcher" })
+-- A global shortcut also reports the key's release, which is what lets a
+-- tap open the assistant's box and a hold record a question (docs/assistant.md).
+if features.assistant then
+  bind(mainMod .. " + I", hl.dsp.global("quickshell:assistantTalk"),
+    { description = "Shell: Assistant" })
+end
 bind(mainMod .. " + CTRL + SHIFT + A", hl.dsp.exec_cmd("nerd agent --window"),
   { description = "Apps: AI agent" })
 -- The shell runs from the NerdOS runtime by path, where a bare
@@ -78,13 +80,13 @@ if features.developer_tools then
   -- socket is reachable only through sudo. The binary is resolved before
   -- sudo because sudo's secure_path may differ from the user's package profile.
   local lazydocker = [[sh -c 'docker info >/dev/null 2>&1 && exec lazydocker; exec sudo "$(command -v lazydocker)"']]
-  bind(mainMod .. " + D", hl.dsp.exec_cmd(terminal .. " -e " .. lazydocker),
+  bind(mainMod .. " + D", hl.dsp.exec_cmd(terminal .. " " .. lazydocker),
     { description = "Development: Docker (lazydocker)" })
 end
 if features.connected_widgets then
   bind(mainMod .. " + T", hl.dsp.exec_cmd("t3code-desktop"), { description = "Apps: T3 Code" })
 end
-bind(mainMod .. " + SHIFT + T", hl.dsp.exec_cmd(terminal .. " -e btop"), { description = "Apps: System monitor" })
+bind(mainMod .. " + SHIFT + T", hl.dsp.exec_cmd(terminal .. " btop"), { description = "Apps: System monitor" })
 bind(mainMod .. " + W", hl.dsp.exec_cmd(web_app("whatsapp")), { description = "Web apps: WhatsApp" })
 bind(mainMod .. " + Y", hl.dsp.exec_cmd(web_app("youtube")), { description = "Web apps: YouTube" })
 bind(mainMod .. " + SHIFT + P", hl.dsp.exec_cmd(web_app("google-photos")),
@@ -116,7 +118,7 @@ bind(mainMod .. " + BACKSPACE", hl.dsp.window.set_prop({ prop = "alpha", value =
 -- `overview` IPC target serves the touchpad gesture.
 bind(mainMod .. " + TAB", hl.dsp.global("quickshell:overviewToggle"), { description = "Windows: Overview" })
 bind(mainMod .. " + SHIFT + M", hl.dsp.exit(), { description = "Shell: Exit Hyprland" })
-bind(mainMod .. " + L", hl.dsp.exec_cmd("systemctl --user start nerdos-session-lock.service"),
+bind(mainMod .. " + L", hl.dsp.exec_cmd("nerdos-session-action lock"),
   { description = "Shell: Lock screen" })
 -- Effects, gaps and idle lock off for games; the helper notifies and the
 -- menubar shows an indicator while it is on.

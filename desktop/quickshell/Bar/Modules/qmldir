@@ -2,6 +2,7 @@
 # a directory carrying a qmldir is no longer implicitly scanned, so every
 # Bar/Modules/*.qml type must be listed. qmldir.test.cjs enforces that.
 BarModule BarModule.qml
+Assistant Assistant.qml
 Battery Battery.qml
 Bluetooth Bluetooth.qml
 Clock Clock.qml

@@ -12,7 +12,8 @@ root = Path(__file__).resolve().parents[2]
 checker = root / "hardware/xps/camera/xps-ipu7-camera-frame-check"
 with tempfile.TemporaryDirectory(prefix="nerdos-camera-frame-test-") as directory:
     command = Path(directory) / "v4l2-ctl"
-    command.write_text("""#!/usr/bin/env python3
+    # Generated fixtures need the current interpreter inside a pure Nix sandbox.
+    command.write_text('#!' + sys.executable + '\n' + """
 import os, sys
 if '--get-fmt-video' in sys.argv:
     print('Size Image : 128')

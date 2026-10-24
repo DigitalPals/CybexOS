@@ -9,6 +9,7 @@ import importlib.util
 import io
 import json
 import os
+import socket
 from pathlib import Path
 import subprocess
 import sys
@@ -74,6 +75,209 @@ class PlanTests(unittest.TestCase):
         choice = plan(); choice.update(keyboard='uk', desktopKeyboard='gb')
         self.assertEqual(installer.validate(choice)['desktopKeyboard'], 'gb')
 
+    def test_missing_or_unsafe_live_layout_stops_before_disk_enumeration(self):
+        for policy in (None, {}, {'minimumDiskGiB': 64, 'espGiB': -1},
+                       {'minimumDiskGiB': 64, 'espGiB': 64}):
+            with self.subTest(policy=policy), patch.object(installer, 'read', return_value=policy), \
+                    patch.object(installer, 'disks') as disks, self.assertRaises(installer.Failure):
+                installer.disk_guard(plan())
+            disks.assert_not_called()
+
+
+class AccountNameTests(unittest.TestCase):
+    def setUp(self):
+        timezone = patch.object(installer, 'known_timezone', return_value=True)
+        timezone.start(); self.addCleanup(timezone.stop)
+
+    def test_optional_full_name_is_a_safe_description(self):
+        for name in ('Ada Lovelace', 'José García', "Seán O'Brien-Smith"):
+            candidate = plan(); candidate['fullName'] = name
+            with self.subTest(name=name):
+                self.assertEqual(installer.validate(candidate)['fullName'], name)
+        for name in ('Ada: admin', 'a,b', '${pkgs.x}', 'a"b', 'back\\slash', 'tab\tname', ' padded', '', 'x' * 65):
+            candidate = plan(); candidate['fullName'] = name
+            with self.subTest(name=name), self.assertRaises(installer.Failure):
+                installer.validate(candidate)
+
+    def test_system_names_from_the_installed_product_are_reserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            etc = Path(directory)
+            (etc / 'installer-reserved-names.json').write_text(json.dumps(['messagebus', 'nobody', 'wheel']))
+            with patch.object(installer, 'ETC', etc):
+                for name in ('messagebus', 'nobody', 'wheel', 'root', 'nixos'):
+                    with self.subTest(name=name), self.assertRaises(installer.Failure):
+                        installer.validate_field('username', name)
+                installer.validate_field('username', 'ada')
+                # Computer names only avoid the two account names.
+                installer.validate_field('hostname', 'messagebus')
+
+    def test_lost_screen_output_never_stops_the_worker(self):
+        class Broken(io.StringIO):
+            def write(self, _text):
+                raise BrokenPipeError()
+        with patch.object(installer, 'JSON_UI', True), patch.object(installer.sys, 'stdout', Broken()):
+            installer.event('stage', stage=4, message='Building')
+            self.assertFalse(installer.JSON_UI)
+            installer.event('stage', stage=5, message='Account')
+
+
+class InstallationDetailsTests(unittest.TestCase):
+    def test_private_details_are_bounded_plain_text_and_missing_log_is_readable(self):
+        with tempfile.TemporaryDirectory(prefix='nerdos-details-') as directory:
+            log = Path(directory) / 'installation.log'
+            with patch.object(installer, 'INSTALL_LOG', log), patch.object(installer, 'MAX_DETAILS', 160):
+                self.assertIn('No installation log', installer.installation_details()['text'])
+                log.write_bytes(b'old output\n' * 100 + b'\x1b[31merror: build failed\x1b[0m\nlast line\n')
+                details = installer.installation_details()
+                self.assertTrue(details['truncated'])
+                self.assertLessEqual(len(details['text']), 160)
+                self.assertIn('error: build failed\nlast line', details['text'])
+                self.assertNotIn('\x1b', details['text'])
+
+    def test_details_do_not_take_the_installation_lock_or_start_disk_work(self):
+        with tempfile.TemporaryDirectory(prefix='nerdos-details-') as directory:
+            etc = Path(directory)
+            (etc / 'installer').touch()
+            output = io.StringIO()
+            with patch.object(installer, 'ETC', etc), patch.object(installer.os, 'geteuid', return_value=0), \
+                    patch.object(sys, 'argv', ['nerdos-install', '--diagnostics']), \
+                    patch.object(installer, 'LOCK') as lock, patch.object(installer, 'install') as install, \
+                    patch.object(installer, 'installation_details', return_value={'text': 'build failure', 'truncated': False}), \
+                    patch.object(installer.os, 'umask'), contextlib.redirect_stdout(output):
+                installer.main()
+            self.assertEqual(json.loads(output.getvalue())['text'], 'build failure')
+            lock.open.assert_not_called()
+            install.assert_not_called()
+
+
+class InteractiveTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory(prefix='nerdos-installer-interactive-')
+        self.addCleanup(directory.cleanup)
+        self.etc = Path(directory.name)
+        self.defaults = {key: True for key, _ in installer.APPLICATION_GROUPS}
+        (self.etc / 'installer-defaults.json').write_text(json.dumps(self.defaults))
+        (self.etc / 'installer-layout.json').write_text(json.dumps({'minimumDiskGiB': 64, 'espGiB': 16}))
+        disk = {'path': '/dev/vda', 'type': 'disk', 'size': 80 * 1024**3, 'model': 'QA disk', 'serial': 'QA-DISK'}
+        for fixture in (patch.object(installer, 'ETC', self.etc), patch.object(installer, 'check_platform'),
+                        patch.object(installer, 'detect', return_value={'nvidia': False}),
+                        patch.object(installer, 'disks', return_value=[{'path':'/dev/zram0', 'type':'disk'}, disk]), patch.object(installer, 'disk_guard'),
+                        patch.object(installer, 'known_timezone', side_effect=lambda value: value == 'UTC'),
+                        patch.dict(os.environ, {'NERDOS_UPDATER_SHARE': str(ROOT / 'assets')})):
+            fixture.start(); self.addCleanup(fixture.stop)
+
+    def run_flow(self, answers, passwords):
+        output = io.StringIO()
+        with patch('builtins.input', side_effect=answers), \
+                patch.object(installer.getpass, 'getpass', side_effect=passwords), contextlib.redirect_stdout(output):
+            result = installer.interactive('UNRELEASED TEST INSTALLATION')
+        return result, output.getvalue()
+
+    def test_correctable_answers_passwords_and_independent_keyboard(self):
+        # The empty answer after the keymap skips the optional full name.
+        answers = ['/dev/vda1', '1', 'Bad Name', 'nerdqa', '', 'Unknown/Place', 'UTC', '', 'uk', 'Ada: admin', '', '',
+                   'perhaps', 'n', 'no', 'continue', 'yes']
+        secret = 'private-qualification-password'
+        (choice, secrets), output = self.run_flow(answers, ['short', secret])
+        self.assertEqual(choice['disk'], '/dev/vda')
+        self.assertNotIn('/dev/zram0', output)
+        self.assertEqual(choice['desktopKeyboard'], 'gb')
+        self.assertEqual(choice['features'], {})
+        self.assertFalse(choice['encrypted'])
+        self.assertFalse(choice['autoLogin'])
+        self.assertEqual(secrets, {'password': secret})
+        self.assertNotIn(secret, output)
+        self.assertNotIn('Type the complete disk serial', output)
+        self.assertIn('Use at least 8 characters', output)
+        self.assertIn('Your name may not contain', output)
+        self.assertNotIn('fullName', choice)
+        self.assertIn('Review your installation', output)
+        self.assertIn('Local network discovery services: included', output)
+
+    def test_review_changes_preserve_choices_and_encryption_gate(self):
+        answers = ['1', 'nerdqa', '', '', '', '', 'Ada Lovelace', '', 'n', 'n', 'change',
+                   '', '', 'new-name', '', '', '', '', '', 'y',
+                   'n', 'n', 'n', 'n', 'y', 'y', 'n', 'y', 'n',
+                   'yes', 'yes', 'continue', 'yes']
+        (choice, _), output = self.run_flow(answers, ['private-password-123'] * 4)
+        self.assertEqual(choice['username'], 'nerdqa')
+        self.assertEqual(choice['hostname'], 'new-name')
+        # Changing settings keeps the optional name, like every other answer.
+        self.assertEqual(choice['fullName'], 'Ada Lovelace')
+        self.assertEqual(choice['features']['developer'], False)
+        self.assertEqual(choice['features']['podman'], True)
+        # The assistant is its own group, independent of developer tooling.
+        self.assertEqual(choice['features']['assistant'], True)
+        self.assertTrue(choice['encrypted'])
+        self.assertTrue(choice['autoLogin'])
+        self.assertEqual(output.count('Review your installation'), 2)
+
+    def test_review_cancellation_does_not_request_secrets(self):
+        with self.assertRaises(installer.Cancelled):
+            self.run_flow(['1', 'nerdqa', '', '', '', '', '', '', 'n', 'n', 'cancel'], [])
+
+    def test_erasure_requires_explicit_confirmation(self):
+        with self.assertRaises(installer.Cancelled):
+            self.run_flow(['1', 'nerdqa', '', '', '', '', '', '', 'n', 'n', 'continue', 'no'],
+                          ['private-password-123'] * 2)
+
+
+class GraphicalProtocolTests(unittest.TestCase):
+    def run_protocol(self, requests):
+        directory = tempfile.TemporaryDirectory(prefix='nerdos-ui-protocol-')
+        self.addCleanup(directory.cleanup)
+        etc = Path(directory.name)
+        (etc / 'installer-defaults.json').write_text(json.dumps({key: True for key, _ in installer.APPLICATION_GROUPS}))
+        (etc / 'installer-layout.json').write_text(json.dumps({'minimumDiskGiB': 64, 'espGiB': 16}))
+        disk = {'path': '/dev/vda', 'serial': 'QA-DISK', 'type': 'disk', 'model': 'QA', 'size': 80 * 1024**3}
+        def guard(candidate):
+            if candidate.get('serial') != disk['serial']:
+                raise installer.Failure('Disk identity changed')
+        self.installs = []
+        def install(*args, **kwargs):
+            self.installs.append(copy.deepcopy(args[:2]))
+        fixtures = [patch.object(installer, 'ETC', etc), patch.object(installer, 'JSON_UI', True),
+                    patch.object(installer, 'known_timezone', return_value=True),
+                    patch.object(installer, 'check_platform'), patch.object(installer, 'detect', return_value={}),
+                    patch.object(installer, 'disks', return_value=[disk]), patch.object(installer, 'disk_guard', side_effect=guard),
+                    patch.object(installer, 'resolve_source', return_value=('path:/source', 'revision', 'nar', 'beta', 'TEST BUILD')),
+                    patch.object(installer.random_secrets, 'token_urlsafe', return_value='review-token'),
+                    patch.object(installer, 'install', side_effect=install),
+                    patch.object(installer.sys, 'stdin', io.StringIO(''.join(json.dumps(request)+'\n' for request in requests)))]
+        output = io.StringIO()
+        with contextlib.ExitStack() as stack:
+            for fixture in fixtures:
+                stack.enter_context(fixture)
+            stack.enter_context(contextlib.redirect_stdout(output))
+            self.output = output
+            installer.graphical_session(installer.argparse.Namespace(serial_console=False, development_source=None), Mock(return_value=''))
+        return [json.loads(line) for line in output.getvalue().splitlines()]
+
+    def test_final_confirmation_binds_review_and_never_echoes_password(self):
+        candidate = plan(); candidate['autoLogin'] = False
+        events = self.run_protocol([{'action': 'review', 'plan': candidate},
+            {'action': 'install', 'confirmed': True, 'token': 'review-token', 'secrets': {'password': 'Nerdos8!'}}])
+        self.assertEqual(events[-1]['event'], 'complete')
+        self.assertEqual(self.installs, [(candidate, {'password': 'Nerdos8!'})])
+        self.assertNotIn('Nerdos8!', self.output.getvalue())
+
+    def test_no_install_without_a_review_and_exact_confirmation_token(self):
+        candidate = plan(); candidate['autoLogin'] = False
+        for requests in ([{'action': 'install', 'token': 'review-token', 'confirmed': True}],
+                         [{'action': 'review', 'plan': candidate}, {'action': 'install', 'token': 'wrong', 'confirmed': True}],
+                         [{'action': 'review', 'plan': candidate}, {'action': 'install', 'token': 'review-token', 'confirmed': False}]):
+            with self.subTest(requests=requests), self.assertRaises(installer.Failure):
+                self.run_protocol(requests)
+            self.assertEqual(self.installs, [])
+
+    def test_changed_disk_rejects_review_and_keeps_first_login_password_only(self):
+        for key, value in (('serial', 'OTHER'), ('autoLogin', True)):
+            candidate = plan(); candidate.update(autoLogin=False); candidate[key] = value
+            with self.subTest(key=key), self.assertRaises(installer.Cancelled):
+                self.run_protocol([{'action': 'review', 'plan': candidate}, {'action': 'cancel'}])
+            self.assertIn('validation-error', self.output.getvalue())
+            self.assertEqual(self.installs, [])
+
 
 class HardwareTests(unittest.TestCase):
     def setUp(self):
@@ -126,15 +330,29 @@ class DiskSafetyTests(unittest.TestCase):
         return patch.object(installer.tempfile, 'TemporaryDirectory', side_effect=temporary)
 
     def setUp(self):
+        network = patch.object(installer, 'ensure_network')
+        network.start(); self.addCleanup(network.stop)
         timezone = patch.object(installer, 'known_timezone', return_value=True)
         timezone.start(); self.addCleanup(timezone.stop)
+        layout = patch.object(installer, 'layout', return_value={'minimumDiskGiB': 64, 'espGiB': 16})
+        layout.start(); self.addCleanup(layout.stop)
+
+    def test_dns_failure_stops_before_disk_preparation(self):
+        run = Mock()
+        with patch.object(installer, 'check_platform'), patch.object(installer, 'detect', return_value={'camera': False}), \
+                patch.object(installer, 'vendor_nixpkgs'), patch.object(installer, 'disk_guard') as guard, \
+                patch.object(installer, 'ensure_network', side_effect=installer.Failure('DNS unavailable')), \
+                self.assertRaisesRegex(installer.Failure, 'DNS unavailable'):
+            installer.install(plan(), {'password': 'Nerdos8!'}, f'path:{ROOT}', 'revision', 'nar', run, channel='beta')
+        guard.assert_not_called()
+        run.assert_not_called()
 
     def disk(self):
         return {'path':'/dev/vda','type':'disk','ro':False,'serial':'QA-DISK',
-                'size':40 * 1024**3,'mountpoints':[None], 'children':[]}
+                'size':80 * 1024**3,'mountpoints':[None], 'children':[]}
 
     def test_mounted_readonly_wrong_identity_and_small_disks_rejected(self):
-        invalid = [{'serial':'OTHER'}, {'ro':True}, {'size':1024},
+        invalid = [{'serial':'OTHER'}, {'ro':True}, {'size':1024}, {'size':63 * 1024**3},
                    {'children':[{'mountpoints':['/home'], 'children':[]}]}]
         for change in invalid:
             disk = self.disk(); disk.update(change)
@@ -273,10 +491,37 @@ class DiskSafetyTests(unittest.TestCase):
             run.assert_not_called(); guard.assert_not_called()
 
 
+class FullNameMachineTests(DiskSafetyTests):
+    def test_full_name_becomes_the_account_description(self):
+        efi = Mock(); efi.exists.return_value = True
+        variables = Mock(); variables.glob.return_value = []
+        real_path = Path
+        def path(value, *args):
+            return {'/sys/firmware/efi':efi, '/sys/firmware/efi/efivars':variables}.get(value, real_path(value, *args))
+        choice = plan(); choice.update(encrypted=False, autoLogin=False, fullName='José García')
+        hardware = {'camera':False, 'nvidia':False, 'nvidiaPrime':{'enable':False}, 'xps':False}
+        machine = []
+        def run(*args, **kwargs):
+            if args[0] == 'nixos-generate-config':
+                (real_path(args[-1]) / 'hardware-configuration.nix').write_text('{}')
+            elif args[:3] == ('nix', 'flake', 'lock'):
+                nix_lock(real_path(str(args[-1]).removeprefix('path:')))
+            elif args[0] == 'nixos-install':
+                machine.append((real_path(args[2]) / 'var/lib/nerdos/working/initial/machine.nix').read_text())
+                raise installer.Failure('stop before fixture system build')
+            return 'unused-credential-hash'
+        with self.trusted_install_directory(), patch.dict(os.environ, {'NERDOS_UPDATER_SHARE':str(ROOT / 'templates')}), patch.object(installer, 'disk_guard'), patch.object(installer, 'detect', return_value=hardware), patch.object(installer, 'Path', side_effect=path), patch('nerdos.inputs.validate_machine'), patch('nerdos.inputs.identity', return_value={}), self.assertRaisesRegex(installer.Failure, 'stop before fixture system build'):
+            installer.install(choice, {'password':'qualification-password-123'}, f'path:{ROOT}', 'revision', 'nar', run, channel='beta')
+        # UTF-8 as written, never \\u escapes, which Nix strings do not understand.
+        self.assertIn('  users.users."tester".description = "José García";\n', machine[0])
+
+
 class TestedNixpkgsTests(unittest.TestCase):
     def setUp(self):
         timezone = patch.object(installer, 'known_timezone', return_value=True)
         timezone.start(); self.addCleanup(timezone.stop)
+        layout = patch.object(installer, 'layout', return_value={'minimumDiskGiB': 64, 'espGiB': 16})
+        layout.start(); self.addCleanup(layout.stop)
         directory = tempfile.TemporaryDirectory(prefix='nerdos-installer-nixpkgs-')
         self.addCleanup(directory.cleanup)
         self.base = Path(directory.name)
@@ -481,13 +726,15 @@ class MediaAuthenticationTests(unittest.TestCase):
         plan_file = self.base / 'plan.json'
         plan_file.write_text(json.dumps(plan()))
         read_end, write_end = os.pipe()
-        os.write(write_end, json.dumps({'password':'qualification-password-123', 'passphrase':'qualification-passphrase-123'}).encode())
+        os.write(write_end, json.dumps({'password':'qualification-password-123'}).encode())
         os.close(write_end)
         output = io.StringIO()
         argv = ['nerdos-install', '--plan-file', str(plan_file), '--secrets-fd', str(read_end), *arguments]
         try:
             with patch.object(installer, 'ETC', self.etc), patch.object(installer, 'CACHE', self.base / 'cache'), \
-                    patch.object(installer.os, 'geteuid', return_value=0), patch.object(installer, 'Runner', return_value=runner or Mock()), \
+                    patch.object(installer, 'INSTALL_LOG', self.base / 'installer.log'), \
+                    patch.object(installer, 'LOCK', self.base / 'installer.lock'), \
+                    patch.object(installer.os, 'geteuid', return_value=0), patch.object(installer, 'Runner', return_value=runner or Mock(return_value='')), \
                     patch.object(installer, 'install') as install, patch.object(sys, 'argv', argv), contextlib.redirect_stdout(output):
                 installer.main()
         finally:
@@ -518,6 +765,27 @@ class MediaAuthenticationTests(unittest.TestCase):
         # Only this medium's immutable manifest is consulted; the moved
         # channel and its newer release are never fetched or selected.
         self.assertEqual(self.requests, [RELEASES + 'v1.0.0-beta.1/manifest.json', RELEASES + 'v1.0.0-beta.1/manifest.json.sig'])
+
+    def test_release_dns_failure_recovers_once_then_verifies_the_signed_release(self):
+        body = json.dumps(manifest()).encode()
+        error = installer.Failure('Publisher unreachable')
+        error.__cause__ = urllib.error.URLError(socket.gaierror(-2, 'Name or service not known'))
+        fetch = Mock()
+        fetch.get.side_effect = [error, body, self.sign(body)]
+        recover = Mock()
+        release, channel = installer.authenticate_media(fetch, self.etc, recover)
+        self.assertEqual(release['revision'], REVISION)
+        self.assertEqual(channel, 'beta')
+        recover.assert_called_once_with()
+        self.assertEqual(fetch.get.call_count, 3)
+
+    def test_second_installer_is_blocked_before_source_selection(self):
+        with (self.base / 'installer.lock').open('a') as active, patch.object(installer, 'run_installation') as work:
+            installer.fcntl.flock(active, installer.fcntl.LOCK_EX | installer.fcntl.LOCK_NB)
+            with self.assertRaisesRegex(installer.Failure, 'Another installer is running'):
+                self.main()
+            work.assert_not_called()
+        self.assertEqual(self.requests, [])
 
     def test_differing_identity_is_rejected_before_installation(self):
         for change in ({'revision':OTHER_REVISION}, {'narHash':OTHER_NAR}):
@@ -588,6 +856,28 @@ class MediaAuthenticationTests(unittest.TestCase):
         self.assertEqual(args[2], 'path:/nix/store/' + 'a' * 32 + '-source')
         self.assertEqual(kwargs['channel'], 'beta')
         self.assertIn('UNRELEASED TEST INSTALLATION', output)
+        self.assertEqual(self.requests, [])
+
+    def test_interactive_unreleased_medium_requires_explicit_consent_before_choices(self):
+        self.trust['keys'] = {}
+        self.medium()
+        (self.etc / 'installer-source').write_text(str(self.base))
+        args = installer.argparse.Namespace(development_source=None, plan_file=None, serial_console=False)
+        runner = Mock(return_value=json.dumps({'path':'/nix/store/' + 'a' * 32 + '-source', 'locked':{'narHash':NAR}}))
+        with patch.object(installer, 'ETC', self.etc), patch.object(installer, 'CACHE', self.base / 'cache'), patch.object(sys.stdin, 'isatty', return_value=True), \
+             patch('builtins.input', return_value='n'), patch.object(installer, 'interactive') as choices, \
+             patch.object(installer, 'install') as install, contextlib.redirect_stdout(io.StringIO()), \
+             self.assertRaises(installer.Cancelled):
+            installer.run_installation(args, runner)
+        runner.assert_not_called()
+        choices.assert_not_called()
+        install.assert_not_called()
+        with patch.object(installer, 'ETC', self.etc), patch.object(installer, 'CACHE', self.base / 'cache'), patch.object(sys.stdin, 'isatty', return_value=True), \
+             patch('builtins.input', return_value='y'), \
+             patch.object(installer, 'interactive', return_value=(plan(), {'password':'qualification-password-123'})), \
+             patch.object(installer, 'install') as install, contextlib.redirect_stdout(io.StringIO()):
+            installer.run_installation(args, runner)
+        self.assertEqual(install.call_args.args[2], 'path:/nix/store/' + 'a' * 32 + '-source')
         self.assertEqual(self.requests, [])
 
 

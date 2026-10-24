@@ -330,7 +330,7 @@ test("the T3 running indicator is a static dot", () => {
 
 test("schema twenty-three keeps safe defaults and exposes accessibility preferences", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 29/);
+    assert.match(helpers, /var VERSION = 30/);
     // Schema 17: the drawer becomes configurable (turn-3 settings design).
     assert.match(helpers, /drawerHover: "open"/);
     assert.match(helpers, /drawerWidth: 400/);
@@ -350,7 +350,7 @@ test("schema twenty-three keeps safe defaults and exposes accessibility preferen
     assert.match(helpers, /hermes:\s*\{ showLabel: true, activityDetail: "verb" \}/);
     assert.match(helpers,
         /notes:\s*\{[\s\S]*?titleProvider:\s*"off"[\s\S]*?codexModel:\s*"gpt-5\.6-luna"[\s\S]*?codexEffort:\s*"none"[\s\S]*?claudeModel:\s*"fable"[\s\S]*?claudeEffort:\s*"low"/);
-    assert.match(helpers, /mod\("tray", false\), mod\("notifications", true\), mod\("vol", true\)/);
+    assert.match(helpers, /mod\("tray", false\), mod\("assistant", true\), mod\("notifications", true\), mod\("vol", true\)/);
     assert.match(helpers, /notifications:\s*\{ group: "status" \}/);
     assert.match(helpers, /warmth:\s*3400/);
     assert.match(helpers, /osd:\s*"bottom"/);
@@ -533,8 +533,8 @@ test("the grouped rail keeps labeled sections, the save state, and the nav searc
     // key or page cannot leave a search row jumping nowhere.
     const schemaKeys = Object.keys(load("SettingsHelpers.js").defaults());
     const validPages = [...settings.matchAll(/\{ id: "([a-z]+)", group: "/g)].map(m => m[1]);
-    assert.deepEqual(validPages, ["appearance", "wallpaper", "bar", "workspaces", "notifications", "displays",
-        "sound", "network", "touchpad", "keyboard", "power", "region", "accounts", "security", "plugins", "backup",
+    assert.deepEqual(validPages, ["appearance", "wallpaper", "bar", "workspaces", "notifications", "assistant", "displays",
+        "sound", "network", "touchpad", "keyboard", "power", "applications", "storage", "region", "accounts", "security", "plugins", "backup",
         "about"]);
     const rows = load("SettingsSearchData.js").ROWS;
     assert.ok(rows.length >= 30, "the search index must cover the workspace");

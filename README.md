@@ -14,7 +14,9 @@ keyboard-driven applications, and personal extensions that stay yours.
 NixOS 26.05 on x86_64 is the current target. This is an **unreleased replacement**;
 [qualification and release blockers](docs/validation.md) describe its actual status.
 
-The same NixOS modules define the live ISO and installed product. Vendor desktop
+The same NixOS modules define the installed product and the installation ISO,
+which boots straight into a native installer screen and carries the desktop as
+an offline payload. Vendor desktop
 code lives in immutable store paths. Your machine owns its configuration and lock
 file; personal modules and persistent data are separate from vendor releases.
 
@@ -22,6 +24,7 @@ file; personal modules and persistent data are separate from vendor releases.
 - [Architecture and ownership](docs/architecture/ownership.md)
 - [Independent updates](docs/updates.md)
 - [Personal configuration and plugin development](docs/customization.md)
+- [NerdOS Assistant](docs/assistant.md)
 - [Release publishing and signing keys](docs/releasing.md)
 - [Recovery, persistence and garbage collection](docs/recovery.md)
 - [Hardware and security](docs/hardware-security.md)

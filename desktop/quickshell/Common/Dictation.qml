@@ -13,6 +13,11 @@ Singleton {
     // it there is no daemon, so nothing watches or waits for its state file
     // and the menubar offers no dictation.
     readonly property bool available: Settings.developerToolsConfigured
+    // Every installation runs the daemon, though; the assistant's
+    // push-to-talk uses it without the developer feature and asks for its
+    // state to be watched for that alone.
+    property bool assistantWatching: false
+    readonly property bool watching: available || assistantWatching
     readonly property string statePath:
         (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/voxtype/state"
     property string state: "idle"
@@ -52,7 +57,7 @@ Singleton {
 
     FileView {
         id: stateView
-        path: root.available ? root.statePath : ""
+        path: root.watching ? root.statePath : ""
         printErrors: false
         watchChanges: true
         onFileChanged: reload()
@@ -90,7 +95,7 @@ Singleton {
     // while there is no file to watch, and not while the session is idle.
     Timer {
         interval: 3000
-        running: root.available && root.stateMissing && !Activity.idle
+        running: root.watching && root.stateMissing && !Activity.idle
         repeat: true
         onTriggered: root.refresh()
     }
@@ -99,7 +104,7 @@ Singleton {
         target: Activity
 
         function onResumed() {
-            if (root.available && root.stateMissing)
+            if (root.watching && root.stateMissing)
                 root.refresh();
         }
     }

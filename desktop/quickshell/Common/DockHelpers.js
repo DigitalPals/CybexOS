@@ -219,8 +219,8 @@ function defaultBrowserId(text) {
     return found;
 }
 
-function suggestedPins(browserId) {
-    return uniqueIds([browserId].concat(SUGGESTED_PINS));
+function suggestedPins(browserId, terminalId) {
+    return uniqueIds([browserId, "org.gnome.Nautilus", terminalId === undefined ? "kitty" : terminalId]);
 }
 
 // Where the dock sits and what it reserves. The layer surface is anchored to

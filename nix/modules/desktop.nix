@@ -1,5 +1,6 @@
 { config, lib, pkgs, ... }:
 let cfg = config.nerdos;
+    assistant = pkgs.callPackage ../packages/assistant.nix {};
     session = pkgs.writeTextDir "share/wayland-sessions/nerdos.desktop" ''
       [Desktop Entry]
       Name=NerdOS
@@ -29,11 +30,37 @@ in {
     environment.etc."nerdos/proprietary-enabled" = lib.mkIf cfg.features.proprietary { text = "enabled\n"; };
     environment.etc."nerdos/developer-enabled" = lib.mkIf cfg.features.developer { text = "enabled\n"; };
     environment.sessionVariables = {
+      XCURSOR_THEME = lib.mkDefault "Bibata-Modern-Classic";
+      XCURSOR_SIZE = lib.mkDefault "24";
+      XCURSOR_PATH = lib.mkDefault "~/.icons:~/.local/share/icons:${pkgs.bibata-cursors}/share/icons:/run/current-system/sw/share/icons";
       NERDOS_CONNECTED_WIDGETS = if cfg.features.connectedWidgets then "1" else "0";
+      NERDOS_ASSISTANT = if cfg.features.assistant then "1" else "0";
       NERDOS_DEVELOPER_TOOLS = if cfg.features.developer then "1" else "0";
       NERDOS_PROPRIETARY_APPS = if cfg.features.proprietary then "1" else "0";
       NERDOS_PODMAN = if cfg.features.podman then "1" else "0";
     };
+    environment.systemPackages = [ pkgs.bibata-cursors ];
+    environment.pathsToLink = [ "/share/icons" ];
+    environment.etc."xdg/gtk-3.0/settings.ini".text = ''
+      [Settings]
+      gtk-cursor-theme-name=Bibata-Modern-Classic
+      gtk-cursor-theme-size=24
+    '';
+    environment.etc."xdg/gtk-4.0/settings.ini".text = ''
+      [Settings]
+      gtk-cursor-theme-name=Bibata-Modern-Classic
+      gtk-cursor-theme-size=24
+    '';
+    services.displayManager.sddm.settings.Theme = {
+      CursorTheme = "Bibata-Modern-Classic";
+      CursorSize = 24;
+    };
+    programs.dconf.profiles.user.databases = [{
+      settings."org/gnome/desktop/interface" = {
+        cursor-theme = "Bibata-Modern-Classic";
+        cursor-size = lib.gvariant.mkInt32 24;
+      };
+    }];
     xdg.portal = {
       enable = true;
       extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
@@ -106,6 +133,21 @@ in {
         Restart = "on-failure"; RestartSec = 2; RestartSteps = 8; RestartMaxDelaySec = "5min";
         TimeoutStopSec = 15;
       };
+    };
+    # Owns the assistant's agent processes, so a Quickshell restart (including
+    # one the assistant's own change causes) never ends a turn. The agents
+    # inherit this PATH: the machine's selected packages, as for Quickshell.
+    systemd.user.services.nerdos-assistant = lib.mkIf cfg.features.assistant {
+      description = "NerdOS Assistant agent service";
+      partOf = [ "hyprland-session.target" ]; wantedBy = [ "hyprland-session.target" ];
+      path = [ config.system.path ];
+      serviceConfig = {
+        ExecStart = "${assistant}/bin/nerdos-assistant serve";
+        UMask = "0077";
+        Restart = "on-failure"; RestartSec = 2;
+        TimeoutStopSec = 10;
+      };
+      environment.PYTHONDONTWRITEBYTECODE = "1";
     };
     systemd.user.timers.nerdos-backup = {
       wantedBy = [ "timers.target" ];

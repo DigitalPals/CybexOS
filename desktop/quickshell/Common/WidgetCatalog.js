@@ -30,6 +30,7 @@ var WIDGETS = {
     gh: { name: "GitHub", short: "GitHub", detail: true, glyph: "code", description: "Watch GitHub repositories and activity." },
     updates: { name: "Updates", short: "Updates", tag: "when pending", detail: true, glyph: "update", description: "Check software updates and installation progress." },
     tray: { name: "System tray", short: "System tray", tag: "when populated", glyph: "apps", description: "Access background applications." },
+    assistant: { name: "Assistant", short: "Assistant", glyph: "assistant", description: "Show or hide the NerdOS Assistant, which answers questions and changes NerdOS for you." },
     notifications: { name: "Notifications", short: "Notifications", detail: true, glyph: "notifications", description: "Open notification history and unread messages." },
     vol: { name: "Volume", short: "Volume", detail: true, glyph: "volume_up", description: "Adjust volume and audio devices." },
     wifi: { name: "Network", short: "Network", glyph: "wifi", description: "Manage network connections." },

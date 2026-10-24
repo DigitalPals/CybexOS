@@ -9,6 +9,7 @@ Singleton {
     id: root
     property var sources: ({upstream:{}, nerdos:{}})
     property var deployment: ({state:"idle"})
+    readonly property bool available: sources.available !== false && deployment.available !== false
     readonly property bool busy: checker.running
     readonly property bool runActive: ["discovering", "building", "validating", "activating", "recovering"].includes(deployment.state)
     readonly property string runState: runActive ? "running" : deployment.state === "done" ? "done"
@@ -21,7 +22,8 @@ Singleton {
     readonly property string installedVersion: sources.nerdos.installed || deployment.installedVersion || ""
     readonly property string projectNotes: deployment.notes || sources.nerdos.notes || ""
     readonly property int total: upstreamCount + (projectAvailable ? 1 : 0)
-    readonly property string summary: busy ? "Checking update sources…" : runActive ? runPhaseLabel
+    readonly property string summary: !available ? (sources.reason || deployment.phase || "System updates are available after installation.")
+        : busy ? "Checking update sources…" : runActive ? runPhaseLabel
         : total > 0 ? "Updates available" : error ? "Some update sources could not be checked" : "No updates reported"
     readonly property string checkedLabel: checkedAt ? Qt.formatTime(checkedAt, "HH:mm") : "Not checked"
     property var checkedAt: null
@@ -38,16 +40,16 @@ Singleton {
 
     function parse(text) { try { return JSON.parse(text); } catch (_) { return null; } }
     function check() { if (!checker.running) checker.running = true; }
-    function request(args) { if (!requester.running) { requester.command = ["nerd", "update"].concat(args); requester.running = true; } }
+    function request(args) { if (available && !requester.running) { requester.command = ["nerd", "update"].concat(args); requester.running = true; } }
     function stage(scope) { request(["stage", scope]); }
     function run() { stage("both"); }
     function apply() { if (ready) request(["apply", deployment.transaction, deployment.reviewToken]); }
     function rollback() { request(["rollback"]); }
     function confirm() { request(["confirm"]); }
     function dismissRun() { check(); }
-    function openLog() { if (deployment.transaction) Quickshell.execDetached(["kitty", "--hold", "nerd", "update", "log", deployment.transaction]); }
-    function openRecoveryPoints() { Quickshell.execDetached(["kitty", "--hold", "nerd", "update", "history"]); }
-    function openFirmware() { Quickshell.execDetached(["kitty", "--hold", "nerdos-firmware-update", "interactive"]); }
+    function openLog() { if (deployment.transaction) Quickshell.execDetached(["nerdos-apps", "terminal", "--hold", "--", "nerd", "update", "log", deployment.transaction]); }
+    function openRecoveryPoints() { Quickshell.execDetached(["nerdos-apps", "terminal", "--hold", "--", "nerd", "update", "history"]); }
+    function openFirmware() { Quickshell.execDetached(["nerdos-apps", "terminal", "--hold", "--", "nerdos-firmware-update", "interactive"]); }
 
     Process {
         id: checker

@@ -1,0 +1,1040 @@
+<!-- Generated from the design prototype; data: tzdata 2026c zone.tab and Natural Earth 1:110m land (public domain). -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --background: #0f1012; --foreground: #e9e8e2; --muted-foreground: #9a9c95; --border: #2c2e33;
+          --primary: #c8ff1f; --primary-foreground: #1a1b1e; --radius: 10px; --code-background: #1d1e22; --code-foreground: #e9e8e2;
+          --font-sans: "Space Grotesk", system-ui, sans-serif; --font-mono: "JetBrains Mono", ui-monospace, monospace; }
+  body { margin: 0; padding: 24px; background: var(--background); color: var(--foreground); }
+  .page { max-width: 1312px; margin: 0 auto; }
+  .page { font-family: var(--font-sans, system-ui, sans-serif); color: var(--foreground); line-height: 1.5; font-size: 14px; }
+  .page h2 { font-size: 15px; font-weight: 600; margin: 34px 0 10px; letter-spacing: -0.01em; }
+  .page h2 small { font-weight: 400; color: var(--muted-foreground); margin-left: 6px; font-size: 13px; }
+  .page p { margin: 6px 0; color: var(--muted-foreground); }
+  .page code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; background: var(--code-background); color: var(--code-foreground); padding: 1px 5px; border-radius: 4px; }
+
+  /* prototype chrome */
+  .controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+  .controls .tab { font: 500 12px var(--font-sans, system-ui, sans-serif); padding: 5px 10px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--muted-foreground); cursor: pointer; }
+  .controls .tab[aria-pressed="true"] { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+  .controls .sep { flex: 1 1 auto; }
+  .controls label { font-size: 12px; color: var(--muted-foreground); display: inline-flex; gap: 5px; align-items: center; cursor: pointer; margin-left: 8px; }
+  .monitor { background: #0b0b0c; padding: 16px; border-radius: calc(var(--radius) + 8px); box-shadow: 0 0 0 1px rgba(255,255,255,.06) inset; }
+  .stagewrap { position: relative; overflow: hidden; border-radius: 6px; }
+  .stagewrap.actual { overflow: auto; }
+  .hint { font-size: 12px; color: var(--muted-foreground); margin-top: 8px; }
+  .hint kbd { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+
+  /* flow + architecture */
+  .flow { display: grid; grid-template-columns: 86px 1fr; gap: 8px 12px; align-items: center; }
+  .flow .lbl { font-size: 12px; font-weight: 600; color: var(--muted-foreground); }
+  .chain { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .chain span { font-size: 12px; padding: 3px 8px; border-radius: 6px; background: var(--secondary); color: var(--secondary-foreground); white-space: nowrap; }
+  .chain span.gone { text-decoration: line-through; opacity: .6; }
+  .chain span.new { background: var(--accent-surface); color: var(--accent-surface-foreground); }
+  .chain i { font-style: normal; color: var(--muted-foreground); font-size: 11px; }
+  .arch { width: 100%; height: auto; display: block; }
+  .arch .g { font-family: var(--font-sans, system-ui, sans-serif); font-size: 12px; fill: var(--foreground); }
+  .arch .box { fill: var(--card, #f4f4f5); stroke: var(--border, #d4d4d8); }
+  .arch .acc { fill: var(--accent-surface, #ecfccb); }
+  .arch .dash { fill: none; stroke: var(--border, #d4d4d8); stroke-dasharray: 4 3; }
+  .arch .m { fill: var(--muted-foreground, #71717a); }
+  .arch .af { fill: var(--accent-surface-foreground, #365314); }
+  .arch .ln { stroke: var(--muted-foreground, #71717a); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 560px) { .cols { grid-template-columns: 1fr; } .flow { grid-template-columns: 1fr; } }
+  .cols ul, .page ul { margin: 4px 0; padding-left: 18px; }
+  .page li { margin: 3px 0; color: var(--foreground); }
+  .page li::marker { color: var(--muted-foreground); }
+  table.t { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.t th { text-align: left; font-weight: 600; color: var(--muted-foreground); font-size: 11.5px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  table.t td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.t td:first-child { font-weight: 600; white-space: nowrap; }
+
+  /* ───────────── Kiosk canvas (fixed NerdOS brand colours) ───────────── */
+  .k { --bg: #1A1B1E; --bg-deep: #141517; --card: #202125; --card-2: #26272c; --line: #2f3136; --line-2: #3b3d43;
+       --ink: #F3F2EC; --fog: #A6A8A1; --faint: #6E7069; --lime: #C8FF1F; --red: #FF6B57; --amber: #F2C14E;
+       position: absolute; left: 0; top: 0; width: 1280px; height: 800px; transform-origin: 0 0; overflow: hidden;
+       background: var(--bg); color: var(--ink); font-family: "Space Grotesk", var(--font-sans, system-ui, sans-serif); font-size: 16px; line-height: 1.4;
+       -webkit-font-smoothing: antialiased; user-select: none; }
+  .k * { box-sizing: border-box; }
+  .k button { font-family: inherit; color: inherit; }
+  .k .mono { font-family: "JetBrains Mono", var(--font-mono, ui-monospace, monospace); }
+  .k .top { position: absolute; left: 0; right: 0; top: 0; height: 72px; display: flex; align-items: center; padding: 0 40px; gap: 24px; }
+  .k .top .logo svg { height: 22px; width: auto; display: block; }
+  .k .steps { flex: 1; display: flex; justify-content: center; align-items: center; gap: 10px; }
+  .k .steps .s { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--faint); font-weight: 500; }
+  .k .steps .s b { width: 24px; height: 24px; border-radius: 12px; border: 1.5px solid var(--line-2); display: grid; place-items: center; font: 600 12px "JetBrains Mono", monospace; color: var(--faint); }
+  .k .steps .s.cur { color: var(--ink); }
+  .k .steps .s.cur b { border-color: var(--lime); color: var(--lime); }
+  .k .steps .s.done { color: var(--fog); }
+  .k .steps .s.done b { background: rgba(200,255,31,.12); border-color: transparent; color: var(--lime); }
+  .k .steps .bar { width: 40px; height: 1.5px; background: var(--line-2); }
+  .k .chips { display: flex; gap: 8px; margin-left: auto; }
+  .k .chip { height: 36px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); padding: 0 14px; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--fog); cursor: pointer; }
+  .k .chip:hover { border-color: var(--line-2); color: var(--ink); }
+  .k .chip.icon { width: 36px; padding: 0; justify-content: center; }
+  .k .chip.warn { color: var(--amber); border-color: rgba(242,193,78,.4); }
+  .k .chip svg { width: 16px; height: 16px; }
+  .k .body { position: absolute; left: 0; right: 0; top: 72px; bottom: 88px; padding: 28px 64px 0; }
+  .k .body.full { bottom: 0; }
+  .k .foot { position: absolute; left: 0; right: 0; bottom: 0; height: 88px; display: flex; align-items: center; gap: 16px; padding: 0 64px; border-top: 1px solid var(--line); }
+  .k .foot .note { flex: 1; color: var(--faint); font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .k .foot .note svg { width: 16px; height: 16px; }
+  .k .kicker { font: 500 12px "JetBrains Mono", monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--fog); }
+  .k .kicker.lime { color: var(--lime); }
+  .k .kicker.amber { color: var(--amber); }
+  .k h1 { font-size: 50px; line-height: 1.04; font-weight: 600; letter-spacing: -0.025em; margin: 12px 0 12px; }
+  .k h1.mid { font-size: 40px; margin: 6px 0 8px; }
+  .k .lead { font-size: 19px; color: var(--fog); max-width: 620px; }
+  .k .btn { height: 52px; border-radius: 12px; padding: 0 26px; font-size: 17px; font-weight: 600; border: 1px solid var(--line-2); background: transparent; cursor: pointer; display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; }
+  .k .btn:hover { border-color: var(--fog); }
+  .k .btn svg { width: 18px; height: 18px; }
+  .k .btn.primary { background: var(--lime); color: #1A1B1E; border-color: var(--lime); }
+  .k .btn.danger { background: var(--red); color: #1A1B1E; border-color: var(--red); }
+  .k .btn[disabled] { opacity: .35; cursor: default; }
+  .k .btn.small { height: 38px; padding: 0 14px; font-size: 14px; border-radius: 10px; font-weight: 500; }
+  .k .link { background: none; border: 0; color: var(--lime); font-size: 14px; font-weight: 500; cursor: pointer; padding: 0; }
+  .k .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; }
+  .k .lbl { font: 500 12px "JetBrains Mono", monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--fog); display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .k .lbl .aux { letter-spacing: 0; text-transform: none; color: var(--faint); }
+  .k .field { position: relative; margin-bottom: 20px; }
+  .k input.in { width: 100%; height: 52px; border-radius: 12px; background: var(--bg-deep); border: 1px solid var(--line-2); color: var(--ink); font: 400 18px "Space Grotesk", sans-serif; padding: 0 16px; outline: none; user-select: text; }
+  .k input.in::placeholder { color: var(--faint); }
+  .k input.in:focus { border-color: var(--lime); box-shadow: 0 0 0 3px rgba(200,255,31,.16); }
+  .k input.in.bad { border-color: var(--red); box-shadow: 0 0 0 3px rgba(255,107,87,.14); }
+  .k input.in.mono { font-family: "JetBrains Mono", monospace; font-size: 17px; }
+  .k .help { font-size: 13.5px; color: var(--faint); margin-top: 7px; min-height: 19px; display: flex; gap: 8px; align-items: center; }
+  .k .help.bad { color: var(--red); }
+  .k .help.ok { color: var(--lime); }
+  .k .help .flash { color: var(--amber); }
+  .k .tag { font: 500 11px "JetBrains Mono", monospace; padding: 2px 7px; border-radius: 6px; background: var(--card-2); color: var(--fog); letter-spacing: .04em; }
+  .k .tag.lime { background: rgba(200,255,31,.12); color: var(--lime); }
+  .k .tag.red { background: rgba(255,107,87,.12); color: var(--red); }
+  .k .tag.amber { background: rgba(242,193,78,.12); color: var(--amber); }
+  .k .toggle { width: 48px; height: 28px; border-radius: 14px; background: var(--line-2); position: relative; border: 0; cursor: pointer; flex: none; }
+  .k .toggle::after { content: ""; position: absolute; left: 3px; top: 3px; width: 22px; height: 22px; border-radius: 11px; background: var(--fog); }
+  .k .toggle[aria-checked="true"] { background: var(--lime); }
+  .k .toggle[aria-checked="true"]::after { left: 23px; background: #1A1B1E; }
+  .k .row { display: flex; align-items: center; gap: 14px; }
+
+  /* checks */
+  .k .checks { padding: 8px 24px; }
+  .k .check { display: flex; align-items: center; gap: 14px; padding: 15px 0; border-top: 1px solid var(--line); }
+  .k .check:first-child { border-top: 0; }
+  .k .check .t { width: 112px; font-size: 15px; color: var(--fog); }
+  .k .check .v { flex: 1; font-size: 15px; }
+  .k .check .v small { display: block; color: var(--faint); font-size: 13px; }
+  .k .mk { width: 24px; height: 24px; border-radius: 12px; display: grid; place-items: center; flex: none; }
+  .k .mk svg { width: 14px; height: 14px; }
+  .k .mk.ok { background: rgba(200,255,31,.13); color: var(--lime); }
+  .k .mk.run { border: 2px solid var(--line-2); border-top-color: var(--lime); animation: kspin 1s steps(8) infinite; }
+  .k .mk.wait { border: 1.5px dashed var(--line-2); }
+  .k .mk.warn { background: rgba(242,193,78,.14); color: var(--amber); }
+  .k .mk.bad { background: rgba(255,107,87,.14); color: var(--red); }
+  @keyframes kspin { to { transform: rotate(360deg); } }
+
+  /* select rows */
+  .k .pick { width: 100%; height: 64px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); display: flex; align-items: center; gap: 14px; padding: 0 18px; cursor: pointer; text-align: left; margin-bottom: 10px; }
+  .k .pick:hover { border-color: var(--line-2); }
+  .k .pick .pk-l { font: 500 11px "JetBrains Mono", monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); width: 92px; }
+  .k .pick .pk-v { flex: 1; font-size: 18px; }
+  .k .pick svg { width: 18px; height: 18px; color: var(--faint); }
+
+  /* disks */
+  .k .disk { width: 100%; border-radius: 18px; background: var(--card); border: 1.5px solid var(--line); display: flex; align-items: center; gap: 18px; padding: 18px 22px; cursor: pointer; text-align: left; margin-bottom: 12px; }
+  .k .disk:hover { border-color: var(--line-2); }
+  .k .disk.sel { border-color: var(--lime); box-shadow: 0 0 0 3px rgba(200,255,31,.10); }
+  .k .disk.off { opacity: .55; cursor: default; }
+  .k .disk .ic { width: 52px; height: 52px; border-radius: 14px; background: var(--bg-deep); display: grid; place-items: center; color: var(--fog); flex: none; }
+  .k .disk .ic svg { width: 26px; height: 26px; }
+  .k .disk .nm { font-size: 19px; font-weight: 600; }
+  .k .disk .meta { color: var(--fog); font-size: 14px; margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .k .disk .sz { margin-left: auto; text-align: right; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+  .k .disk .sz small { display: block; font: 400 12px "JetBrains Mono", monospace; color: var(--faint); letter-spacing: 0; }
+  .k .disk .radio { width: 24px; height: 24px; border-radius: 12px; border: 1.5px solid var(--line-2); flex: none; display: grid; place-items: center; }
+  .k .disk.sel .radio { border-color: var(--lime); background: var(--lime); color: #1A1B1E; }
+  .k .disk .radio svg { width: 14px; height: 14px; }
+  .k .more { margin-top: 6px; }
+  .k .more-btn { background: none; border: 0; color: var(--fog); font-size: 15px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; padding: 6px 0; }
+  .k .more-btn svg { width: 16px; height: 16px; transition: transform .1s; }
+  .k .more-btn.open svg { transform: rotate(90deg); }
+  .k .opt { display: flex; align-items: center; gap: 16px; padding: 18px 22px; }
+  .k .opt + .opt { border-top: 1px solid var(--line); }
+  .k .opt .tx { flex: 1; }
+  .k .opt .tx b { font-weight: 600; font-size: 17px; display: block; }
+  .k .opt .tx span { color: var(--fog); font-size: 14px; }
+  .k .opt > svg { width: 22px; height: 22px; color: var(--fog); flex: none; }
+
+  /* account */
+  .k .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
+  .k .tzcard { padding: 20px 22px 18px; position: relative; overflow: hidden; }
+  .k .tzcard .clock { font: 600 54px "JetBrains Mono", monospace; letter-spacing: -0.04em; line-height: 1; }
+  .k .tzcard .city { font-size: 22px; font-weight: 600; margin-top: 10px; }
+  .k .tzcard .sub { color: var(--fog); font-size: 14px; margin-top: 2px; }
+  .k .tzcard canvas { display: block; width: 508px; height: 170px; }
+  .k .meter { display: flex; gap: 4px; margin-top: 9px; }
+  .k .meter i { flex: 1; height: 4px; border-radius: 2px; background: var(--line-2); }
+  .k .meter.l1 i:nth-child(-n+1) { background: var(--amber); }
+  .k .meter.l2 i:nth-child(-n+2) { background: var(--lime); }
+  .k .meter.l3 i:nth-child(-n+3) { background: var(--lime); }
+  .k .meter.l4 i { background: var(--lime); }
+  .k .eye { position: absolute; right: 8px; top: 8px; height: 36px; border-radius: 8px; background: var(--card-2); border: 0; padding: 0 12px; font-size: 13px; color: var(--fog); cursor: pointer; }
+  .k .home { font: 400 13.5px "JetBrains Mono", monospace; color: var(--faint); }
+  .k .home b { color: var(--fog); font-weight: 500; }
+
+  /* review */
+  .k .erase { display: flex; gap: 18px; align-items: center; padding: 20px 24px; border-radius: 18px; background: rgba(255,107,87,.08); border: 1px solid rgba(255,107,87,.35); }
+  .k .erase .ic { width: 48px; height: 48px; border-radius: 24px; background: rgba(255,107,87,.15); color: var(--red); display: grid; place-items: center; flex: none; }
+  .k .erase .ic svg { width: 24px; height: 24px; }
+  .k .erase b { font-size: 21px; display: block; font-weight: 600; }
+  .k .erase span { color: var(--fog); font-size: 15px; }
+  .k .sum { display: grid; grid-template-columns: 1fr 1fr; column-gap: 40px; margin-top: 20px; }
+  .k .sum .r { display: flex; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line); gap: 12px; min-height: 64px; }
+  .k .sum .r .k1 { width: 148px; color: var(--fog); font-size: 15px; flex: none; }
+  .k .sum .r .v1 { flex: 1; font-size: 16px; }
+  .k .sum .r .v1 small { display: block; color: var(--faint); font-size: 13px; }
+
+  /* installing */
+  .k .stepsCard { padding: 6px 26px; }
+  .k .ps { display: flex; align-items: center; gap: 16px; padding: 15px 0; border-top: 1px solid var(--line); }
+  .k .ps:first-child { border-top: 0; }
+  .k .ps .n { font: 500 12px "JetBrains Mono", monospace; color: var(--faint); width: 22px; }
+  .k .ps .tx { flex: 1; font-size: 17px; color: var(--faint); }
+  .k .ps.done .tx { color: var(--fog); }
+  .k .ps.cur .tx { color: var(--ink); font-weight: 600; }
+  .k .ps .tx small { display: block; font-weight: 400; font-size: 13.5px; color: var(--fog); margin-top: 2px; }
+  .k .dots i { display: inline-block; width: 6px; height: 6px; border-radius: 3px; background: var(--lime); margin-left: 4px; animation: kblink 3s steps(1) infinite; opacity: .2; }
+  .k .dots i:nth-child(2) { animation-delay: 1s; } .k .dots i:nth-child(3) { animation-delay: 2s; }
+  @keyframes kblink { 0% { opacity: 1; } 33% { opacity: .2; } }
+  .k .seg { display: flex; gap: 6px; margin: 26px 0 10px; max-width: 520px; }
+  .k .seg i { flex: 1; height: 6px; border-radius: 3px; background: var(--line-2); }
+  .k .seg i.on { background: var(--lime); }
+  .k .seg i.cur { background: rgba(200,255,31,.45); }
+  .k .tip { padding: 22px 24px; margin-top: 26px; max-width: 520px; }
+  .k .keys { display: flex; gap: 6px; align-items: center; margin: 12px 0 8px; color: var(--faint); }
+  .k .key { font: 600 15px "JetBrains Mono", monospace; padding: 6px 11px; border-radius: 8px; background: var(--bg-deep); border: 1px solid var(--line-2); border-bottom-width: 3px; color: var(--ink); }
+
+  /* done + stopped */
+  .k .center { text-align: center; display: flex; flex-direction: column; align-items: center; }
+  .k .center .symbol svg { width: 150px; height: auto; }
+  .k .next { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 34px 0 30px; width: 900px; }
+  .k .next .card { padding: 20px 22px; text-align: left; }
+  .k .next .card .n { font: 600 13px "JetBrains Mono", monospace; color: var(--lime); }
+  .k .next .card b { display: block; font-size: 18px; margin: 8px 0 4px; font-weight: 600; }
+  .k .next .card span { color: var(--fog); font-size: 14.5px; }
+  .k .stopbox { display: flex; gap: 14px; align-items: center; padding: 16px 20px; border-radius: 14px; background: rgba(255,107,87,.08); border: 1px solid rgba(255,107,87,.3); margin: 26px 0; max-width: 560px; }
+  .k .stopbox .t { color: var(--fog); width: 120px; }
+  .k ol.howto { margin: 0 0 28px; padding: 0; list-style: none; counter-reset: s; max-width: 600px; }
+  .k ol.howto li { counter-increment: s; display: flex; gap: 14px; padding: 10px 0; font-size: 17px; color: var(--ink); }
+  .k ol.howto li::before { content: counter(s); font: 600 13px "JetBrains Mono", monospace; color: var(--lime); width: 26px; height: 26px; border-radius: 13px; background: rgba(200,255,31,.1); display: grid; place-items: center; flex: none; }
+
+  /* boot menu */
+  .k.boot { background: #0d0d0d; }
+  .k .grub { position: absolute; left: 192px; right: 192px; top: 280px; }
+  .k .grub .it { font: 400 19px "JetBrains Mono", monospace; color: #F3F2EC; padding: 10px 18px; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; }
+  .k .grub .it.sel { color: var(--lime); background: rgba(200,255,31,.07); }
+  .k .grub .it small { color: var(--faint); font-size: 14px; }
+  .k .grub-foot { position: absolute; left: 0; right: 0; bottom: 70px; text-align: center; font: 400 15px "JetBrains Mono", monospace; color: var(--faint); }
+  .k .splash { position: absolute; inset: 0; display: grid; place-items: center; background: #0d0d0d; }
+  .k .splash .symbol svg { width: 190px; height: auto; }
+
+  /* sheets */
+  .k .scrim { position: absolute; inset: 0; background: rgba(10,10,11,.62); }
+  .k .sheet { position: absolute; top: 72px; right: 24px; bottom: 24px; width: 460px; background: var(--card); border: 1px solid var(--line-2); border-radius: 22px; padding: 24px 26px; display: flex; flex-direction: column; box-shadow: 0 24px 60px rgba(0,0,0,.45); }
+  .k .sheet.wide { left: 24px; width: auto; top: 24px; }
+  .k .sheet.menu { bottom: auto; width: 320px; padding: 8px; top: 66px; }
+  .k .sheet h3 { font-size: 24px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .k .sheet .x { position: absolute; right: 18px; top: 18px; width: 38px; height: 38px; border-radius: 19px; background: var(--card-2); border: 0; cursor: pointer; display: grid; place-items: center; color: var(--fog); }
+  .k .sheet .x svg { width: 18px; height: 18px; }
+  .k .sheet .sub { color: var(--fog); font-size: 14.5px; margin-bottom: 16px; }
+  .k .list { overflow-y: auto; flex: 1; margin: 0 -8px; padding: 0 8px; }
+  .k .list::-webkit-scrollbar { width: 6px; } .k .list::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 3px; }
+  .k .li { display: flex; align-items: center; gap: 12px; padding: 0 14px; height: 54px; border-radius: 12px; cursor: pointer; border: 1px solid transparent; }
+  .k .li:hover { background: var(--card-2); }
+  .k .li.sel { background: rgba(200,255,31,.08); border-color: rgba(200,255,31,.35); }
+  .k .li .a { flex: 1; min-width: 0; }
+  .k .li .a b { font-weight: 600; font-size: 16px; }
+  .k .li .a span { color: var(--fog); font-size: 13.5px; margin-left: 8px; }
+  .k .li .a em { display: block; font-style: normal; color: var(--faint); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .k .li .tm { font: 500 15px "JetBrains Mono", monospace; text-align: right; }
+  .k .li .tm small { display: block; font-size: 11.5px; color: var(--faint); }
+  .k .li svg { width: 18px; height: 18px; color: var(--fog); }
+  .k .menu .li { height: 46px; font-size: 15px; }
+  .k .menu .sepl { height: 1px; background: var(--line); margin: 6px 8px; }
+  .k .tzgrid { display: grid; grid-template-columns: 430px 1fr; gap: 26px; flex: 1; min-height: 0; }
+  .k .tzleft { display: flex; flex-direction: column; min-height: 0; }
+  .k .mapbox { position: relative; background: var(--bg-deep); border-radius: 16px; border: 1px solid var(--line); height: 322px; overflow: hidden; }
+  .k .mapbox canvas { position: absolute; left: 14px; top: 14px; width: 696px; height: 271px; cursor: crosshair; }
+  .k .mapbox .hov { position: absolute; pointer-events: none; font: 500 12px "JetBrains Mono", monospace; background: rgba(20,21,23,.92); border: 1px solid var(--line-2); padding: 3px 8px; border-radius: 6px; white-space: nowrap; display: none; }
+  .k .maplegend { position: absolute; left: 18px; bottom: 10px; font: 400 11.5px "JetBrains Mono", monospace; color: var(--faint); display: flex; gap: 14px; }
+  .k .maplegend i { display: inline-block; width: 8px; height: 8px; border-radius: 4px; margin-right: 5px; vertical-align: 0; }
+  .k .tzsel { margin-top: 16px; }
+  .k .tzsel .clock { font: 600 40px "JetBrains Mono", monospace; letter-spacing: -0.04em; }
+  .k .tzsel .z { flex: 1; }
+  .k .tzsel .z b { font-size: 20px; display: block; }
+  .k .tzsel .z span { color: var(--fog); font-size: 14px; }
+  .k .check2 { display: flex; gap: 10px; align-items: center; color: var(--fog); font-size: 14px; cursor: pointer; margin: 10px 2px 0; }
+  .k .check2 .bx { width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--line-2); display: grid; place-items: center; }
+  .k .check2 .bx.on { background: var(--lime); border-color: var(--lime); color: #1A1B1E; }
+  .k .check2 .bx svg { width: 13px; height: 13px; }
+  .k .log { flex: 1; overflow: auto; background: var(--bg-deep); border-radius: 14px; border: 1px solid var(--line); padding: 14px 16px; font: 400 12.5px/1.65 "JetBrains Mono", monospace; color: var(--fog); white-space: pre; user-select: text; }
+  .k .log b { color: var(--ink); font-weight: 500; }
+  .k .log .loc { color: var(--lime); }
+  .k .toast { position: absolute; left: 50%; bottom: 112px; transform: translateX(-50%); background: var(--ink); color: #1A1B1E; padding: 10px 18px; border-radius: 12px; font-size: 15px; font-weight: 500; display: none; z-index: 5; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1 style="font: 600 20px var(--font-sans); margin: 0 0 4px">NerdOS installer: design reference</h1>
+  <p style="margin: 0 0 16px; color: var(--muted-foreground); font-size: 14px">The interactive comp the native screen
+  (<code>installer/kiosk</code>, Rust and Slint) was built from. Compare with <code>installer-preview</code> renders; the
+  native screen and <code>docs/installation.md</code> are authoritative where they differ.</p>
+  <div class="controls" id="controls"></div>
+  <div class="monitor"><div class="stagewrap" id="wrap"><div class="k" id="stage"></div></div></div>
+  <div class="hint">This is the real 1280×800 design canvas, scaled down. Click through it. Try typing <kbd>John.Doe</kbd> as the username, or search time zones for <kbd>nether</kbd>, <kbd>kiev</kbd>, <kbd>india</kbd> or <kbd>utc+9</kbd>. You can also click the map. The installing demo runs time 60× faster.</div>
+
+  
+</div>
+
+<script>
+function main(D) {
+if (D.map.rle) D.map.rows = D.map.rle.map(r => { let out = "", v = 0; for (const n of r.split(".")) { out += (v ? "1" : "0").repeat(+n); v ^= 1; } return out; });
+const LOGO = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1331.74 176.73" width="1331.74" height="176.73" aria-hidden="true"> <g id="symbol"> <path id="frames" fill="#F3F2EC" d="M312.36 77.84 337.19 34.84C341.19 27.92 339.33 19.24 333.17 14.5C340.58 9.11 349.71 5.93 359.58 5.93H498.92C514.61 5.93 528.42 13.97 536.46 26.15H553.98C560.8 26.15 566.34 31.69 566.34 38.52V54.25C566.34 61.07 560.8 66.61 553.98 66.61H543.86V104.81C543.86 144.53 511.67 176.73 471.95 176.73H386.55C346.83 176.73 314.63 144.53 314.63 104.81V77.84H312.36ZM67.42 5.93H206.76C224.31 5.93 239.51 15.98 246.91 30.65H253.97L229.14 73.66C224.8 81.18 227.38 90.8 234.9 95.15L251.71 104.85C251.69 144.55 219.49 176.73 179.79 176.73H94.39C54.67 176.73 22.47 144.53 22.47 104.81V66.61H12.36C5.53 66.61 0 61.07 0 54.25V38.52C0 31.69 5.53 26.15 12.36 26.15H29.88C37.92 13.97 51.73 5.93 67.42 5.93ZM377.56 50.88C367.63 50.88 359.58 58.93 359.58 68.85V91.33C359.58 113.67 377.69 131.78 400.03 131.78H458.46C480.8 131.78 498.92 113.67 498.92 91.33V68.85C498.92 58.93 490.87 50.88 480.94 50.88ZM85.4 50.88C75.47 50.88 67.42 58.93 67.42 68.85V91.33C67.42 113.67 85.53 131.78 107.87 131.78H166.31C188.65 131.78 206.76 113.67 206.76 91.33V68.85C206.76 58.93 198.71 50.88 188.78 50.88Z"/> <path id="tape" fill="#C8FF1F" d="M289.4 0.75 326.38 22.1C329.07 23.66 329.99 27.09 328.44 29.78L284.61 105.68C283.06 108.37 279.62 109.29 276.94 107.74L239.96 86.39C237.27 84.84 236.35 81.4 237.9 78.72L281.72 2.81C283.28 0.12 286.71 -0.8 289.4 0.75Z"/> </g> <path id="wordmark" fill="#F3F2EC" d="M1144.94 164.04Q1117.59 164.04 1101.3 149.4Q1084.94 134.69 1084.94 107.57V75.09Q1084.94 47.97 1101.3 33.26Q1117.59 18.62 1144.94 18.62Q1172.28 18.62 1188.57 33.26Q1204.94 47.97 1204.94 75.09V107.57Q1204.94 134.69 1188.57 149.4Q1172.28 164.04 1144.94 164.04ZM630.74 21.33H685.25L712.34 136.25V21.33H743.14V161.33H688.62L661.54 46.4V161.33H630.74ZM999.34 164.04Q986.9 164.04 976.04 158.02Q965.15 151.99 958.63 140.39Q952.14 128.85 952.14 112.6V109.51Q952.14 93.25 958.63 81.71Q965.15 70.12 975.94 64.08Q986.69 58.07 999.34 58.07Q1008.74 58.07 1015.22 60.23Q1021.74 62.4 1025.88 65.77Q1029.24 68.51 1031.34 71.56V21.33H1061.34V161.33H1031.74V149.88Q1028.08 155 1021.34 159.22Q1013.65 164.04 999.34 164.04ZM1276.34 164.04Q1259.6 164.04 1246.72 158.21Q1233.7 152.32 1226.32 141.32Q1218.94 130.3 1218.94 114.92V107.18H1249.74V114.92Q1249.74 125.99 1256.64 131.39Q1263.79 136.96 1276.34 136.96Q1289.09 136.96 1295.13 132.26Q1300.94 127.73 1300.94 120.72Q1300.94 116.02 1298.27 113.2Q1295.36 110.14 1289.61 108.11Q1283.46 105.94 1274.62 104.04L1270.03 103.07Q1255.35 99.92 1244.81 95.07Q1233.92 90.06 1228.06 81.81Q1222.14 73.49 1222.14 60.39Q1222.14 47.31 1228.64 37.92Q1235.13 28.57 1246.87 23.56Q1258.43 18.62 1273.94 18.62Q1289.44 18.62 1301.6 23.75Q1313.95 28.95 1321.04 39.29Q1328.14 49.63 1328.14 65.03V73.15H1297.34V65.03Q1297.34 57.97 1294.61 53.8Q1291.93 49.7 1286.85 47.75Q1281.48 45.69 1273.94 45.69Q1262.77 45.69 1257.72 49.54Q1252.94 53.2 1252.94 59.62Q1252.94 63.87 1255.16 66.73Q1257.48 69.73 1262.31 71.8Q1267.48 74.03 1275.64 75.72L1280.25 76.69Q1295.49 79.83 1306.82 84.77Q1318.48 89.84 1325.05 98.24Q1331.74 106.79 1331.74 119.95Q1331.74 133.03 1324.83 142.99Q1317.96 152.91 1305.44 158.5Q1293.06 164.04 1276.34 164.04ZM814.34 164.04Q798.91 164.04 787.07 157.65Q775.16 151.23 768.53 139.53Q761.94 127.89 761.94 112.21V109.89Q761.94 94.22 768.42 82.59Q774.95 70.88 786.76 64.46Q798.51 58.07 813.94 58.07Q829.2 58.07 840.57 64.69Q851.95 71.31 858.26 83Q864.54 94.63 864.54 109.89V120.53H792.55Q793.59 127.76 799.13 132.52Q805.65 138.12 815.14 138.12Q824.8 138.12 829.11 134.29Q833.76 130.15 836.16 125.16L837.22 122.95L862.2 135.61L861.05 137.68Q858.12 142.93 852.65 149.02Q847.03 155.28 837.79 159.64Q828.49 164.04 814.34 164.04ZM1144.94 136.58Q1158.71 136.58 1166.2 128.98Q1173.74 121.34 1173.74 108.34V74.31Q1173.74 61.32 1166.2 53.68Q1158.71 46.08 1144.94 46.08Q1131.36 46.08 1123.76 53.69Q1116.14 61.33 1116.14 74.31V108.34Q1116.14 121.33 1123.76 128.97Q1131.36 136.58 1144.94 136.58ZM912.94 60.78V70.78Q915.49 65.93 920.28 63.38Q925.92 60.39 933.34 60.39H947.74V86.69H932.94Q924.2 86.69 918.66 91.09Q913.34 95.32 913.34 104.48V161.33H883.34V60.78ZM1006.94 138.12Q1017.57 138.12 1024.67 131.52Q1031.74 124.95 1031.74 112.02V110.09Q1031.74 97.14 1024.76 90.57Q1017.76 83.98 1006.94 83.98Q996.3 83.98 989.2 90.58Q982.14 97.15 982.14 110.09V112.02Q982.14 124.95 989.2 131.52Q996.3 138.12 1006.94 138.12ZM793.12 97.71H833.75Q832.48 92.08 828.08 88.45Q822.65 83.98 813.74 83.98Q804.43 83.98 799.11 88.44Q794.76 92.08 793.12 97.71Z"/> </svg>`;
+const SYMBOL = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 504 157.28" width="504" height="157.28" aria-hidden="true"> <g id="symbol"> <path id="frames" fill="#F3F2EC" d="M277.98 69.28 300.08 31C303.63 24.85 301.98 17.12 296.5 12.91C303.09 8.11 311.22 5.28 320 5.28H444C457.96 5.28 470.26 12.43 477.41 23.28H493C499.08 23.28 504 28.2 504 34.28V48.28C504 54.35 499.08 59.28 493 59.28H484V93.28C484 128.62 455.35 157.28 420 157.28H344C308.65 157.28 280 128.62 280 93.28V69.28H277.98ZM60 5.28H184C199.62 5.28 213.14 14.23 219.73 27.28H226.02L203.92 65.55C200.06 72.25 202.35 80.81 209.05 84.68L224 93.31C223.98 128.64 195.34 157.28 160 157.28H84C48.65 157.28 20 128.62 20 93.28V59.28H11C4.92 59.28 0 54.35 0 48.28V34.28C0 28.2 4.92 23.28 11 23.28H26.59C33.74 12.43 46.04 5.28 60 5.28ZM336 45.28C327.16 45.28 320 52.44 320 61.28V81.28C320 101.16 336.12 117.28 356 117.28H408C427.88 117.28 444 101.16 444 81.28V61.28C444 52.44 436.84 45.28 428 45.28ZM76 45.28C67.16 45.28 60 52.44 60 61.28V81.28C60 101.16 76.12 117.28 96 117.28H148C167.88 117.28 184 101.16 184 81.28V61.28C184 52.44 176.84 45.28 168 45.28Z"/> <path id="tape" fill="#C8FF1F" d="M257.55 0.67 290.45 19.67C292.85 21.05 293.67 24.11 292.28 26.5L253.28 94.05C251.9 96.44 248.85 97.26 246.45 95.88L213.55 76.88C211.15 75.5 210.33 72.44 211.72 70.05L250.72 2.5C252.1 0.11 255.15 -0.71 257.55 0.67Z"/> </g> </svg>`;
+const VERSION = "1.0.0-beta.2";
+const INITIAL = "boot";
+
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const stage = $("#stage"), wrap = $("#wrap");
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* ── icons ── */
+const P = {
+  eth: '<rect x="5" y="4" width="14" height="12" rx="2"/><path d="M9 16v4M15 16v4M9 8v3M12 8v3M15 8v3"/>',
+  wifi: '<path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="1"/>',
+  off: '<path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0" opacity=".4"/><path d="M3 3l18 18"/>',
+  kb: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+  dots: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  right: '<path d="M9 5l7 7-7 7"/>',
+  disk: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7 15h4"/><circle cx="16.5" cy="15" r="1"/>',
+  usb: '<path d="M8 3h8v6H8zM6 9h12v8a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4z"/><path d="M10.5 5.5h.01M13.5 5.5h.01"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/>',
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/>',
+  term: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/>',
+  power: '<path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/>',
+  restart: '<path d="M4 12a8 8 0 1 0 2.3-5.7M4 5v5h5"/>',
+  chip: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+  log: '<path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 15h7M9 7h3"/>',
+  fw: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4M7 8h4"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
+  apps: '<rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/>',
+};
+const I = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${P[n]}</svg>`;
+
+/* ── fixtures ── */
+const LANGS = [["en_US.UTF-8", "English (US)"], ["en_GB.UTF-8", "English (UK)"], ["nl_NL.UTF-8", "Nederlands"], ["de_DE.UTF-8", "Deutsch"], ["fr_FR.UTF-8", "Français"], ["es_ES.UTF-8", "Español"], ["it_IT.UTF-8", "Italiano"], ["pt_PT.UTF-8", "Português"], ["sv_SE.UTF-8", "Svenska"], ["nb_NO.UTF-8", "Norsk"], ["da_DK.UTF-8", "Dansk"], ["fi_FI.UTF-8", "Suomi"], ["pl_PL.UTF-8", "Polski"], ["cs_CZ.UTF-8", "Čeština"]];
+const LAYOUTS = [["us", "English (US)"], ["gb", "English (UK)"], ["nl", "Dutch"], ["de", "German"], ["fr", "French"], ["es", "Spanish"], ["it", "Italian"], ["pt", "Portuguese"], ["se", "Swedish"], ["no", "Norwegian"], ["dk", "Danish"], ["fi", "Finnish"], ["pl", "Polish"], ["cz", "Czech"]];
+const CONSOLE = { gb: "uk", de: "de-latin1", fr: "fr-latin9", se: "sv-latin1", no: "no-latin1", dk: "dk-latin1" };
+const APPS = [["developer", "Development tools", "Editors, compilers and dev shells"], ["proprietary", "Proprietary applications", "Unfree licenses · downloaded during install"], ["steam", "Steam and gaming", "Unfree · downloaded during install"], ["docker", "Docker", "Container engine"], ["podman", "Podman", "Rootless containers"], ["tailscale", "Tailscale", "Mesh VPN"], ["connectedWidgets", "Connected desktop widgets", "Widgets for online services"], ["assistant", "NerdOS Assistant", "Super + I"], ["localNetworkServices", "Local network discovery", "Avahi, .local names, LAN ports"]];
+const DISKS = [
+  { path: "/dev/nvme0n1", model: "Samsung SSD 990 PRO 1TB", bus: "NVMe", size: 1000204886016, serial: "S6Z1NJ0W812345L", contents: ["Windows (NTFS)", "EFI system"], available: true },
+  { path: "/dev/nvme1n1", model: "WD Blue SN580 500GB", bus: "NVMe", size: 500107862016, serial: "24125A800123", contents: ["Linux (ext4)", "swap"], available: true },
+  { path: "/dev/sda", model: "SanDisk Ultra USB 3.0", bus: "USB", size: 30752636928, serial: "4C530001230824118312", contents: ["NerdOS installer"], available: false, reason: "In use by this installer · smaller than 64 GiB" },
+];
+const WIFI = [["Lovelace-5G", 4, true], ["Lovelace", 3, true], ["Ziggo-A1B2C", 2, true], ["Café Babbage", 2, false], ["eduroam", 1, "802.1X"]];
+const RESERVED = ["root", "nixos", "nobody", "nogroup", "messagebus", "polkituser", "sddm", "avahi", "rtkit", "geoclue", "pipewire", "sshd", "wheel", "users", "nscd", "dhcpcd", "fwupd-refresh"];
+const STAGES = [["Preparing the selected disk", "GPT · 16 GiB EFI system + NerdOS root"], ["Creating filesystems and LUKS2 encryption", "Your password becomes the disk key"], ["Recording hardware and your machine configuration", "Your settings go into /etc/nixos; your password never enters the Nix store"], ["Building and installing your complete desktop", "Most of it is copied from this USB drive; the rest downloads"], ["Setting up your account and keyboard preferences", ""], ["Retaining the tested sources and finishing installation", "Unmounting and closing encryption before reporting done"]];
+const STAGE_MS = [1600, 2200, 1800, 9000, 1600, 2600];
+const TIPS = [["Super", "Space", "opens the launcher: apps, files, calculator and web apps in one place."], ["Super", "Return", "opens a terminal. Fish is already set up."], ["Super", "K", "shows every keyboard shortcut the desktop actually has."], ["Super", "Tab", "opens the window overview with live thumbnails."], ["Super", "I", "talks to the NerdOS Assistant. Hold it to dictate."], ["Super", "Ctrl", "V", "opens clipboard history. Ctrl+P pins an entry."]];
+
+/* ── time zones ── */
+const norm = s => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[_/]/g, " ").replace(/\s+/g, " ").trim();
+const ZONES = D.zones.map(([id, cc, lat, lon, comment]) => {
+  const parts = id.split("/");
+  return { id, cc, lat, lon, comment, city: parts[parts.length - 1].replace(/_/g, " "), country: D.countries[cc] || cc, region: parts[0], aliases: [] };
+});
+const BYID = Object.fromEntries(ZONES.map(z => [z.id, z]));
+for (const [link, target] of Object.entries(D.aliases)) BYID[target]?.aliases.push(link);
+const UTC = { id: "UTC", cc: "", lat: null, lon: null, comment: "", city: "UTC", country: "Coordinated Universal Time", region: "", aliases: [], fixed: true };
+BYID.UTC = UTC;
+const FIXED = [];
+for (let h = -14; h <= 12; h++) {
+  if (!h) continue;
+  const id = `Etc/GMT${h > 0 ? "+" : "-"}${Math.abs(h)}`, real = -h;
+  const label = `UTC${real > 0 ? "+" : "−"}${String(Math.abs(real)).padStart(2, "0")}:00`;
+  const z = { id, cc: "", lat: null, lon: null, comment: "fixed offset, no daylight saving", city: label, country: id, region: "Etc", aliases: [], fixed: true };
+  FIXED.push(z); BYID[id] = z;
+}
+const fmtCache = {};
+function zoneTime(id, seconds) {
+  try {
+    const key = id + (seconds ? "s" : "");
+    fmtCache[key] ||= new Intl.DateTimeFormat("en-GB", { timeZone: id, hour: "2-digit", minute: "2-digit", second: seconds ? "2-digit" : undefined, hourCycle: "h23" });
+    return fmtCache[key].format(new Date());
+  } catch { return "––:––"; }
+}
+function zoneOffset(id) {
+  try {
+    const part = new Intl.DateTimeFormat("en-US", { timeZone: id, timeZoneName: "longOffset" }).formatToParts(new Date()).find(p => p.type === "timeZoneName").value;
+    return part === "GMT" ? "UTC+00:00" : part.replace("GMT", "UTC").replace("-", "−");
+  } catch { return ""; }
+}
+const shortOffset = id => { const o = zoneOffset(id); return o.replace(/:00$/, "").replace(/([+−])0(\d)/, "$1$2"); };
+const zoneTitle = z => z.fixed ? z.city : z.city;
+const zoneSub = z => z.fixed ? (z.id === "UTC" ? "Coordinated Universal Time" : `fixed · ${z.id}`) : z.country;
+for (const z of [...ZONES, UTC, ...FIXED]) {
+  z.k = { city: norm(z.city), country: norm(z.country), comment: norm(z.comment), id: norm(z.id), aliases: z.aliases.map(a => norm(a.split("/").pop())) };
+}
+for (const z of FIXED) {
+  const m = z.city.match(/UTC([+−])(\d\d)/), sign = m[1] === "−" ? "-" : "+", h = String(+m[2]);
+  z.k.aliases = [`utc${sign}${h}`, `utc${sign}${m[2]}:00`, `gmt${sign}${h}`];
+}
+function searchZones(q, fixed) {
+  const pool = [...ZONES, UTC, ...(fixed ? FIXED : [])];
+  q = norm(q.replace(/−/g, "-"));
+  if (!q) {
+    const sel = BYID[S.tzPick || S.tz], near = pool.filter(z => z !== sel && sel.cc && z.cc === sel.cc);
+    const rest = pool.filter(z => z !== sel && !near.includes(z) && (!z.fixed || z.id === "UTC" || fixed)).sort((a, b) => a.city.localeCompare(b.city));
+    return [sel, ...near, ...rest].map(z => ({ z }));
+  }
+  const off = q.replace(/^gmt/, "utc").replace(/\s/g, "");
+  const out = [];
+  for (const z of pool) {
+    const k = z.k; let score = 0, alias = "";
+    const words = s => s.split(" ");
+    if (k.city === q || k.country === q) score = 110;
+    else if (k.city.startsWith(q)) score = 100;
+    else if (k.country.startsWith(q)) score = 85;
+    else if (k.aliases.some(a => a.startsWith(q))) { score = 75; alias = z.aliases[k.aliases.findIndex(a => a.startsWith(q))]; }
+    else if ([k.city, k.country, k.comment].some(s => words(s).some(w => w.startsWith(q)))) score = 60;
+    else if (k.id.includes(q) || k.comment.includes(q) || k.city.includes(q)) score = 30;
+    else if (/^utc[+−-]\d/.test(off)) {
+      const o = shortOffset(z.id).toLowerCase().replace("−", "-");
+      if (o === off.replace("−", "-")) score = 50;
+    }
+    if (score) out.push({ z, score, alias });
+  }
+  return out.sort((a, b) => b.score - a.score || a.z.city.localeCompare(b.z.city)).slice(0, 60);
+}
+
+/* ── state ── */
+const S = {
+  screen: "boot", online: true, nvidia: true, lang: "en_US.UTF-8", kb: "us",
+  disk: "/dev/nvme0n1", encrypted: true, diskMore: false,
+  fullName: "", username: "", userEdited: false, password: "", confirm: "", showPw: false,
+  hostname: "", hostEdited: false, tz: "Europe/Amsterdam", tzSource: "detected",
+  apps: Object.fromEntries(APPS.map(a => [a[0], true])), nvidiaOpen: true,
+  sheet: null, checks: 0, stage: 1, elapsed: 0, bootSel: 0, wifi: null, wifiSel: null,
+  tzQuery: "", tzFixed: false, tzPick: null,
+};
+const timers = new Set();
+const later = (fn, ms) => { const t = setTimeout(() => { timers.delete(t); fn(); }, ms); timers.add(t); return t; };
+const clearTimers = () => { for (const t of timers) clearTimeout(t); timers.clear(); };
+const disk = () => DISKS.find(d => d.path === S.disk) || {};
+const gb = b => b >= 1e12 ? (b / 1e12).toFixed(1) + " TB" : Math.round(b / 1e9) + " GB";
+const gib = b => Math.round(b / 1073741824) + " GiB";
+const langName = () => LANGS.find(l => l[0] === S.lang)[1];
+const kbName = () => LAYOUTS.find(l => l[0] === S.kb)[1];
+const hostname = () => S.hostEdited ? S.hostname : (S.username ? (S.username.slice(0, 24) + "-nerdos") : "nerdos");
+
+/* ── username filter (mirrors the worker's [a-z][a-z0-9-]{0,30}) ── */
+function filterName(raw) {
+  let out = "", note = "", hard = false;
+  const reject = m => { note = m; hard = true; };
+  for (const ch of raw) {
+    const lower = ch.toLowerCase();
+    const base = lower.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    let c = base;
+    if (!hard && ch !== lower && /^[a-z]$/.test(base)) note = `“${ch}” became “${base}”: usernames are lowercase`;
+    else if (!hard && base !== lower && /^[a-z]$/.test(base)) note = `“${ch}” became “${base}”`;
+    if (!/^[a-z0-9-]$/.test(c)) { reject(ch === " " ? "Spaces aren't allowed. Use a hyphen." : `“${ch}” isn't allowed. Use letters, digits and hyphens.`); continue; }
+    if (!out && !/^[a-z]$/.test(c)) { reject("Start with a letter."); continue; }
+    if (out.length >= 31) { reject("31 characters at most."); break; }
+    out += c;
+  }
+  return { out, note };
+}
+const reserved = n => RESERVED.includes(n) || /^(nixbld|systemd-)/.test(n);
+function userState() {
+  const n = S.username;
+  if (!n) return { ok: false, msg: "Lowercase letters, digits and hyphens. Starts with a letter." };
+  if (reserved(n)) return { ok: false, bad: true, msg: `“${n}” is reserved by the system. Choose another name.` };
+  return { ok: true, msg: "" };
+}
+function suggestUser(full) {
+  const words = norm(full).split(" ").filter(Boolean).map(w => filterName(w).out).filter(Boolean);
+  if (!words.length) return "";
+  return words[0].length >= 2 ? words[0] : words.join("").slice(0, 31);
+}
+const pwLevel = p => p.length < 8 ? (p.length ? 1 : 0) : p.length < 12 ? 2 : p.length < 16 ? 3 : 4;
+
+/* ── chrome ── */
+function topBar(step) {
+  const names = ["Disk", "You", "Review"];
+  const steps = step ? names.map((n, i) => `${i ? '<span class="bar"></span>' : ""}<span class="s ${i + 1 < step ? "done" : i + 1 === step ? "cur" : ""}"><b>${i + 1 < step ? "✓" : i + 1}</b>${n}</span>`).join("") : "";
+  const net = S.online ? (S.wifi ? `${I("wifi")}${esc(S.wifi)}` : `${I("eth")}Ethernet`) : `${I("off")}Offline`;
+  return `<div class="top"><div class="logo">${LOGO}</div><div class="steps">${steps}</div>
+    <div class="chips"><button class="chip ${S.online ? "" : "warn"}" data-act="sheet" data-v="wifi">${net}</button>
+    <button class="chip" data-act="sheet" data-v="kb">${I("kb")}${S.kb.toUpperCase()}</button>
+    <button class="chip" data-act="sheet" data-v="lang">${I("globe")}${S.lang.slice(0, 2).toUpperCase()}</button>
+    <button class="chip icon" data-act="sheet" data-v="tools" aria-label="Tools">${I("dots")}</button></div></div>`;
+}
+const foot = (back, next, note = "") => `<div class="foot"><button class="btn" data-act="go" data-v="${back}">Back</button><div class="note">${note}</div>${next}</div>`;
+
+/* ── screens ── */
+const SCREENS = {
+  boot() {
+    const items = [["Install NerdOS " + VERSION, "default"], ["Install NerdOS — safe graphics", "nomodeset"], ["Install NerdOS — text mode", ""], ["Verbose boot diagnostics", ""], ["UEFI firmware settings", ""]];
+    return `<div style="position:absolute;inset:0">
+      <div style="position:absolute;left:0;right:0;top:120px;display:flex;justify-content:center"><div class="logo" style="height:40px">${LOGO.replace('height="176.73"', 'height="40"').replace('width="1331.74"', 'width="301"')}</div></div>
+      <div class="mono" style="position:absolute;left:0;right:0;top:186px;text-align:center;color:#F3F2EC;font-size:17px;letter-spacing:.04em">NerdOS – Opinionated System</div>
+      <div class="grub">${items.map((it, i) => `<div class="it ${i === S.bootSel ? "sel" : ""}" data-act="bootsel" data-v="${i}">${i === S.bootSel ? "▸ " : "  "}${it[0]}<small>${it[1]}</small></div>`).join("")}</div>
+      <div class="grub-foot" id="grubfoot">↑ ↓ choose · Enter starts · starting in 5 s</div></div>`;
+  },
+  welcome() {
+    const ok = S.online;
+    const rows = [
+      ["Firmware", S.checks > 0 ? "ok" : "run", "UEFI · Secure Boot off", ""],
+      ["Network", !ok ? "warn" : S.checks > 1 ? "ok" : "run", ok ? (S.wifi ? `Wi-Fi · ${esc(S.wifi)}` : "Ethernet · enp5s0 · 192.168.1.42") : "Not connected", ok ? "" : "Connect to verify the release and download parts of your desktop"],
+      ["Release", !ok ? "wait" : S.checks > 2 ? "ok" : S.checks > 1 ? "run" : "wait", ok && S.checks > 2 ? `NerdOS ${VERSION} · signature verified` : "Waiting for the network", ok && S.checks > 2 ? "beta channel · exact revision 9dce94a…" : ""],
+      ["Disks", S.checks > 3 ? "ok" : "run", "3 found · 2 can be used", ""],
+      ["Graphics", S.checks > 3 ? "ok" : "run", S.nvidia ? "Intel Arc + NVIDIA GeForce RTX 4070" : "AMD Radeon 780M", S.nvidia ? "NVIDIA driver choice on the review page" : ""],
+    ];
+    const ready = ok && S.checks > 3;
+    return `${topBar(0)}<div class="body full" style="padding-top:60px">
+      <div style="display:grid;grid-template-columns:1fr 470px;gap:64px">
+        <div>
+          <div class="kicker lime">Fresh installation · ${VERSION}</div>
+          <h1>Let's make this<br>computer yours.</h1>
+          <div class="lead">Three short steps. Your disks stay untouched until you review everything and confirm.</div>
+          <div style="margin-top:34px;max-width:520px">
+            <button class="pick" data-act="sheet" data-v="lang"><span class="pk-l">Language</span><span class="pk-v">${langName()}</span>${I("right")}</button>
+            <button class="pick" data-act="sheet" data-v="kb"><span class="pk-l">Keyboard</span><span class="pk-v">${kbName()}</span>${I("right")}</button>
+            <input class="in" placeholder="Type here to test your keyboard" style="margin-top:4px">
+          </div>
+          <div style="margin-top:30px;display:flex;gap:14px;align-items:center">
+            <button class="btn primary" data-act="go" data-v="disk" ${ready ? "" : "disabled"}>Get started ${I("right")}</button>
+            ${!ok ? `<button class="btn" data-act="sheet" data-v="wifi">${I("wifi")}Connect to Wi-Fi</button>` : ""}
+          </div>
+        </div>
+        <div class="card checks" style="align-self:start">
+          <div class="lbl" style="margin:16px 0 4px">System check <span class="aux">${ready ? "all good" : !ok ? "needs a network" : "checking…"}</span></div>
+          ${rows.map(r => `<div class="check"><span class="mk ${r[1]}">${r[1] === "ok" ? I("check") : r[1] === "warn" ? "!" : ""}</span><span class="t">${r[0]}</span><span class="v">${r[2]}${r[3] ? `<small>${r[3]}</small>` : ""}</span></div>`).join("")}
+          <div style="color:var(--faint);font-size:13px;padding:14px 0 16px;border-top:1px solid var(--line)">Checks run again right before the disk is erased.</div>
+        </div>
+      </div></div>`;
+  },
+  disk() {
+    const usable = DISKS.filter(d => d.available || S.diskMore);
+    return `${topBar(1)}<div class="body">
+      <h1 class="mid">Where should NerdOS live?</h1>
+      <div class="lead" style="margin-bottom:22px">NerdOS uses the whole disk. You'll review everything before anything is erased.</div>
+      <div style="display:grid;grid-template-columns:1fr 400px;gap:36px">
+        <div>${usable.map(d => `<button class="disk ${d.path === S.disk ? "sel" : ""} ${d.available ? "" : "off"}" data-act="${d.available ? "disk" : ""}" data-v="${d.path}">
+            <span class="ic">${I(d.bus === "USB" ? "usb" : "disk")}</span>
+            <span><span class="nm">${esc(d.model)}</span><span class="meta"><span class="tag mono">${d.path}</span><span>${d.bus}</span>${d.available ? `<span>· has ${d.contents.join(", ")}</span>` : `<span class="tag amber">${d.reason}</span>`}${S.diskMore ? `<span class="mono" style="font-size:12px;color:var(--faint)">serial ${d.serial} · ${gib(d.size)}</span>` : ""}</span></span>
+            <span class="sz">${gb(d.size)}</span><span class="radio">${d.path === S.disk ? I("check") : ""}</span></button>`).join("")}
+          <div class="more"><button class="more-btn ${S.diskMore ? "open" : ""}" data-act="diskmore">${I("right")}${S.diskMore ? "Fewer details" : "More options · show serials and the disk that can't be used"}</button>
+          ${S.diskMore ? `<button class="link" data-act="toast" data-v="Disks rescanned. Nothing changed." style="margin-left:18px">${"Refresh disks"}</button>` : ""}</div>
+        </div>
+        <div class="card" style="align-self:start">
+          <div class="opt">${I("lock")}<div class="tx"><b>Encrypt the disk</b><span>Recommended. Your password unlocks NerdOS at startup. Without it, anyone holding the disk can read your files.</span></div><button class="toggle" role="switch" aria-checked="${S.encrypted}" data-act="encrypt"></button></div>
+          <div class="opt">${I("disk")}<div class="tx"><b>Layout</b><span class="mono" style="font-size:13px">GPT · 16 GiB EFI (FAT32)<br>rest: ext4${S.encrypted ? " inside LUKS2" : ""}</span><br><span style="font-size:13px;color:var(--faint)">Set by the release. Minimum disk 64 GiB.</span></div></div>
+        </div>
+      </div></div>
+      ${foot("welcome", `<button class="btn primary" data-act="go" data-v="account" ${disk().available ? "" : "disabled"}>Continue ${I("right")}</button>`, `${I("shield")}Nothing is erased until you confirm on the review page.`)}`;
+  },
+  account() {
+    const z = BYID[S.tz];
+    return `${topBar(2)}<div class="body">
+      <h1 class="mid">Who's using this computer?</h1>
+      <div class="lead" style="margin-bottom:22px">One account with one password.${S.encrypted ? " That password also unlocks the disk." : ""}</div>
+      <div class="grid2">
+        <div>
+          <div class="field"><div class="lbl">Your name <span class="aux">optional</span></div><input class="in" id="fullName" placeholder="Ada Lovelace" value="${esc(S.fullName)}" autocomplete="off"></div>
+          <div class="field"><div class="lbl">Username <span class="aux" id="ucount">${S.username.length}/31</span></div>
+            <input class="in mono" id="username" placeholder="ada" value="${esc(S.username)}" autocomplete="off" spellcheck="false" autocapitalize="none">
+            <div class="help" id="uhelp"></div></div>
+          <div class="field"><div class="lbl">Password <span class="aux">8+ characters · typing with ${kbName()}</span></div>
+            <div style="position:relative"><input class="in" id="pw" type="${S.showPw ? "text" : "password"}" value="${esc(S.password)}" placeholder="At least 8 characters"><button class="eye" data-act="showpw">${S.showPw ? "Hide" : "Show"}</button></div>
+            <div class="meter" id="meter"><i></i><i></i><i></i><i></i></div></div>
+          <div class="field" id="confirmField"><div class="lbl">Confirm password</div>
+            <input class="in" id="pw2" type="${S.showPw ? "text" : "password"}" value="${esc(S.confirm)}" placeholder="Type it once more">
+            <div class="help" id="chelp"></div></div>
+        </div>
+        <div>
+          <div class="lbl">Time zone <span class="aux">${S.tzSource === "detected" ? "detected from your connection" : "chosen by you"}</span></div>
+          <div class="card tzcard" data-act="sheet" data-v="tz" style="cursor:pointer">
+            <canvas id="minimap" width="1016" height="340"></canvas>
+            <div class="row" style="align-items:flex-end;gap:18px;margin-top:14px"><div class="clock" data-clock="${S.tz}">${zoneTime(S.tz)}</div>
+              <div style="flex:1;min-width:0"><div class="city" style="margin:0">${esc(zoneTitle(z))}</div><div class="sub">${esc(zoneSub(z))} · ${zoneOffset(S.tz)}</div></div>
+              <span class="link" style="margin-bottom:4px">Change</span></div>
+          </div>
+          <div class="field" style="margin-top:24px"><div class="lbl">Computer name <span class="aux">${S.hostEdited ? "custom" : "follows your username"}</span></div>
+            <input class="in mono" id="host" value="${esc(hostname())}" autocomplete="off" spellcheck="false">
+            <div class="help" id="hhelp">${S.apps.localNetworkServices ? `Visible on your network as <span class="mono" style="color:var(--fog)">&nbsp;${esc(hostname())}.local</span>` : ""}</div></div>
+        </div>
+      </div></div>
+      ${foot("disk", `<button class="btn primary" id="accNext" data-act="go" data-v="review">Continue ${I("right")}</button>`, `<span class="home" id="homeNote"></span>`)}`;
+  },
+  review() {
+    const d = disk(), z = BYID[S.tz];
+    const appsOn = APPS.filter(a => S.apps[a[0]]).length;
+    const rows = [
+      ["Account", `${S.fullName ? esc(S.fullName) + " · " : ""}<span class="mono">${esc(S.username || "ada")}</span>`, "account", `password login · home /home/${esc(S.username || "ada")}`],
+      ["Computer", `<span class="mono">${esc(hostname())}</span>`, "account", ""],
+      ["Time zone", `${esc(zoneTitle(z))} · <span data-clock="${S.tz}">${zoneTime(S.tz)}</span> now`, "tz", `${S.tz} · ${zoneOffset(S.tz)}`],
+      ["Language", `${langName()} · keyboard ${kbName()}`, "lang", `locale ${S.lang} · disk unlock keymap ${CONSOLE[S.kb] || S.kb}`],
+      ["Encryption", S.encrypted ? "On · LUKS2" : `<span style="color:var(--amber)">Off · files are readable by anyone with the disk</span>`, "disk", S.encrypted ? "unlocked with your password at startup" : ""],
+      ["Applications", appsOn === APPS.length ? "Everything included" : `${appsOn} of ${APPS.length} groups`, "apps", APPS.filter(a => !S.apps[a[0]]).map(a => a[1]).join(", ") ? "off: " + APPS.filter(a => !S.apps[a[0]]).map(a => a[1]).join(", ") : "all 9 groups · change any time later"],
+      ...(S.nvidia ? [["Graphics", `NVIDIA · ${S.nvidiaOpen ? "open kernel driver" : "proprietary legacy driver"}`, "gpu", S.nvidiaOpen ? "Turing or newer (GTX 16, RTX 20 and up)" : "Maxwell, Pascal or Volta"]] : []),
+      ["Release", `NerdOS ${VERSION}`, "", "signature verified · beta channel"],
+    ];
+    return `${topBar(3)}<div class="body">
+      <h1 class="mid">Ready when you are.</h1>
+      <div class="erase" style="margin-top:16px"><span class="ic">${I("alert")}</span><div><b>${esc(d.model)} will be erased</b><span>Every partition and file on <span class="mono">${d.path}</span> (${gb(d.size)}) will be deleted, including ${d.contents.join(" and ")}.</span></div></div>
+      <div class="sum">${rows.map(r => `<div class="r"><span class="k1">${r[0]}</span><span class="v1">${r[1]}${r[3] ? `<small>${r[3]}</small>` : ""}</span>${r[2] ? `<button class="link" data-act="change" data-v="${r[2]}">${r[2] === "apps" || r[2] === "gpu" ? "Customize" : "Change"}</button>` : ""}</div>`).join("")}</div>
+      </div>
+      ${foot("account", `<button class="btn danger" data-act="install">${I("alert")}Erase ${esc(d.model.replace(/ \d+[GT]B$/, ""))} &amp; install</button>`, `${I("shield")}The disk's identity is checked again just before it is erased.`)}`;
+  },
+  installing() {
+    const st = S.stage, tip = TIPS[(st - 1) % TIPS.length];
+    const mm = String(Math.floor(S.elapsed / 60)).padStart(2, "0"), ss = String(S.elapsed % 60).padStart(2, "0");
+    return `${topBar(0).replace('class="chips"', 'class="chips" style="pointer-events:none;opacity:.6"')}<div class="body full" style="padding-top:56px">
+      <div style="display:grid;grid-template-columns:1fr 560px;gap:56px">
+        <div>
+          <div class="kicker lime">Installing · step ${st} of 6</div>
+          <h1>Your desktop is<br>on its way.</h1>
+          <div class="lead">Keep the power and internet connected. It finishes on its own, so you can step away.</div>
+          <div class="seg">${STAGES.map((_, i) => `<i class="${i + 1 < st ? "on" : i + 1 === st ? "cur" : ""}"></i>`).join("")}</div>
+          <div class="mono" style="color:var(--fog);font-size:14px">Elapsed <span id="elapsed" style="color:var(--ink)">${mm}:${ss}</span></div>
+          <div class="card tip"><div class="lbl" style="margin:0">While you wait</div>
+            <div class="keys">${tip.slice(0, -1).map(k => `<span class="key">${k}</span>`).join("<span>+</span>")}</div>
+            <div style="font-size:16px;color:var(--fog)">${tip[tip.length - 1]}</div></div>
+          <div style="margin-top:22px"><button class="btn small" data-act="sheet" data-v="log">${I("log")}Show installation details</button></div>
+        </div>
+        <div class="card stepsCard" style="align-self:start">${STAGES.map((s, i) => {
+          const c = i + 1 < st ? "done" : i + 1 === st ? "cur" : "";
+          return `<div class="ps ${c}"><span class="mk ${c === "done" ? "ok" : c === "cur" ? "run" : "wait"}">${c === "done" ? I("check") : ""}</span><span class="tx">${s[0]}${c === "cur" ? `<span class="dots"><i></i><i></i><i></i></span>` : ""}${c === "cur" && s[1] ? `<small>${s[1]}</small>` : ""}</span><span class="n">${i + 1}</span></div>`;
+        }).join("")}</div>
+      </div></div>`;
+  },
+  done() {
+    const u = S.username || "ada";
+    return `<div class="top"><div class="logo">${LOGO}</div></div><div class="body full center" style="padding-top:56px">
+      <div class="symbol">${SYMBOL}</div>
+      <h1 style="margin-top:30px">Welcome home, ${esc(u)}.</h1>
+      <div class="lead">NerdOS ${VERSION} is installed on <span class="mono" style="color:var(--ink)">${esc(hostname())}</span>.</div>
+      <div class="next">
+        <div class="card"><div class="n">01</div><b>Remove the USB drive</b><span>or choose the internal disk if this computer booted over the network.</span></div>
+        <div class="card"><div class="n">02</div><b>${S.encrypted ? "Unlock the disk" : "Wait for the login screen"}</b><span>${S.encrypted ? `Type your password at startup, using the ${kbName()} layout.` : "The disk is not encrypted."}</span></div>
+        <div class="card"><div class="n">03</div><b>Sign in as ${esc(u)}</b><span>The first login always asks for your password.</span></div>
+      </div>
+      <div style="display:flex;gap:14px"><button class="btn primary" data-act="restart">${I("restart")}Restart now</button><button class="btn" data-act="toast" data-v="Powering off…">${I("power")}Power off</button></div>
+    </div>`;
+  },
+  stopped() {
+    return `${topBar(0)}<div class="body full" style="padding-top:64px">
+      <div class="kicker amber">Stopped before any disk change</div>
+      <h1>Secure Boot is turned on.</h1>
+      <div class="lead">This installer isn't signed for Secure Boot yet, and it never turns Secure Boot off for you. None of your disks have been touched.</div>
+      <div class="stopbox"><span class="mk bad">${I("x")}</span><span class="t">Secure Boot</span><span class="mono">Enabled</span></div>
+      <ol class="howto"><li>Restart into your firmware settings (the button below does that).</li><li>Turn Secure Boot off, then save and exit.</li><li>Start the NerdOS installer again from this USB drive.</li></ol>
+      <div style="display:flex;gap:14px"><button class="btn primary" data-act="toast" data-v="Restarting into firmware settings…">${I("fw")}Restart into firmware settings</button><button class="btn" data-act="toast" data-v="Powering off…">${I("power")}Power off</button></div>
+    </div>`;
+  },
+};
+
+/* ── sheets ── */
+const SHEETS = {
+  wifi() {
+    return `<div class="sheet"><button class="x" data-act="close">${I("x")}</button><h3>Network</h3>
+      <div class="sub">Ethernet connects by itself. Wi-Fi you join here is used only for the installation.</div>
+      <div class="li ${S.online && !S.wifi ? "sel" : ""}" style="cursor:default">${I("eth")}<div class="a"><b>Ethernet</b><em>${S.online && !S.wifi ? "Connected · 192.168.1.42" : "No cable"}</em></div></div>
+      <div class="lbl" style="margin-top:18px">Wi-Fi networks <button class="link" data-act="toast" data-v="Scanning…" style="font-size:12px">Scan</button></div>
+      <div class="list">${WIFI.map((w, i) => `<div class="li ${S.wifi === w[0] ? "sel" : ""}" data-act="wifisel" data-v="${i}">${I("wifi")}<div class="a"><b>${esc(w[0])}</b><em>${w[2] === "802.1X" ? "Enterprise · username and password" : w[2] ? "Secured" : "Open"}${S.wifi === w[0] ? " · connected" : ""}</em></div><span class="mono" style="color:var(--faint);font-size:13px">${"▂▄▆█".slice(0, w[1])}</span>${w[2] ? I("lock") : ""}</div>
+        ${S.wifiSel === i && S.wifi !== w[0] ? `<div style="padding:6px 14px 14px">${w[2] === "802.1X" ? `<input class="in" placeholder="Username" style="margin-bottom:8px">` : ""}${w[2] ? `<input class="in" type="password" id="wifipw" placeholder="Password">` : ""}<div class="row" style="margin-top:10px"><button class="btn small primary" data-act="wificonnect" data-v="${i}">Connect</button><span class="help" id="wifimsg" style="margin:0"></span></div></div>` : ""}`).join("")}
+        <div class="li" data-act="toast" data-v="Hidden network: name, security and password">${I("wifi")}<div class="a"><b>Hidden network…</b></div></div></div></div>`;
+  },
+  kb() {
+    return `<div class="sheet"><button class="x" data-act="close">${I("x")}</button><h3>Keyboard</h3>
+      <div class="sub">Used for typing here, unlocking the disk and on your desktop.</div>
+      <input class="in" placeholder="Type to test: @ # € ß ø" style="margin-bottom:14px">
+      <div class="list">${LAYOUTS.map(l => `<div class="li ${S.kb === l[0] ? "sel" : ""}" data-act="kbsel" data-v="${l[0]}"><div class="a"><b>${l[1]}</b></div><span class="mono" style="color:var(--faint)">${l[0]}${CONSOLE[l[0]] ? ` · ${CONSOLE[l[0]]}` : ""}</span>${S.kb === l[0] ? I("check") : ""}</div>`).join("")}</div>
+      <div style="color:var(--faint);font-size:13px;margin-top:12px">Changing the layout redraws the screen and clears any password you typed, so you can retype it with the new layout. Console keymaps for disk unlock are shown after the dot.</div></div>`;
+  },
+  lang() {
+    return `<div class="sheet"><button class="x" data-act="close">${I("x")}</button><h3>Language</h3>
+      <div class="sub">Sets the system language and formats. The keyboard is chosen separately.</div>
+      <div class="list">${LANGS.map(l => `<div class="li ${S.lang === l[0] ? "sel" : ""}" data-act="langsel" data-v="${l[0]}"><div class="a"><b>${l[1]}</b></div><span class="mono" style="color:var(--faint);font-size:13px">${l[0]}</span>${S.lang === l[0] ? I("check") : ""}</div>`).join("")}</div></div>`;
+  },
+  tools() {
+    const items = [["log", "Installation log", "sheet:log"], ["term", "Recovery shell (tty2) · Alt+F1 returns", "toast:Switched to tty2. A root shell is waiting; press Alt+F1 to come back."], ["term", "Use the text installer", "toast:The text installer takes over tty1"], ["sep"], ["fw", "Restart into firmware settings", "toast:Restarting into firmware settings…"], ["restart", "Restart", "toast:Restarting…"], ["power", "Power off", "toast:Powering off…"]];
+    return `<div class="sheet menu">${items.map(it => it[0] === "sep" ? '<div class="sepl"></div>' : `<div class="li" data-act="${it[2].split(":")[0]}" data-v="${esc(it[2].split(":").slice(1).join(":"))}">${I(it[0])}<div class="a">${it[1]}</div></div>`).join("")}</div>`;
+  },
+  log() {
+    const t = "21:14";
+    const lines = [
+      `<b>${t}:02</b> · Configured DNS servers: 192.168.1.1`,
+      `<b>${t}:03</b> · HTTPS check: github.com reachable, certificate verified`,
+      `<b>${t}:04</b> · Release manifest v${VERSION}: signature ok, revision 9dce94a…`,
+      `<b>${t}:06</b> · sgdisk --zap-all ${disk().path}`,
+      `<b>${t}:06</b> · sgdisk -n 1:1MiB:+16GiB -t 1:ef00 -c "1:NerdOS EFI" -n 2:0:0 …`,
+      `<b>${t}:08</b> · cryptsetup luksFormat --type luks2 (key on stdin)`,
+      `<b>${t}:13</b> · mkfs.ext4 -L nerdos-root /dev/mapper/nerdos-install-root`,
+      `<b>${t}:21</b> · nixos-generate-config --root /run/nerdos-install-q3k/target`,
+      `<b>${t}:30</b> · nix flake lock path:/run/nerdos-install-q3k/target/var/lib/nerdos/working/initial`,
+      `<b>${t}:41</b> · nixos-install --root … --flake path:…#nerdos --no-root-passwd`,
+      `copying path '/nix/store/7xk…-linux-7.2.4' <span class="loc">from the USB payload</span>`,
+      `copying path '/nix/store/m2c…-hyprland-0.52.1' <span class="loc">from the USB payload</span>`,
+      `copying path '/nix/store/c0q…-quickshell-0.3.0' <span class="loc">from the USB payload</span>`,
+      `copying path '/nix/store/s9a…-steam-1.0.0.85' from 'https://cache.nixos.org'`,
+      `building '/nix/store/f1b…-nerdos-system-${VERSION}.drv'…`,
+    ];
+    return `<div class="sheet wide"><button class="x" data-act="close">${I("x")}</button><h3>Installation details</h3>
+      <div class="sub">Most recent 256 KiB of the private log <span class="mono">/run/nerdos-installer.log</span>. Passwords never appear here.</div>
+      <div class="log">${lines.join("\n")}</div>
+      <div class="row" style="margin-top:14px"><button class="btn small" data-act="toast" data-v="Saved to KINGSTON (sdb1) as nerdos-install-2026-10-23.log">Save to another USB stick</button><span style="flex:1"></span><button class="btn small" data-act="close">Close</button></div></div>`;
+  },
+  apps() {
+    return `<div class="sheet"><button class="x" data-act="close">${I("x")}</button><h3>Applications</h3>
+      <div class="sub">Everything is included by default. You can change any of these after installation too.</div>
+      <div class="list">${APPS.map(a => `<div class="li" data-act="appt" data-v="${a[0]}" style="height:62px"><div class="a"><b>${a[1]}</b><em>${a[2]}</em></div><button class="toggle" role="switch" aria-checked="${S.apps[a[0]]}" tabindex="-1" style="pointer-events:none"></button></div>`).join("")}</div></div>`;
+  },
+  gpu() {
+    return `<div class="sheet"><button class="x" data-act="close">${I("x")}</button><h3>NVIDIA driver</h3>
+      <div class="sub">Detected: NVIDIA GeForce RTX 4070 (10de:2786) with Intel Arc. PRIME offload is configured for you.</div>
+      <div class="list">
+        <div class="li ${S.nvidiaOpen ? "sel" : ""}" data-act="gpusel" data-v="1" style="height:70px"><div class="a"><b>Open kernel driver</b><em>Recommended for Turing and newer (GTX 16, RTX 20 and up)</em></div>${S.nvidiaOpen ? I("check") : ""}</div>
+        <div class="li ${!S.nvidiaOpen ? "sel" : ""}" data-act="gpusel" data-v="0" style="height:70px"><div class="a"><b>Proprietary legacy driver</b><em>For Maxwell, Pascal or Volta cards (legacy_580)</em></div>${!S.nvidiaOpen ? I("check") : ""}</div>
+      </div></div>`;
+  },
+  tz() {
+    return `<div class="sheet wide" style="top:24px"><button class="x" data-act="close">${I("x")}</button><h3>Time zone</h3>
+      <div class="sub">Search for a city, a country or an offset, or click the map. Times are live.</div>
+      <div class="tzgrid">
+        <div class="tzleft">
+          <input class="in" id="tzq" placeholder="City, country or UTC offset" value="${esc(S.tzQuery)}" autocomplete="off" spellcheck="false">
+          <label class="check2" data-act="tzfixed"><span class="bx ${S.tzFixed ? "on" : ""}">${S.tzFixed ? I("check") : ""}</span>Include fixed UTC offsets (no daylight saving)</label>
+          <div class="list" id="tzlist" style="margin-top:12px"></div>
+        </div>
+        <div>
+          <div class="mapbox"><canvas id="bigmap" width="1392" height="542"></canvas><div class="hov" id="hov"></div>
+            <div class="maplegend"><span><i style="background:#b4b7ac"></i>day</span><span><i style="background:#34363b;box-shadow:0 0 0 1px #4a4c52"></i>night</span><span><i style="background:#C8FF1F"></i>selected</span><span>tzdata ${D.tzdata}</span></div></div>
+          <div class="tzsel" id="tzsel"></div>
+        </div>
+      </div></div>`;
+  },
+};
+
+/* ── map ── */
+function sunPos(d = new Date()) {
+  const start = Date.UTC(d.getUTCFullYear(), 0, 0);
+  const day = (d - start) / 864e5;
+  const decl = -23.44 * Math.cos(2 * Math.PI / 365 * (day + 10));
+  const hours = d.getUTCHours() + d.getUTCMinutes() / 60;
+  return { decl, lon: (12 - hours) * 15 };
+}
+function elevation(lat, lon, s) {
+  const r = Math.PI / 180;
+  return Math.asin(Math.sin(lat * r) * Math.sin(s.decl * r) + Math.cos(lat * r) * Math.cos(s.decl * r) * Math.cos((lon - s.lon) * r)) / r;
+}
+const M = D.map, NR = M.rows.length, NC = M.rows[0].length;
+const mapXY = (lat, lon, W, H) => [((lon + 180) / M.step) * (W / NC), ((M.top - lat) / M.step + 0.5) * (H / NR)];
+function drawMap(cv, selId, pins = []) {
+  if (!cv) return;
+  const ctx = cv.getContext("2d"), W = cv.width, H = cv.height, cw = W / NC, ch = H / NR, r = Math.min(cw, ch) * 0.34, s = sunPos();
+  ctx.clearRect(0, 0, W, H);
+  for (let i = 0; i < NR; i++) {
+    const lat = M.top - i * M.step, row = M.rows[i];
+    for (let j = 0; j < NC; j++) {
+      if (row[j] !== "1") continue;
+      const lon = -180 + M.step / 2 + j * M.step, e = elevation(lat, lon, s);
+      ctx.fillStyle = e > 0 ? "#b4b7ac" : e > -6 ? "#6d7069" : "#34363b";
+      ctx.beginPath(); ctx.arc((j + 0.5) * cw, (i + 0.5) * ch, r, 0, 6.2832); ctx.fill();
+    }
+  }
+  ctx.fillStyle = "rgba(243,242,236,.85)";
+  for (const z of pins) { if (z.lat == null) continue; const [x, y] = mapXY(z.lat, z.lon, W, H); ctx.beginPath(); ctx.arc(x, y, r * 0.9, 0, 6.2832); ctx.fill(); }
+  const sel = BYID[selId];
+  if (sel && sel.lat != null) {
+    const [x, y] = mapXY(sel.lat, sel.lon, W, H);
+    ctx.strokeStyle = "rgba(200,255,31,.22)"; ctx.lineWidth = Math.max(1, W / 900);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.fillStyle = "rgba(200,255,31,.18)"; ctx.beginPath(); ctx.arc(x, y, r * 5, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = "#C8FF1F"; ctx.beginPath(); ctx.arc(x, y, r * 1.8, 0, 6.2832); ctx.fill();
+  }
+}
+function nearestZone(lat, lon) {
+  let best = null, bd = Infinity;
+  for (const z of ZONES) {
+    const dx = (z.lon - lon) * Math.cos(lat * Math.PI / 180), dy = z.lat - lat, d = dx * dx + dy * dy;
+    if (d < bd) { bd = d; best = z; }
+  }
+  return best;
+}
+
+/* ── tz sheet behaviour ── */
+function scrollSel(center) {
+  const list = $("#tzlist"), el = list && $(".li.sel", list);
+  if (!el) return;
+  const top = el.offsetTop - list.offsetTop;
+  if (center) list.scrollTop = top - list.clientHeight / 2 + el.offsetHeight / 2;
+  else if (top < list.scrollTop) list.scrollTop = top;
+  else if (top + el.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = top + el.offsetHeight - list.clientHeight;
+}
+function offsetMinutes(id, t) {
+  const s = new Intl.DateTimeFormat("en-US", { timeZone: id, timeZoneName: "longOffset" }).formatToParts(new Date(t)).find(p => p.type === "timeZoneName").value;
+  const m = s.match(/GMT([+-])(\d{2}):(\d{2})/);
+  return m ? (m[1] === "-" ? -1 : 1) * (+m[2] * 60 + +m[3]) : 0;
+}
+const changeCache = {};
+function nextChange(id) {
+  if (id in changeCache) return changeCache[id];
+  try {
+    const now = Date.now(), o0 = offsetMinutes(id, now);
+    let lo = now, hi = null;
+    for (let d = 1; d <= 400; d++) { const t = now + d * 864e5; if (offsetMinutes(id, t) !== o0) { hi = t; lo = t - 864e5; break; } }
+    if (!hi) return (changeCache[id] = null);
+    while (hi - lo > 60000) { const mid = Math.floor((lo + hi) / 2); if (offsetMinutes(id, mid) === o0) lo = mid; else hi = mid; }
+    const minute = Math.floor(hi / 60000) * 60000;
+    if (minute > lo && offsetMinutes(id, minute) !== o0) hi = minute;
+    const to = offsetMinutes(id, hi), diff = to - o0, wall = new Date(hi + o0 * 60000);
+    const day = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" }).format(wall);
+    const time = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(wall);
+    const amount = Math.abs(diff) === 60 ? "1 hour" : Math.abs(diff) + " minutes";
+    return (changeCache[id] = `Clocks go ${diff < 0 ? "back" : "forward"} ${amount} on ${day} at ${time}`);
+  } catch { return (changeCache[id] = null); }
+}
+function tzRender() {
+  const list = $("#tzlist"); if (!list) return;
+  const res = searchZones(S.tzQuery, S.tzFixed);
+  const pick = S.tzPick || S.tz;
+  list.innerHTML = res.length ? res.slice(0, 80).map(({ z, alias }) => `<div class="li ${z.id === pick ? "sel" : ""}" data-act="tzpick" data-v="${z.id}"><div class="a"><b>${esc(zoneTitle(z))}</b><span>${esc(zoneSub(z))}</span><em>${alias ? `formerly ${esc(alias.split("/").pop().replace(/_/g, " "))} · ` : ""}${esc(z.comment || z.id)}</em></div><div class="tm"><span data-clock="${z.id}">${zoneTime(z.id)}</span><small>${shortOffset(z.id)}</small></div></div>`).join("")
+    : `<div style="color:var(--faint);padding:20px 14px">No match. Try a city, a country, or an offset like utc+2.</div>`;
+  const z = BYID[pick];
+  const source = pick === S.tz ? (S.tzSource === "detected" ? "Detected from your internet connection" : "Your current choice") : "Not applied yet";
+  const change = nextChange(z.id);
+  $("#tzsel").innerHTML = `<div class="card" style="padding:4px 20px">
+      <div class="opt" style="padding:16px 0"><div class="clock" data-clock-s="${z.id}">${zoneTime(z.id, true)}</div><div class="z" style="flex:1;min-width:0"><b>${esc(zoneTitle(z))}${z.fixed ? "" : `, ${esc(z.country)}`}</b><span class="mono" style="font-size:13px">${z.id} · ${zoneOffset(z.id)}</span></div></div>
+      <div class="opt" style="padding:13px 0"><span style="width:130px;color:var(--fog);font-size:14.5px">Daylight saving</span><span style="flex:1;font-size:15px;color:${change ? "var(--amber)" : "var(--fog)"}">${change || "No clock changes in the next year"}</span></div>
+      <div class="opt" style="padding:13px 0"><span style="width:130px;color:var(--fog);font-size:14.5px">Source</span><span style="flex:1;font-size:15px">${source}</span><button class="link" data-act="tzdetect">${S.online ? "Detect again" : "Detect (needs network)"}</button></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="btn primary" data-act="tzuse">Use this time zone</button></div>`;
+  drawMap($("#bigmap"), pick, S.tzQuery ? res.map(r => r.z).slice(0, 60) : []);
+}
+function tzBind() {
+  const q = $("#tzq"); q.focus({ preventScroll: true });
+  q.addEventListener("input", () => { S.tzQuery = q.value; tzRender(); });
+  q.addEventListener("keydown", e => {
+    const res = searchZones(S.tzQuery, S.tzFixed); if (!res.length) return;
+    const i = res.findIndex(r => r.z.id === (S.tzPick || S.tz));
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); S.tzPick = res[Math.max(0, Math.min(res.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))].z.id; tzRender(); scrollSel(false); }
+    if (e.key === "Enter") { if (i < 0) S.tzPick = res[0].z.id; useTz(); }
+  });
+  const cv = $("#bigmap"), hov = $("#hov");
+  const toLatLon = e => { const r = cv.getBoundingClientRect(); const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height; return [M.top - (fy * NR - 0.5) * M.step, fx * 360 - 180, fx, fy]; };
+  cv.addEventListener("mousemove", e => { const [lat, lon, fx, fy] = toLatLon(e); const z = nearestZone(lat, lon); hov.style.display = "block"; hov.textContent = `${z.city} · ${zoneTime(z.id)}`; hov.style.left = (14 + fx * 696 + 12) + "px"; hov.style.top = (14 + fy * 271 - 10) + "px"; });
+  cv.addEventListener("mouseleave", () => { hov.style.display = "none"; });
+  cv.addEventListener("click", e => { const [lat, lon] = toLatLon(e); S.tzPick = nearestZone(lat, lon).id; S.tzQuery = ""; q.value = ""; tzRender(); scrollSel(true); });
+  tzRender();
+  scrollSel(true);
+}
+function useTz() { if (S.tzPick && S.tzPick !== S.tz) { S.tz = S.tzPick; S.tzSource = "manual"; } S.tzPick = null; closeSheet(); render(); }
+
+/* ── account behaviour ── */
+let flashTimer = null;
+function accountUpdate(note) {
+  const u = userState(), help = $("#uhelp"), un = $("#username");
+  if (!help) return;
+  if (note) { help.className = "help"; help.innerHTML = `<span class="flash">${esc(note)}</span>`; clearTimeout(flashTimer); flashTimer = setTimeout(() => accountUpdate(), 2600); }
+  else { help.className = "help" + (u.bad ? " bad" : u.ok ? " ok" : ""); help.innerHTML = u.ok ? `${I("check").replace("<svg", '<svg width="15" height="15"')} Looks good` : esc(u.msg); }
+  un.classList.toggle("bad", !!u.bad);
+  $("#ucount").textContent = `${S.username.length}/31`;
+  const host = $("#host"); if (!S.hostEdited && document.activeElement !== host) host.value = hostname();
+  $("#hhelp").innerHTML = S.apps.localNetworkServices ? `Visible on your network as <span class="mono" style="color:var(--fog)">&nbsp;${esc(hostname())}.local</span>` : "";
+  const lvl = pwLevel(S.password); $("#meter").className = "meter l" + lvl;
+  const c = $("#confirmField"); c.style.visibility = S.password.length >= 8 ? "visible" : "hidden";
+  const ch = $("#chelp"), match = S.confirm === S.password;
+  ch.className = "help" + (S.confirm && match ? " ok" : S.confirm.length >= S.password.length && S.confirm && !match ? " bad" : "");
+  ch.innerHTML = !S.confirm ? "" : match ? "Passwords match" : S.confirm.length >= S.password.length ? "Passwords don't match" : "";
+  $("#homeNote").innerHTML = S.username ? `home folder <b>/home/${esc(S.username)}</b>` : "";
+  $("#accNext").disabled = !(u.ok && S.password.length >= 8 && match && /^[a-z][a-z0-9-]{0,30}$/.test(hostname()) && !reserved(hostname()));
+}
+function bindNameInput(el, apply) {
+  el.addEventListener("input", () => {
+    const caret = el.selectionStart, raw = el.value;
+    const { out, note } = filterName(raw), before = filterName(raw.slice(0, caret)).out.length;
+    if (out !== raw) { el.value = out; el.setSelectionRange(before, before); }
+    apply(out, note);
+  });
+}
+function accountBind() {
+  const fn = $("#fullName"), un = $("#username"), pw = $("#pw"), pw2 = $("#pw2"), host = $("#host");
+  fn.addEventListener("input", () => { S.fullName = fn.value; if (!S.userEdited) { S.username = suggestUser(fn.value); un.value = S.username; } accountUpdate(); });
+  bindNameInput(un, (out, note) => { S.username = out; S.userEdited = out !== ""; accountUpdate(note); });
+  host.addEventListener("blur", () => { host.value = hostname(); });
+  bindNameInput(host, (out, note) => { S.hostname = out; S.hostEdited = out !== ""; accountUpdate(); if (note) { $("#hhelp").innerHTML = `<span class="flash">${esc(note.replace("usernames", "computer names"))}</span>`; } });
+  pw.addEventListener("input", () => { S.password = pw.value; accountUpdate(); });
+  pw2.addEventListener("input", () => { S.confirm = pw2.value; accountUpdate(); });
+  accountUpdate();
+  (S.username ? pw : fn).focus({ preventScroll: true });
+  drawMap($("#minimap"), S.tz);
+}
+
+/* ── flow ── */
+let simTimer = null, tickTimer = null, bootTimer = null;
+function render() {
+  clearInterval(bootTimer);
+  const html = SCREENS[S.screen]();
+  stage.className = "k" + (S.screen === "boot" ? " boot" : "");
+  stage.innerHTML = html + `<div id="sheetHost"></div><div class="toast" id="toast"></div>`;
+  if (S.screen === "account") accountBind();
+  if (S.screen === "boot") bootCountdown();
+  if (S.sheet) openSheet(S.sheet);
+  syncTabs();
+}
+function go(screen) {
+  if (screen === "installing") return startInstall();
+  if (S.screen === "installing" && screen !== "installing") stopInstall();
+  if (screen === "welcome" && S.checks < 4) runChecks();
+  S.screen = screen; S.sheet = null; render();
+}
+function runChecks() {
+  S.checks = 0;
+  const step = () => { if (S.checks >= 4) return; if (!S.online && S.checks >= 1) { S.checks = Math.max(S.checks, 1); if (S.screen === "welcome") render(); later(() => { S.checks = 4; if (S.screen === "welcome" && !S.sheet) render(); }, 900); return; } S.checks++; if (S.screen === "welcome" && !S.sheet) render(); if (S.checks < 4) later(step, 520); };
+  later(step, 450);
+}
+function bootCountdown() {
+  let n = 8;
+  const f0 = $("#grubfoot"); if (f0) f0.textContent = `↑ ↓ choose · Enter starts · starting in ${n} s`;
+  stage.onmouseenter = () => { if (S.screen !== "boot") return; clearInterval(bootTimer); const f = $("#grubfoot"); if (f) f.textContent = "↑ ↓ choose · Enter or double-click starts the highlighted entry"; };
+  bootTimer = setInterval(() => {
+    n--; const f = $("#grubfoot"); if (f) f.textContent = `↑ ↓ choose · Enter starts · starting in ${n} s`;
+    if (n <= 0) { clearInterval(bootTimer); bootStart(); }
+  }, 1000);
+}
+let booting = false;
+function bootStart() {
+  clearInterval(bootTimer);
+  if (booting) return;
+  if (S.bootSel === 2) { toast("Text mode starts nerdos-install --terminal on tty1"); return; }
+  if (S.bootSel >= 3) { toast(S.bootSel === 3 ? "Verbose boot: kernel and systemd messages, then the same installer" : "Opening UEFI firmware settings"); return; }
+  booting = true;
+  stage.innerHTML = `<div class="splash"><div class="symbol">${SYMBOL}</div></div>`;
+  later(() => { booting = false; go("welcome"); }, 1300);
+}
+function startInstall() {
+  S.screen = "installing"; S.stage = 1; S.elapsed = 0; S.sheet = null; render();
+  clearInterval(tickTimer);
+  tickTimer = setInterval(() => { S.elapsed += 60; const e = $("#elapsed"); if (e) e.textContent = `${String(Math.floor(S.elapsed / 60)).padStart(2, "0")}:${String(S.elapsed % 60).padStart(2, "0")}`; }, 1000);
+  const next = () => { if (S.stage >= 6) { stopInstall(); S.screen = "done"; render(); return; } S.stage++; if (!S.sheet) render(); simTimer = setTimeout(next, STAGE_MS[S.stage - 1]); };
+  simTimer = setTimeout(next, STAGE_MS[0]);
+}
+function stopInstall() { clearTimeout(simTimer); clearInterval(tickTimer); }
+function openSheet(name) {
+  S.sheet = name;
+  const host = $("#sheetHost");
+  host.innerHTML = `<div class="scrim" data-act="close"></div>` + SHEETS[name]();
+  if (name === "tz") { S.tzPick = S.tz; tzBind(); }
+  if (name === "wifi") $("#wifipw")?.focus({ preventScroll: true });
+}
+function closeSheet() { S.sheet = null; const h = $("#sheetHost"); if (h) h.innerHTML = ""; }
+function toast(msg) { const t = $("#toast"); if (!t) return; t.textContent = msg; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(() => { t.style.display = "none"; }, 2600); }
+
+const ACT = {
+  go: v => go(v), sheet: v => openSheet(v), close: () => { const was = S.sheet; closeSheet(); if (was === "tz") S.tzPick = null; if (["kb", "lang", "wifi", "apps", "gpu"].includes(was)) render(); },
+  toast: v => { if (v === "log") return; toast(v); if (S.sheet === "tools") closeSheet(); },
+  bootsel: v => { S.bootSel = +v; render(); }, disk: v => { S.disk = v; render(); },
+  diskmore: () => { S.diskMore = !S.diskMore; render(); }, encrypt: () => { S.encrypted = !S.encrypted; render(); },
+  showpw: () => { S.showPw = !S.showPw; ["#pw", "#pw2"].forEach(s => $(s).type = S.showPw ? "text" : "password"); $(".eye").textContent = S.showPw ? "Hide" : "Show"; },
+  change: v => { if (v === "account") go("account"); else if (v === "disk") go("disk"); else openSheet(v); },
+  install: () => go("installing"), restart: () => { S.screen = "boot"; S.bootSel = 0; S.checks = 0; render(); toast("Restarting… (back to the boot menu in this demo)"); },
+  kbsel: v => { if (v === S.kb) return; S.kb = v; const had = S.password || S.confirm; S.password = ""; S.confirm = ""; closeSheet(); stage.innerHTML = `<div style="position:absolute;inset:0;background:#1A1B1E"></div>`; later(() => { render(); if (had) toast("Layout changed. Please retype your password."); }, 260); },
+  langsel: v => { S.lang = v; closeSheet(); render(); },
+  wifisel: v => { const w = WIFI[+v]; if (!w[2]) { connectWifi(+v); return; } S.wifiSel = +v; openSheet("wifi"); },
+  wificonnect: v => connectWifi(+v),
+  appt: v => { S.apps[v] = !S.apps[v]; openSheet("apps"); },
+  gpusel: v => { S.nvidiaOpen = v === "1"; openSheet("gpu"); },
+  tzpick: v => { S.tzPick = v; tzRender(); }, tzuse: () => useTz(),
+  tzfixed: () => { S.tzFixed = !S.tzFixed; const bx = $(".check2 .bx"); bx.classList.toggle("on", S.tzFixed); bx.innerHTML = S.tzFixed ? I("check") : ""; tzRender(); },
+  tzdetect: () => { const b = $('[data-act="tzdetect"]'); if (!S.online) { b.textContent = "Connect a network first"; return; } b.textContent = "Detecting…"; later(() => { S.tzPick = "Europe/Amsterdam"; S.tzQuery = ""; const q = $("#tzq"); if (q) q.value = ""; tzRender(); scrollSel(true); toast("Detected Europe/Amsterdam from your connection"); }, 700); },
+};
+function connectWifi(i) {
+  const m = $("#wifimsg"); if (m) { m.className = "help"; m.textContent = "Connecting…"; }
+  later(() => { S.wifi = WIFI[i][0]; S.online = true; S.wifiSel = null; closeSheet(); if (S.screen === "welcome") { S.checks = 1; render(); runChecksFrom(); } else render(); toast(`Connected to ${WIFI[i][0]}`); }, 900);
+}
+function runChecksFrom() { const step = () => { if (S.checks >= 4) return; S.checks++; if (S.screen === "welcome" && !S.sheet) render(); later(step, 520); }; later(step, 400); }
+stage.addEventListener("click", e => {
+  if (S.screen === "boot" && !e.target.closest("input")) stage.focus({ preventScroll: true });
+  const t = e.target.closest("[data-act]"); if (!t || !stage.contains(t)) return;
+  const a = t.dataset.act; if (!a || !ACT[a]) return;
+  if (t.disabled) return;
+  if (a === "sheet" && t.dataset.v === "log") { openSheet("log"); return; }
+  ACT[a](t.dataset.v);
+});
+stage.tabIndex = 0;
+stage.style.outline = "none";
+stage.addEventListener("keydown", e => {
+  if (S.screen === "boot" && !booting && e.target === stage) {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); clearInterval(bootTimer); S.bootSel = (S.bootSel + (e.key === "ArrowDown" ? 1 : 4)) % 5; render(); clearInterval(bootTimer); }
+    if (e.key === "Enter") bootStart();
+  }
+  if (e.key === "Escape" && S.sheet) ACT.close();
+});
+stage.addEventListener("dblclick", e => { if (e.target.closest(".grub .it")) bootStart(); });
+
+/* clocks: once a second, only the text that shows a time */
+setInterval(() => {
+  for (const el of $$("[data-clock]", stage)) el.textContent = zoneTime(el.dataset.clock);
+  for (const el of $$("[data-clock-s]", stage)) el.textContent = zoneTime(el.dataset.clockS, true);
+}, 1000);
+
+/* ── page controls ── */
+const TABS = [["boot", "Boot menu"], ["welcome", "Welcome"], ["disk", "Disk"], ["account", "You"], ["review", "Review"], ["installing", "Installing"], ["done", "Done"], ["stopped", "Stop screen"]];
+$("#controls").innerHTML = TABS.map(t => `<button class="tab" data-tab="${t[0]}">${t[1]}</button>`).join("") +
+  `<span class="sep"></span><label><input type="checkbox" id="offline"> Start offline</label><label><input type="checkbox" id="nvidia" checked> NVIDIA GPU</label><label><input type="checkbox" id="actual"> Actual size</label>`;
+function syncTabs() { $$(".tab").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.tab === S.screen))); }
+$("#controls").addEventListener("click", e => {
+  const b = e.target.closest(".tab"); if (!b) return;
+  clearTimers();
+  if (["account", "review", "installing", "done"].includes(b.dataset.tab) && !S.username) { S.fullName = "Ada Lovelace"; S.username = "ada"; S.password = S.confirm = "correct horse battery"; }
+  if (b.dataset.tab === "welcome") S.checks = 0;
+  if (b.dataset.tab !== "welcome" && S.checks < 4 && S.online) S.checks = 4;
+  go(b.dataset.tab);
+});
+$("#offline").addEventListener("change", e => { S.online = !e.target.checked; S.wifi = null; clearTimers(); S.checks = 0; go("welcome"); });
+$("#nvidia").addEventListener("change", e => { S.nvidia = e.target.checked; render(); });
+let actual = false;
+$("#actual").addEventListener("change", e => { actual = e.target.checked; fit(); });
+function fit() {
+  const w = wrap.clientWidth || wrap.parentElement.clientWidth - 32;
+  const s = actual ? 1 : Math.min(1, w / 1280);
+  stage.style.transform = `scale(${s})`;
+  wrap.classList.toggle("actual", actual);
+  wrap.style.height = Math.round(800 * s) + "px";
+  if (actual) { stage.style.position = "relative"; } else { stage.style.position = "absolute"; }
+}
+new ResizeObserver(fit).observe(wrap.parentElement);
+fit();
+if (INITIAL !== "boot") { S.checks = 4; if (["account", "review", "installing", "done"].includes(INITIAL)) { S.fullName = "Ada Lovelace"; S.username = "ada"; S.password = S.confirm = "correct horse battery"; } }
+if (INITIAL.startsWith("sheet:")) { S.screen = "account"; S.fullName = "Ada Lovelace"; S.username = "ada"; S.password = S.confirm = "correct horse battery"; S.checks = 4; render(); openSheet(INITIAL.slice(6)); }
+else if (INITIAL === "installing") startInstall();
+else { S.screen = INITIAL; if (INITIAL === "welcome") runChecks(); render(); }
+}
+main({"map":{"step":2.0,"top":82.0,"rle":["45.13.2.3.1.13.1.1.101","42.4.1.8.1.25.17.6.32.4.40","34.1.4.1.1.1.5.4.2.27.17.2.2.1.78","29.1.2.2.1.1.3.2.2.2.15.20.40.3.14.1.1.8.12.2.19","28.4.11.1.18.18.37.2.14.12.35","27.3.1.7.2.2.3.8.9.16.38.2.6.2.1.3.1.23.6.5.15","9.10.5.1.1.1.4.9.2.2.3.3.1.5.7.16.21.5.19.2.1.43.5.1.4","0.1.6.25.4.3.2.5.1.2.4.4.6.11.24.12.2.1.2.65","1.4.1.41.6.3.1.2.4.9.6.1.1.3.13.11.3.70","10.35.2.1.1.1.4.3.7.6.9.3.13.5.1.7.1.70.1","7.36.8.3.11.4.24.6.2.70.1.6.2","8.8.3.24.8.4.2.1.35.6.2.1.3.62.4.2.7","11.2.10.21.7.8.28.1.8.2.4.58.9.2.9","10.1.13.22.6.8.27.1.6.1.1.1.4.58.9.3.9","23.1.1.24.1.11.24.2.2.1.4.66.8.2.10","26.23.2.11.23.1.1.4.1.70.6.1.11","26.1.1.29.4.1.28.70.1.1.18","29.28.3.4.24.72.20","28.30.1.1.29.16.4.50.21","28.27.2.1.31.5.1.1.2.6.6.48.3.2.17","28.27.30.7.2.1.1.2.2.4.3.1.3.44.5.1.19","28.25.32.5.4.1.5.1.2.47.1.3.6.1.19","29.23.34.4.6.2.3.1.1.46.3.2.26","29.23.38.5.13.42.3.2.3.2.20","31.20.35.9.13.42.5.2.23","32.18.35.13.2.2.5.44.4.1.24","32.1.1.11.2.2.36.29.1.36.29","33.9.7.1.34.23.1.6.2.35.29","35.6.8.1.33.24.1.7.4.31.30","36.5.41.26.1.10.5.25.1.1.29","37.4.9.1.31.26.2.10.5.10.1.11.33","37.5.3.1.5.2.29.27.1.9.7.7.3.7.37","39.7.5.1.4.1.25.27.2.7.9.5.5.6.7.1.29","41.1.1.3.36.28.1.5.11.3.7.1.1.5.6.1.29","44.4.34.29.1.2.13.3.9.6.5.2.28","47.1.34.30.3.1.12.2.9.1.1.4.7.1.27","47.1.4.7.24.32.13.2.9.1.2.1.6.1.1.1.28","49.1.1.9.23.32.15.1.8.1.11.2.27","51.10.1.1.22.6.1.22.26.1.7.1.3.1.27","51.13.30.20.24.1.1.2.5.2.31","51.14.30.18.26.3.4.3.31","50.15.30.16.29.2.3.4.31","50.18.27.16.29.2.3.3.2.1.5.1.1.2.20","49.22.25.14.31.2.4.1.8.6.4.1.13","49.23.24.13.34.1.15.6.2.1.12","50.23.24.13.35.2.12.3.1.1.5.1.10","51.21.25.13.54.1.15","51.20.26.13.46.1.4.1.18","52.19.25.14.4.1.38.1.1.3.3.1.18","53.18.25.14.3.2.37.7.2.2.17","55.15.26.12.4.3.36.12.17","55.15.26.11.5.2.36.14.16","55.14.28.11.4.2.33.18.15","55.12.30.11.4.2.33.19.14","55.11.31.9.41.20.13","54.12.32.8.41.20.13","54.11.34.6.42.20.13","54.10.35.6.43.6.2.10.14","54.9.36.2.47.2.9.7.14","54.7.99.5.15","53.8.99.2.1.1.13.2.1","53.6.118.1.2","53.5.105.1.12.1.3","53.4.117.2.4","53.3.117.2.5","52.5.123","52.4.124","52.4.3.2.119","53.3.124","180"]},"countries":{"AD":"Andorra","AE":"United Arab Emirates","AF":"Afghanistan","AG":"Antigua & Barbuda","AI":"Anguilla","AL":"Albania","AM":"Armenia","AO":"Angola","AQ":"Antarctica","AR":"Argentina","AS":"Samoa (American)","AT":"Austria","AU":"Australia","AW":"Aruba","AX":"Åland Islands","AZ":"Azerbaijan","BA":"Bosnia & Herzegovina","BB":"Barbados","BD":"Bangladesh","BE":"Belgium","BF":"Burkina Faso","BG":"Bulgaria","BH":"Bahrain","BI":"Burundi","BJ":"Benin","BL":"St Barthelemy","BM":"Bermuda","BN":"Brunei","BO":"Bolivia","BQ":"Caribbean NL","BR":"Brazil","BS":"Bahamas","BT":"Bhutan","BV":"Bouvet Island","BW":"Botswana","BY":"Belarus","BZ":"Belize","CA":"Canada","CC":"Cocos (Keeling) Islands","CD":"Congo (Dem. Rep.)","CF":"Central African Rep.","CG":"Congo (Rep.)","CH":"Switzerland","CI":"Côte d’Ivoire","CK":"Cook Islands","CL":"Chile","CM":"Cameroon","CN":"China","CO":"Colombia","CR":"Costa Rica","CU":"Cuba","CV":"Cape Verde","CW":"Curaçao","CX":"Christmas Island","CY":"Cyprus","CZ":"Czech Republic","DE":"Germany","DJ":"Djibouti","DK":"Denmark","DM":"Dominica","DO":"Dominican Republic","DZ":"Algeria","EC":"Ecuador","EE":"Estonia","EG":"Egypt","EH":"Western Sahara","ER":"Eritrea","ES":"Spain","ET":"Ethiopia","FI":"Finland","FJ":"Fiji","FK":"Falkland Islands","FM":"Micronesia","FO":"Faroe Islands","FR":"France","GA":"Gabon","GB":"Britain (UK)","GD":"Grenada","GE":"Georgia","GF":"French Guiana","GG":"Guernsey","GH":"Ghana","GI":"Gibraltar","GL":"Greenland","GM":"Gambia","GN":"Guinea","GP":"Guadeloupe","GQ":"Equatorial Guinea","GR":"Greece","GS":"South Georgia & the South Sandwich Islands","GT":"Guatemala","GU":"Guam","GW":"Guinea-Bissau","GY":"Guyana","HK":"Hong Kong","HM":"Heard Island & McDonald Islands","HN":"Honduras","HR":"Croatia","HT":"Haiti","HU":"Hungary","ID":"Indonesia","IE":"Ireland","IL":"Israel","IM":"Isle of Man","IN":"India","IO":"British Indian Ocean Territory","IQ":"Iraq","IR":"Iran","IS":"Iceland","IT":"Italy","JE":"Jersey","JM":"Jamaica","JO":"Jordan","JP":"Japan","KE":"Kenya","KG":"Kyrgyzstan","KH":"Cambodia","KI":"Kiribati","KM":"Comoros","KN":"St Kitts & Nevis","KP":"Korea (North)","KR":"Korea (South)","KW":"Kuwait","KY":"Cayman Islands","KZ":"Kazakhstan","LA":"Laos","LB":"Lebanon","LC":"St Lucia","LI":"Liechtenstein","LK":"Sri Lanka","LR":"Liberia","LS":"Lesotho","LT":"Lithuania","LU":"Luxembourg","LV":"Latvia","LY":"Libya","MA":"Morocco","MC":"Monaco","MD":"Moldova","ME":"Montenegro","MF":"St Martin (French)","MG":"Madagascar","MH":"Marshall Islands","MK":"North Macedonia","ML":"Mali","MM":"Myanmar (Burma)","MN":"Mongolia","MO":"Macau","MP":"Northern Mariana Islands","MQ":"Martinique","MR":"Mauritania","MS":"Montserrat","MT":"Malta","MU":"Mauritius","MV":"Maldives","MW":"Malawi","MX":"Mexico","MY":"Malaysia","MZ":"Mozambique","NA":"Namibia","NC":"New Caledonia","NE":"Niger","NF":"Norfolk Island","NG":"Nigeria","NI":"Nicaragua","NL":"Netherlands","NO":"Norway","NP":"Nepal","NR":"Nauru","NU":"Niue","NZ":"New Zealand","OM":"Oman","PA":"Panama","PE":"Peru","PF":"French Polynesia","PG":"Papua New Guinea","PH":"Philippines","PK":"Pakistan","PL":"Poland","PM":"St Pierre & Miquelon","PN":"Pitcairn","PR":"Puerto Rico","PS":"Palestine","PT":"Portugal","PW":"Palau","PY":"Paraguay","QA":"Qatar","RE":"Réunion","RO":"Romania","RS":"Serbia","RU":"Russia","RW":"Rwanda","SA":"Saudi Arabia","SB":"Solomon Islands","SC":"Seychelles","SD":"Sudan","SE":"Sweden","SG":"Singapore","SH":"St Helena","SI":"Slovenia","SJ":"Svalbard & Jan Mayen","SK":"Slovakia","SL":"Sierra Leone","SM":"San Marino","SN":"Senegal","SO":"Somalia","SR":"Suriname","SS":"South Sudan","ST":"Sao Tome & Principe","SV":"El Salvador","SX":"St Maarten (Dutch)","SY":"Syria","SZ":"Eswatini (Swaziland)","TC":"Turks & Caicos Is","TD":"Chad","TF":"French S. Terr.","TG":"Togo","TH":"Thailand","TJ":"Tajikistan","TK":"Tokelau","TL":"East Timor","TM":"Turkmenistan","TN":"Tunisia","TO":"Tonga","TR":"Turkey","TT":"Trinidad & Tobago","TV":"Tuvalu","TW":"Taiwan","TZ":"Tanzania","UA":"Ukraine","UG":"Uganda","UM":"US minor outlying islands","US":"United States","UY":"Uruguay","UZ":"Uzbekistan","VA":"Vatican City","VC":"St Vincent","VE":"Venezuela","VG":"Virgin Islands (UK)","VI":"Virgin Islands (US)","VN":"Vietnam","VU":"Vanuatu","WF":"Wallis & Futuna","WS":"Samoa (western)","YE":"Yemen","YT":"Mayotte","ZA":"South Africa","ZM":"Zambia","ZW":"Zimbabwe"},"zones":[["Europe/Andorra","AD",42.5,1.52,""],["Asia/Dubai","AE",25.3,55.3,""],["Asia/Kabul","AF",34.52,69.2,""],["America/Antigua","AG",17.05,-61.8,""],["America/Anguilla","AI",18.2,-63.07,""],["Europe/Tirane","AL",41.33,19.83,""],["Asia/Yerevan","AM",40.18,44.5,""],["Africa/Luanda","AO",-8.8,13.23,""],["Antarctica/McMurdo","AQ",-77.83,166.6,"New Zealand time - McMurdo, South Pole"],["Antarctica/Casey","AQ",-66.28,110.52,"Casey"],["Antarctica/Davis","AQ",-68.58,77.97,"Davis"],["Antarctica/DumontDUrville","AQ",-66.67,140.02,"Dumont-d'Urville"],["Antarctica/Mawson","AQ",-67.6,62.88,"Mawson"],["Antarctica/Palmer","AQ",-64.8,-64.1,"Palmer"],["Antarctica/Rothera","AQ",-67.57,-68.13,"Rothera"],["Antarctica/Syowa","AQ",-69.01,39.59,"Syowa"],["Antarctica/Troll","AQ",-72.01,2.53,"Troll"],["Antarctica/Vostok","AQ",-78.4,106.9,"Vostok"],["America/Argentina/Buenos_Aires","AR",-34.6,-58.45,"Buenos Aires (BA, CF)"],["America/Argentina/Cordoba","AR",-31.4,-64.18,"Argentina (most areas: CB, CC, CN, ER, FM, MN, SE, SF)"],["America/Argentina/Salta","AR",-24.78,-65.42,"Salta (SA, LP, NQ, RN)"],["America/Argentina/Jujuy","AR",-24.18,-65.3,"Jujuy (JY)"],["America/Argentina/Tucuman","AR",-26.82,-65.22,"Tucuman (TM)"],["America/Argentina/Catamarca","AR",-28.47,-65.78,"Catamarca (CT), Chubut (CH)"],["America/Argentina/La_Rioja","AR",-29.43,-66.85,"La Rioja (LR)"],["America/Argentina/San_Juan","AR",-31.53,-68.52,"San Juan (SJ)"],["America/Argentina/Mendoza","AR",-32.88,-68.82,"Mendoza (MZ)"],["America/Argentina/San_Luis","AR",-33.32,-66.35,"San Luis (SL)"],["America/Argentina/Rio_Gallegos","AR",-51.63,-69.22,"Santa Cruz (SC)"],["America/Argentina/Ushuaia","AR",-54.8,-68.3,"Tierra del Fuego (TF)"],["Pacific/Pago_Pago","AS",-14.27,-170.7,""],["Europe/Vienna","AT",48.22,16.33,""],["Australia/Lord_Howe","AU",-31.55,159.08,"Lord Howe Island"],["Antarctica/Macquarie","AU",-54.5,158.95,"Macquarie Island"],["Australia/Hobart","AU",-42.88,147.32,"Tasmania"],["Australia/Melbourne","AU",-37.82,144.97,"Victoria"],["Australia/Sydney","AU",-33.87,151.22,"New South Wales (most areas)"],["Australia/Broken_Hill","AU",-31.95,141.45,"New South Wales (Yancowinna)"],["Australia/Brisbane","AU",-27.47,153.03,"Queensland (most areas)"],["Australia/Lindeman","AU",-20.27,149.0,"Queensland (Whitsunday Islands)"],["Australia/Adelaide","AU",-34.92,138.58,"South Australia"],["Australia/Darwin","AU",-12.47,130.83,"Northern Territory"],["Australia/Perth","AU",-31.95,115.85,"Western Australia (most areas)"],["Australia/Eucla","AU",-31.72,128.87,"Western Australia (Eucla)"],["America/Aruba","AW",12.5,-69.97,""],["Europe/Mariehamn","AX",60.1,19.95,""],["Asia/Baku","AZ",40.38,49.85,""],["Europe/Sarajevo","BA",43.87,18.42,""],["America/Barbados","BB",13.1,-59.62,""],["Asia/Dhaka","BD",23.72,90.42,""],["Europe/Brussels","BE",50.83,4.33,""],["Africa/Ouagadougou","BF",12.37,-1.52,""],["Europe/Sofia","BG",42.68,23.32,""],["Asia/Bahrain","BH",26.38,50.58,""],["Africa/Bujumbura","BI",-3.38,29.37,""],["Africa/Porto-Novo","BJ",6.48,2.62,""],["America/St_Barthelemy","BL",17.88,-62.85,""],["Atlantic/Bermuda","BM",32.28,-64.77,""],["Asia/Brunei","BN",4.93,114.92,""],["America/La_Paz","BO",-16.5,-68.15,""],["America/Kralendijk","BQ",12.15,-68.28,""],["America/Noronha","BR",-3.85,-32.42,"Atlantic islands"],["America/Belem","BR",-1.45,-48.48,"Para (east), Amapa"],["America/Fortaleza","BR",-3.72,-38.5,"Brazil (northeast: MA, PI, CE, RN, PB)"],["America/Recife","BR",-8.05,-34.9,"Pernambuco"],["America/Araguaina","BR",-7.2,-48.2,"Tocantins"],["America/Maceio","BR",-9.67,-35.72,"Alagoas, Sergipe"],["America/Bahia","BR",-12.98,-38.52,"Bahia"],["America/Sao_Paulo","BR",-23.53,-46.62,"Brazil (southeast: GO, DF, MG, ES, RJ, SP, PR, SC, RS)"],["America/Campo_Grande","BR",-20.45,-54.62,"Mato Grosso do Sul"],["America/Cuiaba","BR",-15.58,-56.08,"Mato Grosso"],["America/Santarem","BR",-2.43,-54.87,"Para (west)"],["America/Porto_Velho","BR",-8.77,-63.9,"Rondonia"],["America/Boa_Vista","BR",2.82,-60.67,"Roraima"],["America/Manaus","BR",-3.13,-60.02,"Amazonas (east)"],["America/Eirunepe","BR",-6.67,-69.87,"Amazonas (west)"],["America/Rio_Branco","BR",-9.97,-67.8,"Acre"],["America/Nassau","BS",25.08,-77.35,""],["Asia/Thimphu","BT",27.47,89.65,""],["Africa/Gaborone","BW",-24.65,25.92,""],["Europe/Minsk","BY",53.9,27.57,""],["America/Belize","BZ",17.5,-88.2,""],["America/St_Johns","CA",47.57,-52.72,"Newfoundland, Labrador (SE)"],["America/Halifax","CA",44.65,-63.6,"Atlantic - NS (most areas), PE"],["America/Glace_Bay","CA",46.2,-59.95,"Atlantic - NS (Cape Breton)"],["America/Moncton","CA",46.1,-64.78,"Atlantic - New Brunswick"],["America/Goose_Bay","CA",53.33,-60.42,"Atlantic - Labrador (most areas)"],["America/Blanc-Sablon","CA",51.42,-57.12,"AST - QC (Lower North Shore)"],["America/Toronto","CA",43.65,-79.38,"Eastern - ON & QC (most areas)"],["America/Iqaluit","CA",63.73,-68.47,"Eastern - NU (most areas)"],["America/Atikokan","CA",48.76,-91.62,"EST - ON (Atikokan), NU (Coral H)"],["America/Winnipeg","CA",49.88,-97.15,"Central - ON (west), Manitoba"],["America/Resolute","CA",74.7,-94.83,"Central - NU (Resolute)"],["America/Rankin_Inlet","CA",62.82,-92.08,"Central - NU (central)"],["America/Regina","CA",50.4,-104.65,"CST - SK (most areas)"],["America/Swift_Current","CA",50.28,-107.83,"CST - SK (midwest)"],["America/Edmonton","CA",53.55,-113.47,"CST - AB, BC(E), NT(E), SK(W)"],["America/Cambridge_Bay","CA",69.11,-105.05,"Mountain - NU (west)"],["America/Inuvik","CA",68.35,-133.72,"Mountain - NT (west)"],["America/Vancouver","CA",49.27,-123.12,"MST - BC (most areas)"],["America/Creston","CA",49.1,-116.52,"MST - BC (Creston)"],["America/Dawson_Creek","CA",55.77,-120.23,"MST - BC (Dawson Cr, Ft St John)"],["America/Fort_Nelson","CA",58.8,-122.7,"MST - BC (Ft Nelson)"],["America/Whitehorse","CA",60.72,-135.05,"MST - Yukon (east)"],["America/Dawson","CA",64.07,-139.42,"MST - Yukon (west)"],["Indian/Cocos","CC",-12.17,96.92,""],["Africa/Kinshasa","CD",-4.3,15.3,"Dem. Rep. of Congo (west)"],["Africa/Lubumbashi","CD",-11.67,27.47,"Dem. Rep. of Congo (east)"],["Africa/Bangui","CF",4.37,18.58,""],["Africa/Brazzaville","CG",-4.27,15.28,""],["Europe/Zurich","CH",47.38,8.53,""],["Africa/Abidjan","CI",5.32,-4.03,""],["Pacific/Rarotonga","CK",-21.23,-159.77,""],["America/Santiago","CL",-33.45,-70.67,"most of Chile"],["America/Coyhaique","CL",-45.57,-72.07,"Aysen Region"],["America/Punta_Arenas","CL",-53.15,-70.92,"Magallanes Region"],["Pacific/Easter","CL",-27.15,-109.43,"Easter Island"],["Africa/Douala","CM",4.05,9.7,""],["Asia/Shanghai","CN",31.23,121.47,"Beijing Time"],["Asia/Urumqi","CN",43.8,87.58,"Xinjiang Time"],["America/Bogota","CO",4.6,-74.08,""],["America/Costa_Rica","CR",9.93,-84.08,""],["America/Havana","CU",23.13,-82.37,""],["Atlantic/Cape_Verde","CV",14.92,-23.52,""],["America/Curacao","CW",12.18,-69.0,""],["Indian/Christmas","CX",-10.42,105.72,""],["Asia/Nicosia","CY",35.17,33.37,"most of Cyprus"],["Asia/Famagusta","CY",35.12,33.95,"Northern Cyprus"],["Europe/Prague","CZ",50.08,14.43,""],["Europe/Berlin","DE",52.5,13.37,"most of Germany"],["Europe/Busingen","DE",47.7,8.68,"Busingen"],["Africa/Djibouti","DJ",11.6,43.15,""],["Europe/Copenhagen","DK",55.67,12.58,""],["America/Dominica","DM",15.3,-61.4,""],["America/Santo_Domingo","DO",18.47,-69.9,""],["Africa/Algiers","DZ",36.78,3.05,""],["America/Guayaquil","EC",-2.17,-79.83,"Ecuador (mainland)"],["Pacific/Galapagos","EC",-0.9,-89.6,"Galapagos Islands"],["Europe/Tallinn","EE",59.42,24.75,""],["Africa/Cairo","EG",30.05,31.25,""],["Africa/El_Aaiun","EH",27.15,-13.2,""],["Africa/Asmara","ER",15.33,38.88,""],["Europe/Madrid","ES",40.4,-3.68,"Spain (mainland)"],["Africa/Ceuta","ES",35.88,-5.32,"Ceuta, Melilla"],["Atlantic/Canary","ES",28.1,-15.4,"Canary Islands"],["Africa/Addis_Ababa","ET",9.03,38.7,""],["Europe/Helsinki","FI",60.17,24.97,""],["Pacific/Fiji","FJ",-18.13,178.42,""],["Atlantic/Stanley","FK",-51.7,-57.85,""],["Pacific/Chuuk","FM",7.42,151.78,"Chuuk/Truk, Yap"],["Pacific/Pohnpei","FM",6.97,158.22,"Pohnpei/Ponape"],["Pacific/Kosrae","FM",5.32,162.98,"Kosrae"],["Atlantic/Faroe","FO",62.02,-6.77,""],["Europe/Paris","FR",48.87,2.33,""],["Africa/Libreville","GA",0.38,9.45,""],["Europe/London","GB",51.51,-0.13,""],["America/Grenada","GD",12.05,-61.75,""],["Asia/Tbilisi","GE",41.72,44.82,""],["America/Cayenne","GF",4.93,-52.33,""],["Europe/Guernsey","GG",49.45,-2.54,""],["Africa/Accra","GH",5.55,-0.22,""],["Europe/Gibraltar","GI",36.13,-5.35,""],["America/Nuuk","GL",64.18,-51.73,"most of Greenland"],["America/Danmarkshavn","GL",76.77,-18.67,"National Park (east coast)"],["America/Scoresbysund","GL",70.48,-21.97,"Scoresbysund/Ittoqqortoormiit"],["America/Thule","GL",76.57,-68.78,"Thule/Pituffik"],["Africa/Banjul","GM",13.47,-16.65,""],["Africa/Conakry","GN",9.52,-13.72,""],["America/Guadeloupe","GP",16.23,-61.53,""],["Africa/Malabo","GQ",3.75,8.78,""],["Europe/Athens","GR",37.97,23.72,""],["Atlantic/South_Georgia","GS",-54.27,-36.53,""],["America/Guatemala","GT",14.63,-90.52,""],["Pacific/Guam","GU",13.47,144.75,""],["Africa/Bissau","GW",11.85,-15.58,""],["America/Guyana","GY",6.8,-58.17,""],["Asia/Hong_Kong","HK",22.28,114.15,""],["America/Tegucigalpa","HN",14.1,-87.22,""],["Europe/Zagreb","HR",45.8,15.97,""],["America/Port-au-Prince","HT",18.53,-72.33,""],["Europe/Budapest","HU",47.5,19.08,""],["Asia/Jakarta","ID",-6.17,106.8,"Java, Sumatra"],["Asia/Pontianak","ID",-0.03,109.33,"Borneo (west, central)"],["Asia/Makassar","ID",-5.12,119.4,"Borneo (east, south), Sulawesi/Celebes, Bali, Nusa Tengarra, Timor (west)"],["Asia/Jayapura","ID",-2.53,140.7,"New Guinea (West Papua / Irian Jaya), Malukus/Moluccas"],["Europe/Dublin","IE",53.33,-6.25,""],["Asia/Jerusalem","IL",31.78,35.22,""],["Europe/Isle_of_Man","IM",54.15,-4.47,""],["Asia/Kolkata","IN",22.53,88.37,""],["Indian/Chagos","IO",-7.33,72.42,""],["Asia/Baghdad","IQ",33.35,44.42,""],["Asia/Tehran","IR",35.67,51.43,""],["Atlantic/Reykjavik","IS",64.15,-21.85,""],["Europe/Rome","IT",41.9,12.48,""],["Europe/Jersey","JE",49.18,-2.11,""],["America/Jamaica","JM",17.97,-76.79,""],["Asia/Amman","JO",31.95,35.93,""],["Asia/Tokyo","JP",35.65,139.74,""],["Africa/Nairobi","KE",-1.28,36.82,""],["Asia/Bishkek","KG",42.9,74.6,""],["Asia/Phnom_Penh","KH",11.55,104.92,""],["Pacific/Tarawa","KI",1.42,173.0,"Gilbert Islands"],["Pacific/Kanton","KI",-2.78,-171.72,"Phoenix Islands"],["Pacific/Kiritimati","KI",1.87,-157.33,"Line Islands"],["Indian/Comoro","KM",-11.68,43.27,""],["America/St_Kitts","KN",17.3,-62.72,""],["Asia/Pyongyang","KP",39.02,125.75,""],["Asia/Seoul","KR",37.55,126.97,""],["Asia/Kuwait","KW",29.33,47.98,""],["America/Cayman","KY",19.3,-81.38,""],["Asia/Almaty","KZ",43.25,76.95,"most of Kazakhstan"],["Asia/Qyzylorda","KZ",44.8,65.47,"Qyzylorda/Kyzylorda/Kzyl-Orda"],["Asia/Qostanay","KZ",53.2,63.62,"Qostanay/Kostanay/Kustanay"],["Asia/Aqtobe","KZ",50.28,57.17,"Aqtobe/Aktobe"],["Asia/Aqtau","KZ",44.52,50.27,"Mangghystau/Mankistau"],["Asia/Atyrau","KZ",47.12,51.93,"Atyrau/Atirau/Gur'yev"],["Asia/Oral","KZ",51.22,51.35,"West Kazakhstan"],["Asia/Vientiane","LA",17.97,102.6,""],["Asia/Beirut","LB",33.88,35.5,""],["America/St_Lucia","LC",14.02,-61.0,""],["Europe/Vaduz","LI",47.15,9.52,""],["Asia/Colombo","LK",6.93,79.85,""],["Africa/Monrovia","LR",6.3,-10.78,""],["Africa/Maseru","LS",-29.47,27.5,""],["Europe/Vilnius","LT",54.68,25.32,""],["Europe/Luxembourg","LU",49.6,6.15,""],["Europe/Riga","LV",56.95,24.1,""],["Africa/Tripoli","LY",32.9,13.18,""],["Africa/Casablanca","MA",33.65,-7.58,""],["Europe/Monaco","MC",43.7,7.38,""],["Europe/Chisinau","MD",47.0,28.83,""],["Europe/Podgorica","ME",42.43,19.27,""],["America/Marigot","MF",18.07,-63.08,""],["Indian/Antananarivo","MG",-18.92,47.52,""],["Pacific/Majuro","MH",7.15,171.2,"most of Marshall Islands"],["Pacific/Kwajalein","MH",9.08,167.33,"Kwajalein"],["Europe/Skopje","MK",41.98,21.43,""],["Africa/Bamako","ML",12.65,-8.0,""],["Asia/Yangon","MM",16.78,96.17,""],["Asia/Ulaanbaatar","MN",47.92,106.88,"most of Mongolia"],["Asia/Hovd","MN",48.02,91.65,"Bayan-Olgii, Hovd, Uvs"],["Asia/Macau","MO",22.2,113.54,""],["Pacific/Saipan","MP",15.2,145.75,""],["America/Martinique","MQ",14.6,-61.08,""],["Africa/Nouakchott","MR",18.1,-15.95,""],["America/Montserrat","MS",16.72,-62.22,""],["Europe/Malta","MT",35.9,14.52,""],["Indian/Mauritius","MU",-20.17,57.5,""],["Indian/Maldives","MV",4.17,73.5,""],["Africa/Blantyre","MW",-15.78,35.0,""],["America/Mexico_City","MX",19.4,-99.15,"Central Mexico"],["America/Cancun","MX",21.08,-86.77,"Quintana Roo"],["America/Merida","MX",20.97,-89.62,"Campeche, Yucatan"],["America/Monterrey","MX",25.67,-100.32,"Durango; Coahuila, Nuevo Leon, Tamaulipas (most areas)"],["America/Matamoros","MX",25.83,-97.5,"Coahuila, Nuevo Leon, Tamaulipas (US border)"],["America/Chihuahua","MX",28.63,-106.08,"Chihuahua (most areas)"],["America/Ciudad_Juarez","MX",31.73,-106.48,"Chihuahua (US border - west)"],["America/Ojinaga","MX",29.57,-104.42,"Chihuahua (US border - east)"],["America/Mazatlan","MX",23.22,-106.42,"Baja California Sur, Nayarit (most areas), Sinaloa"],["America/Bahia_Banderas","MX",20.8,-105.25,"Bahia de Banderas"],["America/Hermosillo","MX",29.07,-110.97,"Sonora"],["America/Tijuana","MX",32.53,-117.02,"Baja California"],["Asia/Kuala_Lumpur","MY",3.17,101.7,"Malaysia (peninsula)"],["Asia/Kuching","MY",1.55,110.33,"Sabah, Sarawak"],["Africa/Maputo","MZ",-25.97,32.58,""],["Africa/Windhoek","NA",-22.57,17.1,""],["Pacific/Noumea","NC",-22.27,166.45,""],["Africa/Niamey","NE",13.52,2.12,""],["Pacific/Norfolk","NF",-29.05,167.97,""],["Africa/Lagos","NG",6.45,3.4,""],["America/Managua","NI",12.15,-86.28,""],["Europe/Amsterdam","NL",52.37,4.9,""],["Europe/Oslo","NO",59.92,10.75,""],["Asia/Kathmandu","NP",27.72,85.32,""],["Pacific/Nauru","NR",-0.52,166.92,""],["Pacific/Niue","NU",-19.02,-169.92,""],["Pacific/Auckland","NZ",-36.87,174.77,"most of New Zealand"],["Pacific/Chatham","NZ",-43.95,-176.55,"Chatham Islands"],["Asia/Muscat","OM",23.6,58.58,""],["America/Panama","PA",8.97,-79.53,""],["America/Lima","PE",-12.05,-77.05,""],["Pacific/Tahiti","PF",-17.53,-149.57,"Society Islands"],["Pacific/Marquesas","PF",-9.0,-139.5,"Marquesas Islands"],["Pacific/Gambier","PF",-23.13,-134.95,"Gambier Islands"],["Pacific/Port_Moresby","PG",-9.5,147.17,"most of Papua New Guinea"],["Pacific/Bougainville","PG",-6.22,155.57,"Bougainville"],["Asia/Manila","PH",14.59,120.97,""],["Asia/Karachi","PK",24.87,67.05,""],["Europe/Warsaw","PL",52.25,21.0,""],["America/Miquelon","PM",47.05,-56.33,""],["Pacific/Pitcairn","PN",-25.07,-130.08,""],["America/Puerto_Rico","PR",18.47,-66.11,""],["Asia/Gaza","PS",31.5,34.47,"Gaza Strip"],["Asia/Hebron","PS",31.53,35.09,"West Bank"],["Europe/Lisbon","PT",38.72,-9.13,"Portugal (mainland)"],["Atlantic/Madeira","PT",32.63,-16.9,"Madeira Islands"],["Atlantic/Azores","PT",37.73,-25.67,"Azores"],["Pacific/Palau","PW",7.33,134.48,""],["America/Asuncion","PY",-25.27,-57.67,""],["Asia/Qatar","QA",25.28,51.53,""],["Indian/Reunion","RE",-20.87,55.47,""],["Europe/Bucharest","RO",44.43,26.1,""],["Europe/Belgrade","RS",44.83,20.5,""],["Europe/Kaliningrad","RU",54.72,20.5,"MSK-01 - Kaliningrad"],["Europe/Moscow","RU",55.76,37.62,"MSK+00 - Moscow area"],["Europe/Simferopol","UA",44.95,34.1,"Crimea"],["Europe/Kirov","RU",58.6,49.65,"MSK+00 - Kirov"],["Europe/Volgograd","RU",48.73,44.42,"MSK+00 - Volgograd"],["Europe/Astrakhan","RU",46.35,48.05,"MSK+01 - Astrakhan"],["Europe/Saratov","RU",51.57,46.03,"MSK+01 - Saratov"],["Europe/Ulyanovsk","RU",54.33,48.4,"MSK+01 - Ulyanovsk"],["Europe/Samara","RU",53.2,50.15,"MSK+01 - Samara, Udmurtia"],["Asia/Yekaterinburg","RU",56.85,60.6,"MSK+02 - Urals"],["Asia/Omsk","RU",55.0,73.4,"MSK+03 - Omsk"],["Asia/Novosibirsk","RU",55.03,82.92,"MSK+04 - Novosibirsk"],["Asia/Barnaul","RU",53.37,83.75,"MSK+04 - Altai"],["Asia/Tomsk","RU",56.5,84.97,"MSK+04 - Tomsk"],["Asia/Novokuznetsk","RU",53.75,87.12,"MSK+04 - Kemerovo"],["Asia/Krasnoyarsk","RU",56.02,92.83,"MSK+04 - Krasnoyarsk area"],["Asia/Irkutsk","RU",52.27,104.33,"MSK+05 - Irkutsk, Buryatia"],["Asia/Chita","RU",52.05,113.47,"MSK+06 - Zabaykalsky"],["Asia/Yakutsk","RU",62.0,129.67,"MSK+06 - Lena River"],["Asia/Khandyga","RU",62.66,135.55,"MSK+06 - Tomponsky, Ust-Maysky"],["Asia/Vladivostok","RU",43.17,131.93,"MSK+07 - Amur River"],["Asia/Ust-Nera","RU",64.56,143.23,"MSK+07 - Oymyakonsky"],["Asia/Magadan","RU",59.57,150.8,"MSK+08 - Magadan"],["Asia/Sakhalin","RU",46.97,142.7,"MSK+08 - Sakhalin Island"],["Asia/Srednekolymsk","RU",67.47,153.72,"MSK+08 - Sakha (E), N Kuril Is"],["Asia/Kamchatka","RU",53.02,158.65,"MSK+09 - Kamchatka"],["Asia/Anadyr","RU",64.75,177.48,"MSK+09 - Bering Sea"],["Africa/Kigali","RW",-1.95,30.07,""],["Asia/Riyadh","SA",24.63,46.72,""],["Pacific/Guadalcanal","SB",-9.53,160.2,""],["Indian/Mahe","SC",-4.67,55.47,""],["Africa/Khartoum","SD",15.6,32.53,""],["Europe/Stockholm","SE",59.33,18.05,""],["Asia/Singapore","SG",1.28,103.85,""],["Atlantic/St_Helena","SH",-15.92,-5.7,""],["Europe/Ljubljana","SI",46.05,14.52,""],["Arctic/Longyearbyen","SJ",78.0,16.0,""],["Europe/Bratislava","SK",48.15,17.12,""],["Africa/Freetown","SL",8.5,-13.25,""],["Europe/San_Marino","SM",43.92,12.47,""],["Africa/Dakar","SN",14.67,-17.43,""],["Africa/Mogadishu","SO",2.07,45.37,""],["America/Paramaribo","SR",5.83,-55.17,""],["Africa/Juba","SS",4.85,31.62,""],["Africa/Sao_Tome","ST",0.33,6.73,""],["America/El_Salvador","SV",13.7,-89.2,""],["America/Lower_Princes","SX",18.05,-63.05,""],["Asia/Damascus","SY",33.5,36.3,""],["Africa/Mbabane","SZ",-26.3,31.1,""],["America/Grand_Turk","TC",21.47,-71.13,""],["Africa/Ndjamena","TD",12.12,15.05,""],["Indian/Kerguelen","TF",-49.35,70.22,""],["Africa/Lome","TG",6.13,1.22,""],["Asia/Bangkok","TH",13.75,100.52,""],["Asia/Dushanbe","TJ",38.58,68.8,""],["Pacific/Fakaofo","TK",-9.37,-171.23,""],["Asia/Dili","TL",-8.55,125.58,""],["Asia/Ashgabat","TM",37.95,58.38,""],["Africa/Tunis","TN",36.8,10.18,""],["Pacific/Tongatapu","TO",-21.13,-175.2,""],["Europe/Istanbul","TR",41.02,28.97,""],["America/Port_of_Spain","TT",10.65,-61.52,""],["Pacific/Funafuti","TV",-8.52,179.22,""],["Asia/Taipei","TW",25.05,121.5,""],["Africa/Dar_es_Salaam","TZ",-6.8,39.28,""],["Europe/Kyiv","UA",50.43,30.52,"most of Ukraine"],["Africa/Kampala","UG",0.32,32.42,""],["Pacific/Midway","UM",28.22,-177.37,"Midway Islands"],["Pacific/Wake","UM",19.28,166.62,"Wake Island"],["America/New_York","US",40.71,-74.01,"Eastern (most areas)"],["America/Detroit","US",42.33,-83.05,"Eastern - MI (most areas)"],["America/Kentucky/Louisville","US",38.25,-85.76,"Eastern - KY (Louisville area)"],["America/Kentucky/Monticello","US",36.83,-84.85,"Eastern - KY (Wayne)"],["America/Indiana/Indianapolis","US",39.77,-86.16,"Eastern - IN (most areas)"],["America/Indiana/Vincennes","US",38.68,-87.53,"Eastern - IN (Da, Du, K, Mn)"],["America/Indiana/Winamac","US",41.05,-86.6,"Eastern - IN (Pulaski)"],["America/Indiana/Marengo","US",38.38,-86.34,"Eastern - IN (Crawford)"],["America/Indiana/Petersburg","US",38.49,-87.28,"Eastern - IN (Pike)"],["America/Indiana/Vevay","US",38.75,-85.07,"Eastern - IN (Switzerland)"],["America/Chicago","US",41.85,-87.65,"Central (most areas)"],["America/Indiana/Tell_City","US",37.95,-86.76,"Central - IN (Perry)"],["America/Indiana/Knox","US",41.3,-86.62,"Central - IN (Starke)"],["America/Menominee","US",45.11,-87.61,"Central - MI (Wisconsin border)"],["America/North_Dakota/Center","US",47.12,-101.3,"Central - ND (Oliver)"],["America/North_Dakota/New_Salem","US",46.84,-101.41,"Central - ND (Morton rural)"],["America/North_Dakota/Beulah","US",47.26,-101.78,"Central - ND (Mercer)"],["America/Denver","US",39.74,-104.98,"Mountain (most areas)"],["America/Boise","US",43.61,-116.2,"Mountain - ID (south), OR (east)"],["America/Phoenix","US",33.45,-112.07,"MST - AZ (except Navajo)"],["America/Los_Angeles","US",34.05,-118.24,"Pacific"],["America/Anchorage","US",61.22,-149.9,"Alaska (most areas)"],["America/Juneau","US",58.3,-134.42,"Alaska - Juneau area"],["America/Sitka","US",57.18,-135.3,"Alaska - Sitka area"],["America/Metlakatla","US",55.13,-131.58,"Alaska - Annette Island"],["America/Yakutat","US",59.55,-139.73,"Alaska - Yakutat"],["America/Nome","US",64.5,-165.41,"Alaska (west)"],["America/Adak","US",51.88,-176.66,"Alaska - western Aleutians"],["Pacific/Honolulu","US",21.31,-157.86,"Hawaii"],["America/Montevideo","UY",-34.91,-56.21,""],["Asia/Samarkand","UZ",39.67,66.8,"Uzbekistan (west)"],["Asia/Tashkent","UZ",41.33,69.3,"Uzbekistan (east)"],["Europe/Vatican","VA",41.9,12.45,""],["America/St_Vincent","VC",13.15,-61.23,""],["America/Caracas","VE",10.5,-66.93,""],["America/Tortola","VG",18.45,-64.62,""],["America/St_Thomas","VI",18.35,-64.93,""],["Asia/Ho_Chi_Minh","VN",10.75,106.67,""],["Pacific/Efate","VU",-17.67,168.42,""],["Pacific/Wallis","WF",-13.3,-176.17,""],["Pacific/Apia","WS",-13.83,-171.73,""],["Asia/Aden","YE",12.75,45.2,""],["Indian/Mayotte","YT",-12.78,45.23,""],["Africa/Johannesburg","ZA",-26.25,28.0,""],["Africa/Lusaka","ZM",-15.42,28.28,""],["Africa/Harare","ZW",-17.83,31.05,""]],"aliases":{"Australia/ACT":"Australia/Sydney","Australia/LHI":"Australia/Lord_Howe","Australia/NSW":"Australia/Sydney","Australia/North":"Australia/Darwin","Australia/Queensland":"Australia/Brisbane","Australia/South":"Australia/Adelaide","Australia/Tasmania":"Australia/Hobart","Australia/Victoria":"Australia/Melbourne","Australia/West":"Australia/Perth","Australia/Yancowinna":"Australia/Broken_Hill","Brazil/Acre":"America/Rio_Branco","Brazil/DeNoronha":"America/Noronha","Brazil/East":"America/Sao_Paulo","Brazil/West":"America/Manaus","Canada/Atlantic":"America/Halifax","Canada/Central":"America/Winnipeg","Canada/Eastern":"America/Toronto","Canada/Mountain":"America/Edmonton","Canada/Newfoundland":"America/St_Johns","Canada/Pacific":"America/Vancouver","Canada/Saskatchewan":"America/Regina","Canada/Yukon":"America/Whitehorse","Chile/Continental":"America/Santiago","Chile/EasterIsland":"Pacific/Easter","Mexico/BajaNorte":"America/Tijuana","Mexico/BajaSur":"America/Mazatlan","Mexico/General":"America/Mexico_City","US/Alaska":"America/Anchorage","US/Aleutian":"America/Adak","US/Arizona":"America/Phoenix","US/Central":"America/Chicago","US/East-Indiana":"America/Indiana/Indianapolis","US/Eastern":"America/New_York","US/Hawaii":"Pacific/Honolulu","US/Indiana-Starke":"America/Indiana/Knox","US/Michigan":"America/Detroit","US/Mountain":"America/Denver","US/Pacific":"America/Los_Angeles","US/Samoa":"Pacific/Pago_Pago","America/Buenos_Aires":"America/Argentina/Buenos_Aires","America/Catamarca":"America/Argentina/Catamarca","America/Cordoba":"America/Argentina/Cordoba","America/Indianapolis":"America/Indiana/Indianapolis","America/Jujuy":"America/Argentina/Jujuy","America/Knox_IN":"America/Indiana/Knox","America/Louisville":"America/Kentucky/Louisville","America/Mendoza":"America/Argentina/Mendoza","Pacific/Samoa":"Pacific/Pago_Pago","Europe/Bratislava":"Europe/Prague","Europe/Busingen":"Europe/Zurich","Europe/Mariehamn":"Europe/Helsinki","Europe/Podgorica":"Europe/Belgrade","Europe/San_Marino":"Europe/Rome","Europe/Vatican":"Europe/Rome","America/Argentina/ComodRivadavia":"America/Argentina/Catamarca","America/Atka":"America/Adak","America/Ensenada":"America/Tijuana","America/Fort_Wayne":"America/Indiana/Indianapolis","America/Montreal":"America/Toronto","America/Nipigon":"America/Toronto","America/Pangnirtung":"America/Iqaluit","America/Porto_Acre":"America/Rio_Branco","America/Rainy_River":"America/Winnipeg","America/Rosario":"America/Argentina/Cordoba","America/Santa_Isabel":"America/Tijuana","America/Shiprock":"America/Denver","America/Thunder_Bay":"America/Toronto","America/Yellowknife":"America/Edmonton","Asia/Choibalsan":"Asia/Ulaanbaatar","Asia/Chongqing":"Asia/Shanghai","Asia/Harbin":"Asia/Shanghai","Asia/Kashgar":"Asia/Urumqi","Asia/Tel_Aviv":"Asia/Jerusalem","Australia/Canberra":"Australia/Sydney","Australia/Currie":"Australia/Hobart","Europe/Belfast":"Europe/London","Europe/Tiraspol":"Europe/Chisinau","Europe/Uzhgorod":"Europe/Kyiv","Europe/Zaporozhye":"Europe/Kyiv","Pacific/Enderbury":"Pacific/Kanton","Pacific/Johnston":"Pacific/Honolulu","America/Godthab":"America/Nuuk","Asia/Ashkhabad":"Asia/Ashgabat","Asia/Calcutta":"Asia/Kolkata","Asia/Chungking":"Asia/Shanghai","Asia/Dacca":"Asia/Dhaka","Asia/Istanbul":"Europe/Istanbul","Asia/Katmandu":"Asia/Kathmandu","Asia/Macao":"Asia/Macau","Asia/Rangoon":"Asia/Yangon","Asia/Saigon":"Asia/Ho_Chi_Minh","Asia/Thimbu":"Asia/Thimphu","Asia/Ujung_Pandang":"Asia/Makassar","Asia/Ulan_Bator":"Asia/Ulaanbaatar","Atlantic/Faeroe":"Atlantic/Faroe","Europe/Kiev":"Europe/Kyiv","Europe/Nicosia":"Asia/Nicosia","Africa/Asmera":"Africa/Asmara","Africa/Timbuktu":"Africa/Bamako","America/Coral_Harbour":"America/Atikokan","America/Kralendijk":"America/Curacao","America/Lower_Princes":"America/Curacao","America/Marigot":"America/Port_of_Spain","America/St_Barthelemy":"America/Port_of_Spain","America/Virgin":"America/St_Thomas","Antarctica/South_Pole":"Antarctica/McMurdo","Arctic/Longyearbyen":"Europe/Oslo","Atlantic/Jan_Mayen":"Europe/Oslo","Pacific/Truk":"Pacific/Chuuk","Pacific/Yap":"Pacific/Chuuk","Pacific/Ponape":"Pacific/Pohnpei"},"tzdata":"2026c"});
+</script>
+</body>
+</html>

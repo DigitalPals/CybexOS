@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare a completed ISO with one exact evaluated source, without booting it.
 
-Requires Nix, xorriso and unsquashfs (nix develop). Reference package outputs
+Requires Nix, xorriso, mcopy and unsquashfs (nix develop). Reference package outputs
 must already exist from that source's build; this command never builds them.
 It extracts only the compressed store plus selected store entries, without
 mounts, and never runs an executable taken from the image. This is image/source
@@ -77,6 +77,49 @@ def compare(left, right, label, normalize=False):
             'sha256': hashlib.sha256(json.dumps(a, sort_keys=True).encode()).hexdigest()}
 
 
+def check_boot_menu(menu, profiles, label):
+    """Check complete Linux boot entries, including specialised systems."""
+    expected = {tuple(profile[key] for key in ('kernel', 'initrd', 'system')) for profile in profiles}
+    observed, entry = set(), None
+
+    def finish():
+        if entry is None or 'linux' not in entry:
+            if entry and 'initrd' in entry:
+                raise ParityFailure('ISO initrd has no kernel: ' + label)
+            return
+        kernel = entry['linux'].split()[0]
+        if kernel.endswith('/boot/memtest.bin'):
+            return
+        init = re.findall(r'(?:^|\s)init=(\S+)', entry['linux'] + ' ' + entry.get('append', ''))
+        if 'initrd' not in entry or len(init) != 1 or not init[0].endswith('/init'):
+            raise ParityFailure('Incomplete or ambiguous ISO boot entry: ' + label)
+        identity = (kernel, entry['initrd'], init[0].removesuffix('/init'))
+        if identity not in expected:
+            raise ParityFailure('Unexpected ISO kernel/initrd/system combination: ' + label)
+        observed.add(identity)
+
+    for line in menu.splitlines():
+        if re.match(r'^\s*(?:menuentry\s|label\s)', line, re.IGNORECASE):
+            finish()
+            entry = {}
+        elif re.fullmatch(r'\s*}\s*', line):
+            finish()
+            entry = None
+        else:
+            match = re.match(r'^\s*(linux|initrd|append)\s+(.+)', line, re.IGNORECASE)
+            if not match:
+                continue
+            if entry is None:
+                raise ParityFailure('ISO boot directive outside an entry: ' + label)
+            command, arguments = match.group(1).lower(), match.group(2).strip()
+            if command in entry:
+                raise ParityFailure('Duplicate ISO boot directive: ' + label)
+            entry[command] = arguments
+    finish()
+    if observed != expected:
+        raise ParityFailure('Missing ISO boot profile: ' + label)
+
+
 def check(iso, flake, staging=None):
     metadata = json.loads(run('nix', 'flake', 'metadata', '--json', '--no-update-lock-file', flake))
     source = Path(metadata['path'])
@@ -84,6 +127,10 @@ def check(iso, flake, staging=None):
     expression = '''c: {
       desktop = toString c.nerdos.desktopPackage;
       updater = toString c.nerdos.updaterPackage;
+      installerUi = toString c.environment.etc."nerdos/installer-ui".source;
+      installerScreen = toString c.environment.etc."nerdos/installer-ui".source.screen;
+      payloadSystemPath = toString c.nerdos.installer.payload.config.system.path;
+      payloadEtc = toString c.nerdos.installer.payload.config.system.build.etc;
       system = toString c.system.build.toplevel;
       etc = toString c.system.build.etc;
       releaseFile = toString c.environment.etc."nerdos/release.json".source;
@@ -92,6 +139,11 @@ def check(iso, flake, staging=None):
       installerInputs = builtins.fromJSON c.environment.etc."nerdos/installer-inputs.json".text;
       installerInputsFile = toString c.environment.etc."nerdos/installer-inputs.json".source;
       release = builtins.fromJSON c.environment.etc."nerdos/release.json".text;
+      bootProfiles = let profile = value: {
+        system = toString value.system.build.toplevel;
+        kernel = "/boot" + toString value.boot.kernelPackages.kernel + "/" + value.system.boot.loader.kernelFile;
+        initrd = "/boot" + toString value.system.build.initialRamdisk + "/" + value.system.boot.loader.initrdFile;
+      }; in [ (profile c) ] ++ map (s: profile s.configuration) (builtins.attrValues c.specialisation);
     }'''
     expected = json.loads(run('nix', 'eval', '--json', '--no-update-lock-file',
                               '--option', 'allow-import-from-derivation', 'false',
@@ -102,7 +154,8 @@ def check(iso, flake, staging=None):
     # declared installer path is authoritative; its NAR must still match the
     # independently resolved exact source identity.
     paths = {'source': expected['installerSource'].strip()} | {name: expected[name] for name in
-              ('desktop', 'updater', 'system', 'etc', 'releaseFile', 'installerSourceFile', 'installerInputsFile')}
+              ('desktop', 'updater', 'installerUi', 'installerScreen', 'payloadSystemPath', 'payloadEtc', 'system', 'etc',
+               'releaseFile', 'installerSourceFile', 'installerInputsFile')}
     if not expected['installerInputs'] or len(set(expected['installerInputs'])) != len(expected['installerInputs']):
         raise ParityFailure('ISO input source declaration is empty or contains duplicates')
     paths.update({'inputSource:' + str(index): value for index, value in enumerate(expected['installerInputs'])})
@@ -149,7 +202,9 @@ def check(iso, flake, staging=None):
             ('desktopSkill', 'agent-skills/nerdos', selected['desktop'] / 'share/nerdos/skills/nerdos'),
             ('updaterSkill', 'agent-skills/nerdos', selected['updater'] / 'share/nerdos/skill'),
             ('machineTemplate', 'templates/machine', selected['updater'] / 'share/nerdos/machine'),
-            ('updaterCode', 'lifecycle/nerdos', selected['updater'] / 'lib/nerdos')):
+            ('updaterCode', 'lifecycle/nerdos', selected['updater'] / 'lib/nerdos'),
+            ('installerService', 'installer/nerdos-installerd', selected['installerUi'] / 'libexec/nerdos-installerd'),
+            ('installerNetworkHelper', 'desktop/quickshell/scripts/network-tool.py', selected['installerUi'] / 'libexec/network-tool.py')):
             checks[label] = compare(source / relative, installed, label, normalize=True)
         for name, original in [(p.name, p) for p in (source / 'lifecycle/bin').iterdir() if p.is_file()] + [('nerdos-install', source / 'installer/nerdos-install')]:
             wrapped = selected['updater'] / 'bin' / ('.' + name + '-wrapped')
@@ -157,8 +212,16 @@ def check(iso, flake, staging=None):
         for boot_path in ('/EFI/BOOT/grub.cfg', '/isolinux/isolinux.cfg'):
             output = task / Path(boot_path).name
             run('xorriso', '-osirrox', 'on', '-indev', iso, '-extract', boot_path, output)
-            if ('init=' + expected['system'] + '/init') not in output.read_text():
+            menu = output.read_text()
+            if ('init=' + expected['system'] + '/init') not in menu:
                 raise ParityFailure('ISO boot menu does not select the evaluated system: ' + boot_path)
+            check_boot_menu(menu, expected['bootProfiles'], boot_path)
+        efi_image = task / 'efi.img'
+        embedded_menu = task / 'embedded-grub.cfg'
+        run('xorriso', '-osirrox', 'on', '-indev', iso, '-extract', '/boot/efi.img', efi_image)
+        run('mcopy', '-i', efi_image, '::/EFI/BOOT/grub.cfg', embedded_menu)
+        if embedded_menu.read_bytes() != (task / 'grub.cfg').read_bytes():
+            raise ParityFailure('Embedded EFI boot menu differs from the ISO boot menu')
         # TemporaryDirectory removes only task-owned files. Restore owner write
         # permission on extracted read-only directories so cleanup works for
         # ordinary users as well as isolated root builders.
@@ -170,7 +233,7 @@ def check(iso, flake, staging=None):
     return {'kind': 'image-source-parity-evidence', 'result': 'passed', 'isoSha256': digest,
             'sourceNarHash': identity, 'sourceRevision': expected['release']['revision'],
             'release': expected['release'], 'checks': checks,
-            'scope': 'static source/image/package identity and payload parity; no installation/runtime qualification'}
+            'scope': 'static source/image/package identity, installer screen/service and offline payload parity; no installation/runtime qualification'}
 
 
 def main():

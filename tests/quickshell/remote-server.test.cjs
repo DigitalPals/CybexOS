@@ -12,12 +12,12 @@ function sample() {
         network: [{ name: "eth0", addresses: ["192.0.2.10"], rx: 1024, tx: 2048 },
             { name: "docker0", addresses: ["172.17.0.1"], rx: 999999, tx: 999999 }] };
 }
-test("remote widget starts enabled with an empty host and preserves user choices", () => {
+test("remote widget starts hidden with an empty host and preserves user choices", () => {
     const old = S.defaults();
     old.mods.right = old.mods.right.filter(m => m.id !== "remote");
     delete old.modOpts.remote;
     const migrated = S.merge(old);
-    assert.equal(migrated.mods.right.find(m => m.id === "remote").on, true);
+    assert.equal(migrated.mods.right.find(m => m.id === "remote").on, false);
     assert.equal(migrated.modOpts.remote.host, "");
     assert.equal(migrated.modOpts.remote.label, "");
     assert.equal(migrated.modOpts.remote.metric, "cpu");

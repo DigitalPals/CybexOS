@@ -2,6 +2,7 @@
 let
   cfg = config.nerdos;
   chatgptLinux = pkgs.callPackage ../packages/chatgpt.nix {};
+  assistant = pkgs.callPackage ../packages/assistant.nix {};
 in {
   options.nerdos.browser.bravePolicies = lib.mkOption {
     type = lib.types.attrsOf lib.types.anything;
@@ -19,7 +20,7 @@ in {
       kitty fish firefox nautilus sushi libreoffice pinta inkscape evince file-roller unicode-emoji
       system-config-printer libqalculate libva-utils v4l-utils ffmpegthumbnailer orca
       gnome-calculator gnome-text-editor simple-scan solaar mpv imv yt-dlp ffmpeg
-      localsend neovim nano git gh openssh curl wget jq ripgrep fd fzf zoxide direnv eza
+      localsend neovim nano git gh openssh curl wget jq ripgrep fd fzf zoxide direnv eza xdg-terminal-exec
       bat tree unzip zip btop fastfetch delta glow duf dust pciutils usbutils lm_sensors
       strace net-tools dmidecode yq-go file _7zz bc bzip2 cifs-utils compsize
       man-pages mtr nmap tcpdump traceroute whois bind.dnsutils hunspell hunspellDicts.en_US
@@ -28,7 +29,8 @@ in {
       (python3.withPackages (p: [ p.pygobject3 p.pillow p.dbus-python ]))
       gsettings-desktop-schemas adwaita-icon-theme adw-gtk3 glib
     ] ++ lib.optionals cfg.features.proprietary [ (pkgs.callPackage ../packages/brave-origin.nix {}) spotify chatgptLinux ]
-      ++ lib.optionals (cfg.features.proprietary && cfg.features.developer) [ claude-code ]
+      ++ lib.optionals (cfg.features.proprietary && (cfg.features.developer || cfg.features.assistant)) [ claude-code ]
+      ++ lib.optionals cfg.features.assistant [ assistant codex ]
       ++ lib.optionals cfg.features.developer [ git-lfs gcc cmake gnumake mold sccache rustup nodejs bun jdk25 tree-sitter python3 ruff shellcheck lazygit lazydocker android-tools codex opencode balena-cli (pkgs.callPackage ../packages/mdview.nix {}) ]
       ++ lib.optionals cfg.features.podman [ distrobox podman-compose ]
       ++ lib.optionals cfg.features.steam [ mangohud protonup-qt ]
@@ -56,6 +58,23 @@ in {
     programs.steam = { enable = lib.mkDefault cfg.features.steam; remotePlay.openFirewall = false; dedicatedServer.openFirewall = false; };
     programs.gamemode.enable = lib.mkDefault cfg.features.steam;
     services.flatpak.enable = lib.mkDefault true;
+    xdg.mime = {
+      enable = true;
+      defaultApplications = {
+        "x-scheme-handler/http" = lib.mkDefault (if cfg.features.proprietary then "brave-browser.desktop" else "firefox.desktop");
+        "x-scheme-handler/https" = lib.mkDefault (if cfg.features.proprietary then "brave-browser.desktop" else "firefox.desktop");
+        "text/html" = lib.mkDefault (if cfg.features.proprietary then "brave-browser.desktop" else "firefox.desktop");
+        "text/plain" = lib.mkDefault "org.gnome.TextEditor.desktop";
+        "application/pdf" = lib.mkDefault "org.gnome.Evince.desktop";
+        "image/png" = lib.mkDefault "imv.desktop";
+        "image/jpeg" = lib.mkDefault "imv.desktop";
+        "image/webp" = lib.mkDefault "imv.desktop";
+        "video/mp4" = lib.mkDefault "mpv.desktop";
+        "video/webm" = lib.mkDefault "mpv.desktop";
+        "video/x-matroska" = lib.mkDefault "mpv.desktop";
+      };
+    };
+    environment.etc."xdg/xdg-terminals.list".text = "kitty.desktop\n";
     services.gnome.gnome-keyring.enable = true;
     services.gnome.at-spi2-core.enable = lib.mkDefault true;
     services.speechd.enable = lib.mkDefault true;

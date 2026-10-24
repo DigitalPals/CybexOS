@@ -29,6 +29,14 @@ in {
     hardware.cpu.intel.updateMicrocode = lib.mkDefault true;
     hardware.cpu.amd.updateMicrocode = lib.mkDefault true;
     hardware.graphics = { enable = true; enable32Bit = cfg.features.steam; };
+    # Native KMS must also work before root/media mounting and disk unlock.
+    # Available modules are selected by udev for the actual hardware, rather
+    # than forcing every GPU driver to probe on every machine.
+    boot.initrd.availableKernelModules = [ "amdgpu" "radeon" "i915" "xe" "virtio_gpu" ]
+      ++ lib.optional (!cfg.hardware.nvidia) "nouveau";
+    boot.initrd.kernelModules = lib.optionals cfg.hardware.nvidia [
+      "nvidia" "nvidia_modeset" "nvidia_drm"
+    ];
     services.hardware.bolt.enable = lib.mkDefault true;
   } (lib.mkIf cfg.hardware.nvidia {
     # Selecting NVIDIA is an explicit driver choice, independent of the
@@ -43,7 +51,9 @@ in {
       modesetting.enable = true;
       open = cfg.hardware.nvidiaOpen;
       powerManagement.enable = true;
-      package = config.boot.kernelPackages.nvidiaPackages.stable;
+      # Leave package selection to NixOS's branch option. Pinning stable here
+      # prevented a machine from selecting legacy_580 for Maxwell/Pascal/Volta.
+      branch = lib.mkDefault (if cfg.hardware.nvidiaOpen then "stable" else "legacy_580");
     };
     hardware.nvidia.prime = lib.mkIf cfg.hardware.nvidiaPrime.enable {
       inherit (cfg.hardware.nvidiaPrime) intelBusId amdgpuBusId nvidiaBusId;

@@ -32,6 +32,7 @@ jobs:
       - run: python3 -B scripts/check_leftovers.py --repo . --allowlist scripts/rename-leftovers-allowlist.txt
       - run: nix develop -c tests/qml-lint
       - run: nix develop -c python3 -B tests/user-plugins.py
+      - run: nix develop -c python3 -B tests/assistant-overlay.py
       - run: nix develop -c python3 -B tests/nixos-native
   product:
     runs-on: [self-hosted, linux, x64, nerdos-isolated]

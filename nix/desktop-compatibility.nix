@@ -44,6 +44,19 @@ let
       '';
     });
 in {
+  # Our idle policy uses conditional listeners and battery retries introduced
+  # in 0.1.8. This release also fixes --config on a fresh account without a
+  # default hypridle.conf. Keep stable's dependencies and recipe.
+  hypridle = if lib.versionAtLeast prev.hypridle.version "0.1.8" then prev.hypridle else
+    prev.hypridle.overrideAttrs (old: {
+      version = "0.1.8";
+      src = prev.fetchFromGitHub {
+        owner = "hyprwm"; repo = "hypridle";
+        rev = "e5c01af0842bd66617f7004568df9406111d6e80";
+        hash = "sha256-Wi8kgoWStgYopfjEmHZWsAG7Gkghr9RGFjYLVmxSKpQ=";
+      };
+      meta = old.meta // { changelog = "https://github.com/hyprwm/hypridle/releases/tag/v0.1.8"; };
+    });
   # Do not force the newer C++ utility ABI onto unrelated stable programs
   # (portal, lock screen, etc.). Only the compositor/backend need this pin.
   hyprland = if lib.versionAtLeast prev.hyprland.version "0.56.2" then prev.hyprland else (prev.hyprland.override {

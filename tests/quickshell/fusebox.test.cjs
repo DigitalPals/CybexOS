@@ -30,7 +30,7 @@ test("Fusebox is a connected-service widget beside Model Usage, off on a plain i
     assert.deepEqual(d.modOpts.fusebox,
         { url: "", metric: "sessions", quotaDisplay: "used", hideEmails: true, notify: false });
     const connected = S.merge(null, { connectedWidgets: true });
-    assert.equal(connected.mods.right.find(m => m.id === "fusebox").on, true);
+    assert.equal(connected.mods.right.find(m => m.id === "fusebox").on, false);
     assert.doesNotMatch(read("Common/SettingsHelpers.js"), /fusebox:\s*\{[^}]*key/i,
         "the management key is never a setting");
 });
@@ -49,7 +49,7 @@ test("schema 28 follows Model Usage wherever the user put it and keeps every oth
     for (const column of ["left", "center", "right"])
         assert.deepEqual(migrated[column].filter(m => m.id !== "fusebox"), before[column],
             `${column} changed while adding Fusebox`);
-    assert.equal(S.merge(raw, { connectedWidgets: true }).mods.center.at(-1).on, true);
+    assert.equal(S.merge(raw, { connectedWidgets: true }).mods.center.at(-1).on, false);
 
     // Without Model Usage it leads the right column, as schema 26 placed Model Usage.
     const placed = S.migrateMods({ left: [], center: [], right: [{ id: "vol", on: true }] }, 27, {});

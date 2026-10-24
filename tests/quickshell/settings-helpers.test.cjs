@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 29);
+    assert.equal(H.VERSION, 30);
     assert.deepEqual(d.drawerTabs.map(t => t.id),
         ["overview", "sound", "network", "bluetooth", "power", "notifications"]);
     assert.ok(d.drawerTabs.every(t => t.on === true));
@@ -64,8 +64,10 @@ test("defaults carry the design values", () => {
         ["indicators", "clock", "weather", "notes"]);
     assert.equal(d.mods.center.find(m => m.id === "notes").on, true);
     assert.deepEqual(d.mods.right.map(m => m.id),
-        ["modelusage", "fusebox", "updates", "gh", "t3", "hermes", "remote", "tray", "notifications",
-         "vol", "wifi", "bt", "batt", "control"]);
+        ["modelusage", "fusebox", "updates", "gh", "t3", "hermes", "remote", "tray", "assistant",
+         "notifications", "vol", "wifi", "bt", "batt", "control"]);
+    assert.equal(d.mods.right.find(m => m.id === "assistant").on, true,
+        "the assistant's button hides itself where the feature is not installed");
     assert.equal(d.mods.left[1].on, true, "the media chip hides itself when nothing plays");
     assert.equal(d.mods.right.find(m => m.id === "bt").on, true,
         "Bluetooth matches the portable desktop; its auto-rule hides idle hardware");
@@ -73,7 +75,7 @@ test("defaults carry the design values", () => {
     assert.equal(d.mods.right.find(m => m.id === "updates").on, true);
     assert.equal(d.mods.right.find(m => m.id === "notifications").on, true);
     for (const id of H.CONNECTED_WIDGET_IDS)
-        assert.equal(d.mods.right.find(m => m.id === id).on, false,
+        assert.equal(d.mods.right.find(m => m.id === id).on, id === "modelusage",
             `${id} is available through Connected without crowding a fresh bar`);
     const moduleIds = [...d.mods.left, ...d.mods.center, ...d.mods.right]
         .map(module => module.id);
@@ -611,8 +613,8 @@ test("normalizeMods appends ids missing from the file at their default column", 
     assert.deepEqual(next.center.map(m => m.id),
         ["indicators", "clock", "weather", "notes"]);
     assert.deepEqual(next.right.map(m => m.id),
-        ["modelusage", "fusebox", "updates", "gh", "t3", "hermes", "remote", "tray", "notifications",
-         "wifi", "bt", "batt", "control"]);
+        ["modelusage", "fusebox", "updates", "gh", "t3", "hermes", "remote", "tray", "assistant",
+         "notifications", "wifi", "bt", "batt", "control"]);
     assert.ok(next.right.some(m => m.id === "bt" && m.on === true),
         "appended module keeps its default enable flag");
 });
@@ -792,7 +794,7 @@ test("schema-11 inserts notifications before the first right-side status widget"
 
     const migrated = H.merge({ v: 10, mods: raw }).mods.right;
     assert.deepEqual(migrated.map(mod => mod.id),
-        ["modelusage", "fusebox", "updates", "tray", "gh", "notifications", "wifi", "t3",
+        ["modelusage", "fusebox", "updates", "tray", "gh", "assistant", "notifications", "wifi", "t3",
          "hermes", "vol", "bt", "batt", "remote", "control"]);
 });
 
@@ -831,7 +833,7 @@ test("schema-14 inserts Hermes immediately after T3 without rewriting a custom l
         assert.deepEqual(migrated[col].filter(mod => !["hermes", "control"].includes(mod.id)), raw[col],
             `${col} entries changed while adding Hermes`);
     assert.deepEqual(migrated[t3Col][t3Index + 1],
-        { id: "hermes", on: true, detail: "auto" });
+        { id: "hermes", on: false, detail: "auto" });
     const all = [...migrated.left, ...migrated.center, ...migrated.right];
     assert.equal(all.filter(mod => mod.id === "hermes").length, 1);
 });
@@ -874,7 +876,7 @@ test("version one layouts insert Hermes after t3 in its column", () => {
     }).mods;
     assert.deepEqual(enabled.center.slice(0, 4), [
         { id: "t3", on: true, detail: "auto" },
-        { id: "hermes", on: true, detail: "auto" },
+        { id: "hermes", on: false, detail: "auto" },
         { id: "indicators", on: true, detail: "auto" },
         { id: "clock", on: true, detail: "auto" }
     ]);
@@ -887,13 +889,14 @@ test("version one layouts insert Hermes after t3 in its column", () => {
             right: [{ id: "vol", on: true }, { id: "t3", on: false }]
         }
     }).mods;
-    assert.deepEqual(disabled.right.slice(0, 6), [
-        { id: "modelusage", on: false, detail: "auto" },
+    assert.deepEqual(disabled.right.slice(0, 7), [
+        { id: "modelusage", on: true, detail: "auto" },
         { id: "fusebox", on: false, detail: "auto" },
+        { id: "assistant", on: true, detail: "auto" },
         { id: "notifications", on: true, detail: "auto" },
         { id: "vol", on: true, detail: "auto" },
         { id: "t3", on: false, detail: "auto" },
-        { id: "hermes", on: true, detail: "auto" }
+        { id: "hermes", on: false, detail: "auto" }
     ]);
 });
 
@@ -907,7 +910,7 @@ test("unversioned layouts receive the same composite t3 migration", () => {
     }).mods;
     assert.deepEqual(mods.left.slice(0, 3), [
         { id: "t3", on: false, detail: "auto" },
-        { id: "hermes", on: true, detail: "auto" },
+        { id: "hermes", on: false, detail: "auto" },
         { id: "media", on: true, detail: "auto" }
     ]);
 });
@@ -923,9 +926,10 @@ test("schema-8 inserts indicators immediately before the existing clock", () => 
         ]
     };
     const migrated = H.merge({ v: 7, mods: raw }).mods;
-    assert.deepEqual(migrated.right.slice(0, 7), [
-        { id: "modelusage", on: false, detail: "auto" },
+    assert.deepEqual(migrated.right.slice(0, 8), [
+        { id: "modelusage", on: true, detail: "auto" },
         { id: "fusebox", on: false, detail: "auto" },
+        { id: "assistant", on: true, detail: "auto" },
         { id: "notifications", on: true, detail: "auto" },
         { id: "vol", on: false, detail: "compact" },
         { id: "indicators", on: true, detail: "auto" },
@@ -934,6 +938,64 @@ test("schema-8 inserts indicators immediately before the existing clock", () => 
     ]);
     assert.deepEqual(migrated.left[0], { id: "media", on: false, detail: "auto" });
     assert.deepEqual(migrated.center[0], { id: "weather", on: false, detail: "auto" });
+});
+
+test("schema-30 adds the assistant's button before the right side's notification and status widgets", () => {
+    const raw = H.defaultMods();
+    raw.right = raw.right.filter(mod => mod.id !== "assistant");
+    const byId = Object.fromEntries(raw.right.map(mod => [mod.id, mod]));
+    raw.right = [byId.updates, byId.wifi, byId.tray, byId.notifications, byId.vol];
+    const migrated = H.merge({ v: 29, mods: raw }).mods;
+    assert.deepEqual(migrated.right.slice(0, 5).map(mod => mod.id),
+        ["updates", "assistant", "wifi", "tray", "notifications"],
+        "it goes before the first of them, wherever the person put them");
+    assert.deepEqual(migrated.right[1], { id: "assistant", on: true, detail: "auto" });
+
+    // A layout that already has it, on or off, keeps it as it is.
+    const placed = H.defaultMods();
+    placed.right = placed.right.filter(mod => mod.id !== "assistant");
+    placed.left.push({ id: "assistant", on: false, detail: "compact" });
+    const kept = H.merge({ v: 29, mods: placed }).mods;
+    assert.deepEqual(kept.left.at(-1), { id: "assistant", on: false, detail: "compact" });
+    assert.equal([...kept.left, ...kept.center, ...kept.right]
+        .filter(mod => mod.id === "assistant").length, 1);
+
+    // With every status widget moved away it joins the right column's end.
+    const bare = { left: [], center: [], right: [{ id: "updates", on: true }] };
+    const appended = H.merge({ v: 29, mods: bare }).mods.right.map(mod => mod.id);
+    assert.equal(appended[1], "assistant");
+});
+
+test("assistant preferences are validated and runtime placement is bounded", () => {
+    const d = H.defaults();
+    assert.deepEqual([d.assistantAgent, d.assistantClaudeModel, d.assistantCodexModel,
+        d.assistantSpeak, d.assistantScreenContext, d.assistantCharacter, d.assistantShown,
+        d.assistantScreen, d.assistantX, d.assistantY],
+        ["auto", "default", "default", false, false, "mascot", false, "", -1, -1]);
+    const merged = H.merge({ v: 30, assistantAgent: "codex", assistantClaudeModel: "sonnet",
+        assistantCodexModel: "gpt-5.6-sol", assistantSpeak: true, assistantScreenContext: true,
+        assistantCharacter: "mark", assistantShown: true, assistantScreen: "DP-1",
+        assistantX: 812.4, assistantY: 64 });
+    assert.equal(merged.assistantAgent, "codex");
+    assert.equal(merged.assistantClaudeModel, "sonnet");
+    assert.equal(merged.assistantCodexModel, "gpt-5.6-sol");
+    assert.equal(merged.assistantSpeak, true);
+    assert.equal(merged.assistantScreenContext, true);
+    assert.equal(merged.assistantCharacter, "mark");
+    assert.equal(merged.assistantShown, true);
+    assert.equal(merged.assistantScreen, "DP-1");
+    assert.equal(merged.assistantX, 812);
+    assert.equal(merged.assistantY, 64);
+    const invalid = H.merge({ v: 30, assistantAgent: "gemini", assistantClaudeModel: "gpt-5.6-sol",
+        assistantCharacter: "clippy", assistantScreenContext: "yes", assistantScreen: "a\nb",
+        assistantX: -50, assistantY: 1e9 });
+    assert.equal(invalid.assistantAgent, "auto");
+    assert.equal(invalid.assistantClaudeModel, "default", "each agent takes only its own models");
+    assert.equal(invalid.assistantCharacter, "mascot");
+    assert.equal(invalid.assistantScreenContext, false, "screen context needs an explicit true");
+    assert.equal(invalid.assistantScreen, "");
+    assert.equal(invalid.assistantX, -1);
+    assert.equal(invalid.assistantY, 32768);
 });
 
 test("schema-8 validates persisted action and system toggle state", () => {
@@ -1239,7 +1301,7 @@ test("schema 25 drops the retired usage widget, drawer tab, options and poll cei
     assert.deepEqual([...ids].sort(), [...H.MODULE_IDS].sort());
     assert.deepEqual(merged.mods.left.slice(0, 1), [{ id: "ws", on: true, detail: "auto" }]);
     assert.deepEqual(merged.mods.right.slice(0, 4), [
-        { id: "modelusage", on: false, detail: "auto" },
+        { id: "modelusage", on: true, detail: "auto" },
         { id: "fusebox", on: false, detail: "auto" },
         { id: "t3", on: true, detail: "auto" },
         { id: "hermes", on: false, detail: "auto" }
@@ -1273,7 +1335,7 @@ test("schema 26 builds Model Usage in at the front of the right column", () => {
 
     const off = H.merge(file).mods;
     assert.deepEqual(file, before, "migration must not mutate the parsed file");
-    assert.deepEqual(off.right[0], { id: "modelusage", on: false, detail: "auto" });
+    assert.deepEqual(off.right[0], { id: "modelusage", on: true, detail: "auto" });
     const on = H.merge(file, { connectedWidgets: true }).mods;
     assert.deepEqual(on.right[0], { id: "modelusage", on: true, detail: "auto" });
     assert.deepEqual(H.merge(file, { connectedWidgets: false }).mods, off);

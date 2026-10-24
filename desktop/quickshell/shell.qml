@@ -16,6 +16,13 @@ ShellRoot {
     id: shell
 
     SettingsWindow {}
+    SoftwareWindow {}
+
+    IpcHandler {
+        target: "software"
+        function open(): void { Software.show(); }
+        function close(): void { Software.close(); }
+    }
 
     // Hyprland dispatches this in-process. Super+Space no longer waits for a
     // new `qs ipc` client process to start and connect before opening.
@@ -33,6 +40,56 @@ ShellRoot {
         name: "overviewToggle"
         description: I18n.tr("Toggle the window overview")
         onPressed: Overview.toggle()
+    }
+
+    // Super+I, in-process so a held key reports its release: a tap opens the
+    // assistant's box, holding it records a question that is sent on
+    // release (docs/assistant.md).
+    GlobalShortcut {
+        appid: "quickshell"
+        name: "assistantTalk"
+        description: I18n.tr("Ask the NerdOS Assistant; hold to talk")
+        onPressed: Assistant.shortcutPressed()
+        onReleased: Assistant.shortcutReleased()
+    }
+
+    // `nerd assistant show|hide|toggle|ask` and scripts.
+    IpcHandler {
+        target: "assistant"
+
+        function show(): void {
+            Assistant.show(Screens.focused ? Screens.focused.name : "");
+        }
+
+        function hide(): void {
+            Assistant.hide();
+        }
+
+        function toggle(): void {
+            Assistant.toggleShown(Screens.focused ? Screens.focused.name : "");
+        }
+
+        // Opens the box with the keyboard, as a tap of Super+I does.
+        function compose(): void {
+            Assistant.openComposer(true);
+        }
+
+        function ask(text: string): void {
+            Assistant.openComposer(false);
+            Assistant.send(text);
+        }
+
+        // Read-only state for diagnostics.
+        function status(): string {
+            return JSON.stringify({available: Assistant.available, shown: Assistant.shown,
+                connected: Assistant.connected, screen: Assistant.screenName,
+                agent: Assistant.agent, busy: Assistant.busy,
+                agentReady: Assistant.agentReady, setupRequired: Assistant.setupRequired,
+                authChecking: Assistant.authChecking, hasDraft: Assistant.draft.trim() !== "",
+                x: Settings.assistantX, y: Settings.assistantY, size: Theme.scaled(64),
+                turn: Assistant.turn ? Assistant.turn.status : "",
+                composing: Assistant.composing, listening: Assistant.listening});
+        }
     }
 
     // Popout IPC lives here rather than in Bar: the bar is instantiated
@@ -349,6 +406,14 @@ ShellRoot {
         WebcamOverlay {}
     }
 
+    // The assistant's character and box exist while it is out; its client
+    // singleton keeps the service connection either way.
+    LazyLoader {
+        active: Assistant.shown
+
+        AssistantWindow {}
+    }
+
     // Reading a singleton's property is what constructs it. Notifications
     // must start collecting, GitHub must start polling — GitHub
     // also raises the toasts for watched repositories, which must not wait
@@ -368,6 +433,7 @@ ShellRoot {
         void Updates.total;
         void Recorder.active;
         void Dictation.state;
+        void Assistant.available;
         void Reminders.count;
         // A recovery boot must announce itself without waiting for Settings.
         void Recovery.recoveryBoot;

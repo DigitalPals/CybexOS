@@ -118,7 +118,7 @@ test("rows that cannot use settingKey still wire themselves completely", () => {
         // live writes or an explicit Apply/Cancel draft, never shell reset.
         // Backups belong to the nerdos-backup helper in the same way.
         if (["ModulesPage", "PluginWidgetSettings", "SoundPage", "NetworkPage", "DisplaysPage", "AccountsPage", "IpSettings", "KeyboardPage", "TouchpadPage", "RegionPage", "BackupPage",
-            "SecurityPage"]
+            "SecurityPage", "ApplicationsPage", "StoragePage"]
                 .some(name => block.at.startsWith(`Settings/${name}.qml:`))) {
             assert.match(text, /on(?:Toggled|Picked|Moved|Committed):/, `${block.at}: missing write handler`);
             continue;

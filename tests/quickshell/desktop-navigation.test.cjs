@@ -185,7 +185,7 @@ test("running web apps reuse their launcher's icon, name and pinned group", () =
     assert.equal(context.entryIdFor("brave"), "brave");
     delete entries[entryId];
     assert.equal(context.entryIdFor(appId), "brave", "removed desktop entries fall back to the native resolver");
-    assert.match(dock, /onDesktopAppsChanged: webAppRefresh\.restart\(\)/,
+    assert.match(dock, /onDesktopAppsChanged: \{ webAppRefresh\.restart\(\)/,
         "install/remove causes a fresh registry read");
     assert.match(dock, /command: \["nerdos-webapp", "list", "--json"\]/);
 });
@@ -234,8 +234,8 @@ test("ending a process is confirmed, signals by start time, and escalates only w
         "the row button only asks; the confirmation acts");
     assert.match(processes, /ProcessList\.confirmEnd\(\);\s*else\s*ProcessList\.forceQuit\(\);/);
     assert.match(processes, /"Open system monitor"/);
-    assert.match(processes, /Quickshell\.execDetached\(\["kitty", "-e", "btop"\]\)/);
-    assert.match(bindings, /hl\.dsp\.exec_cmd\(terminal \.\. " -e btop"\)/,
+    assert.match(processes, /Quickshell\.execDetached\(\["nerdos-apps", "terminal", "--", "btop"\]\)/);
+    assert.match(bindings, /hl\.dsp\.exec_cmd\(terminal \.\. " btop"\)/,
         "the row opens what Super+Shift+T opens");
 });
 
@@ -244,7 +244,7 @@ test("ending a process is confirmed, signals by start time, and escalates only w
 test("both surfaces skip layer animations; only the dock is blurred", () => {
     const noAnim = look.match(/name = "quickshell-no-animation",\s*match = \{ namespace = \[\[([^\]]+)\]\] \}/);
     assert.ok(noAnim);
-    assert.match(noAnim[1], /\|overview\|dock\)\$$/);
+    assert.match(noAnim[1], /\|overview\|dock\|assistant\)\$$/);
     const blur = look.match(/name = "quickshell-blur",[\s\S]*?namespace = \[\[([^\]]+)\]\]/);
     assert.ok(blur);
     assert.match(blur[1], /\|dock\)\$$/);

@@ -84,10 +84,11 @@ var PANELS = [
 
 // Bar modules that own no panel of their own. `ws` has no detail view,
 // `tray` opens each item's own menu, and `modelusage` hosts the vendored
-// Model Usage panel, which opens its own plugin-style popup. Listed so the
+// Model Usage panel, which opens its own plugin-style popup. `assistant`
+// shows and hides the assistant's own overlay. Listed so the
 // test can insist the module id and panel spaces account for each other
 // completely rather than silently tolerating a typo'd moduleId.
-var PANEL_LESS_MODULES = ["ws", "tray", "modelusage"];
+var PANEL_LESS_MODULES = ["ws", "tray", "modelusage", "assistant"];
 
 var SETTINGS = "settings";
 var NOTES = "notes";

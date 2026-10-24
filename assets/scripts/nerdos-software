@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -euo pipefail
+exec nerdos-runtime ipc software open

@@ -292,14 +292,13 @@ class Defaults(Fixture):
         self.installed_programs.add("firefox")
         webapp.launch("whatsapp")
         self.assertTrue(self.entry("whatsapp").exists())
-        self.assertEqual(self.spawned[0], ["/usr/bin/firefox", "https://web.whatsapp.com/"])
+        self.assertEqual(self.spawned[0], ["nerdos-apps", "webapp", "https://web.whatsapp.com/"])
 
     def test_launch_follows_the_browser_choice_and_fetches_a_real_icon_later(self):
         webapp.seed()
         self.installed_programs.update({"brave", "firefox"})
         webapp.launch("slack")
-        self.assertEqual(self.spawned[0], ["/usr/bin/brave", *webapp.BRAVE_FLAGS,
-                                           "--app=https://app.slack.com/"])
+        self.assertEqual(self.spawned[0], ["nerdos-apps", "webapp", "https://app.slack.com/"])
         self.assertEqual(self.spawned[1][-3:], ["refresh", "--quiet", "slack"],
                          "a monogram is replaced by the site icon in the background")
         self.installed_programs.discard("brave")
@@ -308,7 +307,7 @@ class Defaults(Fixture):
         record["iconAttempt"] = int(webapp.time.time())
         (self.apps() / "x/app.json").write_text(json.dumps(record))
         webapp.launch("x")
-        self.assertEqual(self.spawned, [["/usr/bin/firefox", "https://x.com/"]],
+        self.assertEqual(self.spawned, [["nerdos-apps", "webapp", "https://x.com/"]],
                          "a recent failed fetch is not retried on every launch")
 
     def test_refresh_replaces_the_monogram(self):
@@ -323,10 +322,10 @@ class Defaults(Fixture):
         record = json.loads((self.apps() / "slack/app.json").read_text())
         self.assertEqual(record["iconSource"], "favicon")
 
-    def test_brave_is_started_exactly_as_super_b_starts_it(self):
+    def test_webapps_and_super_b_share_the_default_browser_helper(self):
         bindings = (ROOT / "desktop/hypr/bindings.lua").read_text()
-        browser = re.search(r'  browser = "(brave [^"]+)"', bindings).group(1)
-        self.assertEqual(browser.split(), [webapp.BRAVE, *webapp.BRAVE_FLAGS])
+        self.assertIn('local browser = "nerdos-apps browser"', bindings)
+        self.assertEqual(webapp.browser_command("https://example.invalid/"), ["nerdos-apps", "webapp", "https://example.invalid/"])
         for identifier, _name, _url in webapp.DEFAULTS:
             self.assertIn(f'web_app("{identifier}")', bindings)
         self.assertIn('return "nerdos-webapp launch " .. id', bindings)

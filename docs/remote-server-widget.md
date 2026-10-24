@@ -1,7 +1,8 @@
 # Remote Server widget
 
-**Remote Server** is included and enabled in the menubar on new installations,
-including ISO installations. Its host and display name start empty: the bar
+**Remote Server** is included but hidden in the menubar on new installations,
+including ISO installations. Enable it in Settings → Menubar → Widgets.
+Its host and display name start empty: the bar
 shows **Set up** and the dashboard offers **Choose SSH host**. No SSH connection
 starts until a host is configured. Existing visibility and host preferences are
 preserved when upgrading.

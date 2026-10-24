@@ -66,6 +66,7 @@ singleton Updates Updates.qml
 singleton Recorder Recorder.qml
 singleton GameMode GameMode.qml
 singleton Dictation Dictation.qml
+singleton Assistant Assistant.qml
 singleton Reminders Reminders.qml
 singleton Recovery Recovery.qml
 singleton Backup Backup.qml
@@ -111,3 +112,7 @@ singleton RemoteServer RemoteServer.qml
 singleton Fusebox Fusebox.qml
 
 CommandRequest CommandRequest.qml
+JsonCommand JsonCommand.qml
+singleton DefaultApplications DefaultApplications.qml
+singleton Software Software.qml
+singleton Maintenance Maintenance.qml
