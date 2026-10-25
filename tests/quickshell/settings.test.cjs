@@ -534,7 +534,7 @@ test("the grouped rail keeps labeled sections, the save state, and the nav searc
     const schemaKeys = Object.keys(load("SettingsHelpers.js").defaults());
     const validPages = [...settings.matchAll(/\{ id: "([a-z]+)", group: "/g)].map(m => m[1]);
     assert.deepEqual(validPages, ["appearance", "wallpaper", "bar", "workspaces", "notifications", "assistant", "displays",
-        "sound", "network", "touchpad", "keyboard", "power", "applications", "storage", "region", "accounts", "security", "plugins", "backup",
+        "sound", "network", "touchpad", "keyboard", "shortcuts", "power", "applications", "storage", "region", "accounts", "security", "plugins", "backup",
         "about"]);
     const rows = load("SettingsSearchData.js").ROWS;
     assert.ok(rows.length >= 30, "the search index must cover the workspace");

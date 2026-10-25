@@ -616,6 +616,7 @@ PopoutPanel {
                 case "network": return networkPage;
                 case "touchpad": return touchpadPage;
                 case "keyboard": return keyboardPage;
+                case "shortcuts": return shortcutsPage;
                 case "power": return powerPage;
                 case "applications": return applicationsPage;
                 case "storage": return storagePage;
@@ -813,6 +814,7 @@ PopoutPanel {
         Component { id: securityPage; SecurityPage {} }
         Component { id: touchpadPage; TouchpadPage {} }
         Component { id: keyboardPage; KeyboardPage {} }
+        Component { id: shortcutsPage; ShortcutsPage {} }
         Component { id: powerPage; PowerPage {} }
         Component { id: applicationsPage; ApplicationsPage {} }
         Component { id: storagePage; StoragePage {} }

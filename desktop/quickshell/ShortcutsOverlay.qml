@@ -5,6 +5,8 @@ import Quickshell.Hyprland
 import Quickshell.Wayland
 import "Common"
 import "Common/KeybindHelpers.js" as KeybindHelpers
+import "Common/ShortcutEditor.js" as ShortcutEditor
+import "Settings" as SettingsUi
 
 // The keyboard cheatsheet, from the Control Panel or Super+K.
 //
@@ -17,8 +19,27 @@ import "Common/KeybindHelpers.js" as KeybindHelpers
 // The sheet takes most of a wide screen: up to three columns, each holding
 // whole groups in reading order, split so the columns end at about the same
 // height (KeybindHelpers.columnsFor).
+//
+// While the sheet is open it also holds Keybindings, only to mark rows that
+// were changed in Settings (a filled dot) or come from user.lua (a ring).
+// "Edit shortcuts" closes the sheet and opens Settings on that page.
 PanelWindow {
     id: root
+
+    readonly property var marks: Keybindings.loaded
+        ? ShortcutEditor.sheetMarks(Keybindings.actions, Keybindings.userBinds) : ({})
+    readonly property bool marked: Object.keys(marks).length > 0
+
+    Claim {
+        active: Session.keysOpen
+        onClaimed: Keybindings.acquire()
+        onReleased: Keybindings.release()
+    }
+
+    function editShortcuts() {
+        Session.closeKeys();
+        Settings.showPanel("shortcuts");
+    }
 
     visible: Session.keysOpen || scrim.opacity > 0.01
     screen: Session.screen ?? Screens.focused
@@ -145,7 +166,8 @@ PanelWindow {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: Math.max(0, parent.width - Theme.iconLarge - (hint.visible ? hint.width + parent.spacing : 0) - parent.spacing)
+                        width: Math.max(0, parent.width - Theme.iconLarge - (hint.visible ? hint.width + parent.spacing : 0)
+                            - editAction.width - parent.spacing * 2)
                         elide: Text.ElideRight
                         text: I18n.tr("Keyboard shortcuts")
                         font.family: Theme.fontMenu
@@ -157,7 +179,7 @@ PanelWindow {
                     Text {
                         id: hint
                         visible: body.width >= Theme.settingsNarrowWidth
-                        width: Math.min(implicitWidth, body.width * 0.45)
+                        width: Math.min(implicitWidth, body.width * 0.4)
                         elide: Text.ElideRight
                         anchors.verticalCenter: parent.verticalCenter
                         text: I18n.tr("Live from Hyprland · press Esc to close")
@@ -165,6 +187,14 @@ PanelWindow {
                         font.pixelSize: Theme.typography.section
                         font.weight: Theme.weightBold
                         color: Theme.textFaint
+                    }
+
+                    SettingsUi.SettingsAction {
+                        id: editAction
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: I18n.tr("Edit shortcuts")
+                        glyph: "edit"
+                        onTriggered: root.editShortcuts()
                     }
                 }
 
@@ -272,18 +302,37 @@ PanelWindow {
                                                     ? label.implicitHeight + Theme.iconTextSpacing + keys.height
                                                     : Math.max(Theme.settingsControlHeight, label.implicitHeight)
 
+                                                // "changed" or "user", for rows the sheet
+                                                // can name exactly (not collapsed ranges).
+                                                readonly property string mark: root.marks[group.modelData.title + ": " + shortcut.modelData.label] || ""
+
                                                 Text {
                                                     id: label
                                                     anchors.left: parent.left
                                                     y: shortcut.stacked ? 0 : (parent.height - implicitHeight) / 2
                                                     width: shortcut.stacked ? parent.width
                                                         : Math.max(0, parent.width - keys.width - Theme.controlSpacing)
+                                                    rightPadding: shortcut.mark !== "" ? markDot.width + Theme.iconTextSpacing : 0
                                                     text: I18n.tr(shortcut.modelData.label)
                                                     font.family: Theme.fontMenu
                                                     font.pixelSize: Theme.typography.primary
                                                     font.weight: Theme.weightSemibold
                                                     color: Theme.textMid
                                                     elide: Text.ElideRight
+                                                    Accessible.description: shortcut.mark === "user" ? I18n.tr("Set in user.lua")
+                                                        : shortcut.mark === "changed" ? I18n.tr("Changed in Settings") : ""
+                                                }
+                                                Rectangle {
+                                                    id: markDot
+                                                    visible: shortcut.mark !== ""
+                                                    x: Math.min(label.contentWidth, label.width - label.rightPadding) + Theme.iconTextSpacing
+                                                    y: label.y + (label.implicitHeight - height) / 2
+                                                    width: Theme.scaled(6)
+                                                    height: width
+                                                    radius: width / 2
+                                                    color: shortcut.mark === "changed" ? Theme.accent : "transparent"
+                                                    border.width: shortcut.mark === "user" ? 1 : 0
+                                                    border.color: Theme.textFaint
                                                 }
 
                                                 // Each combination is one key-cap row;
@@ -377,7 +426,9 @@ PanelWindow {
                     width: parent.width
                     visible: Session.shortcutGroups.length > 0
                     wrapMode: Text.Wrap
-                    text: I18n.tr("Bindings you add in ~/.config/cybexos/hypr/user.lua appear here when they have a description.")
+                    text: root.marked
+                        ? I18n.tr("A dot marks a shortcut changed in Settings, a ring one set in ~/.config/cybexos/hypr/user.lua. Bindings you add there appear here when they have a description.")
+                        : I18n.tr("Bindings you add in ~/.config/cybexos/hypr/user.lua appear here when they have a description.")
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
                     color: Theme.textFaint

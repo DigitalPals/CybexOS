@@ -215,6 +215,8 @@ Singleton {
             description: "Tap, natural scrolling and sensitivity", system: true },
         { id: "keyboard", group: "Devices", label: I18n.tr("Keyboard"), glyph: "keyboard",
             description: "Layouts and layout switching", system: true },
+        { id: "shortcuts", group: "Devices", label: I18n.tr("Keyboard shortcuts"), glyph: "keyboard",
+            description: "View, change and add keyboard shortcuts" },
         { id: "power", group: "System", label: I18n.tr("Power"), glyph: "power",
             description: "Screen off, lock, suspend and stay awake" },
         { id: "applications", group: "System", label: I18n.tr("Applications"), glyph: "apps",
@@ -304,6 +306,7 @@ Singleton {
             "assistantSpeak", "assistantScreenContext", "assistantCharacter",
             "assistantShown", "assistantScreen", "assistantX", "assistantY"],
         backup: [],
+        shortcuts: [],
         about: []
     })
 

@@ -254,6 +254,60 @@ While a shortcut is being recorded, the recording window activates Quickshell
   keys. Clicking a free key offers "Open an app / website / web app / command".
   It is used by the welcome guide and by the Settings page.
 
+As built:
+
+- **Page.** `Settings/ShortcutsPage.qml`, rows `Settings/ShortcutRow.qml`. It
+  holds a `Claim` on `Keybindings` while visible and Settings is open. A row's
+  Reset is its SettingsRow undo chip, as on every other settings row, shown
+  for changed vendor actions; Disable is a compact action and protected rows
+  show a dimmed lock in its place. Custom rows edit through the Add form and
+  have Remove instead of Disable. Rows from `userBinds`, mouse drags and
+  hardware keys are read-only. The rows are one roving tab stop
+  (Up/Down/Home/End, Enter records, Delete disables). Search matches labels
+  and groups, translated and English, and key combinations by modifier and
+  key names; the "Conflicts" filter combines Lua's `conflict`/`displaced`
+  diagnostics with duplicate combinations among the shown rows (draft and
+  `userBinds` included). "Changed" lists vendor overrides and custom
+  entries; "From user.lua" lists `source: "user"` rows and `userBinds`.
+  `failed(message)` and `Keybindings.error` appear at the top of the page
+  and in the Apply bar. Reset all asks inline and edits the draft.
+- **Recorder.** `Settings/ShortcutRecorder.qml`, a modal card over its host
+  (the page's overlay; in the welcome guide, the guide window's content item).
+  `start(id, label, keys, allowAdd)` then `accepted(combo, mode)` or
+  `canceled()`; `mode` is `replace` or `add` (another key, at most four). It
+  feeds `KeybindEditor.fromKeyEvent`; Escape cancels, a bare Backspace/Delete
+  clears. A reserved combination keeps listening and shows its reason. A
+  complete one is checked with `Keybindings.conflicts(keys, actionId)`:
+  protected holders (including reserved protected defaults) and `user.lua`
+  holders block, because `user.lua` loads last; other holders are offered as
+  Replace, which removes that key from them in the draft before the host
+  applies the new keys. The `ShortcutInhibitor` is enabled only while
+  listening and is released when a combination completes, on cancel and
+  accept, when the window deactivates (recording pauses), when the
+  compositor cancels it, when the card hides and on destruction.
+- **Keyboard map.** Keys show their action (workspace switches as
+  "Workspace N"), a lock for protected or reserved keys, an amber edge for
+  keys used more than once and italic for `user.lua` keys. A free key is
+  lit; choosing it shows the four run types and emits
+  `addRequested(combo, type)`, which opens the Add form prefilled with that
+  key. A bound, editable key emits `editRequested(id)`. The map draws the
+  QWERTY layout, but matches keysyms, so it is correct on other layouts
+  except for the key positions.
+- **Add form.** `Settings/ShortcutCustomForm.qml`: run type, then an app from
+  `DesktopEntries` (visible entries with valid IDs), a URL (`https://` is
+  added when no scheme is typed), a web app (the seeded IDs plus installed
+  ones from `cybexos-webapp list --json`) or a command; name, group (default
+  per type) and keys recorded with the recorder. It saves with `addCustom` or
+  `updateCustom`.
+- **Super+K sheet.** "Edit shortcuts" calls `Session.closeKeys()` and
+  `Settings.showPanel("shortcuts")`. While open, the sheet holds a
+  `Keybindings` claim, only to mark rows: a filled accent dot for changed or
+  custom rows, a ring for `user.lua` rows. Collapsed numbered rows stay
+  unmarked.
+- **Welcome step.** `Welcome/ShortcutsStep.qml` shows the map, the main
+  shortcuts (keycaps from `Keybindings.keysFor`) with Edit, an inline Apply
+  bar and "All shortcuts in Settings".
+
 ## 2. Welcome guide
 
 ### 2.1 Pieces
@@ -338,9 +392,6 @@ checklist probes also remain unticked links rather than inferred successes.
 
 Every step can be skipped. Back and Continue are available (Back is disabled
 on Hello); Escape dismisses, preserving progress as specified above.
-
-During parallel implementation, the guide's shortcut page temporarily shows
-live keycap rows for stream B to replace with ShortcutKeyboardMap.
 
 Integration notes (as implemented):
 
@@ -428,7 +479,7 @@ They are deleted. `browse`, `list`, `set` and `status` stay.
   `tests/run` and the QML lint must pass. Real-engine checks run the actual
   shell under a private headless Sway, as `tests/assistant-overlay.py` does.
 
-## 5. Stream A implementation notes and API additions
+## 5. Keyboard-shortcut backend: implementation notes and API additions
 
 The §1.6 names and resolved-state schema are unchanged. `Keybindings` also
 provides `acquire()` and `release()`. Consumers should use a `Claim` while
@@ -534,3 +585,32 @@ keys. For unique descriptions, a remap or additional keys are shown on that
 action. Additional keys under shared descriptions, and submap bindings, are
 listed read-only in `userBinds`. Undescribed personal bindings are still omitted from `userBinds`,
 as required by the sheet's existing description convention.
+
+## 6. Shortcut editor UI: implementation notes
+
+No `Keybindings` or `KeybindEditor` API was added or changed. The editor's
+pure view logic is `Common/ShortcutEditor.js`, tested in
+`tests/quickshell/shortcut-editor.test.cjs`: grouping and filters, search,
+conflict decisions (`decide` returns `free`, `replace`, `blocked` with reason
+`protected` or `user`, or `reserved` with reason `modifier`, `mouse`,
+`power`, `system` or `invalid`), recorder key commands, the keyboard-map
+layout and focus moves, run-target validation with the backend's limits, and
+the sheet marks.
+
+Quickshell 0.3's type is `ShortcutInhibitor` (`enabled`, `window`, read-only
+`active`, `cancelled()`), imported from `Quickshell.Wayland`. When the
+compositor cancels an active inhibitor, Quickshell itself writes
+`enabled = false`, which silently removes a QML binding. The recorder
+therefore assigns `enabled` whenever its listening state changes rather
+than binding it. `window` is the item's `QsWindow.window`.
+
+`tests/shortcut-editor.py` runs the real shell under a private headless Sway.
+Its fake `hyprctl reload` runs the real `bindings.lua` and
+`keybinding_preferences.lua` through the Node tests' Lua stub, so the written
+`keybindings.json` and the resolved state follow the actual Lua contract.
+Headless Sway has no keyboard of its own: when a key-sending `wtype` exits,
+Qt deactivates the window and nothing re-enters it, so the check keeps one
+idle `wtype` attached for the session. An item reparented out of a clipped
+Flickable was not painted by Qt's software renderer, so the welcome step
+creates its recorder directly in the guide window's content item.
+

@@ -22,6 +22,12 @@ SettingsGroup SettingsGroup.qml
 SettingsPage SettingsPage.qml
 SettingsRow SettingsRow.qml
 SettingsView SettingsView.qml
+ShortcutCustomForm ShortcutCustomForm.qml
+ShortcutKeyboardMap ShortcutKeyboardMap.qml
+ShortcutKeycaps ShortcutKeycaps.qml
+ShortcutRecorder ShortcutRecorder.qml
+ShortcutRow ShortcutRow.qml
+ShortcutsPage ShortcutsPage.qml
 SliderRow SliderRow.qml
 SwitchRow SwitchRow.qml
 PowerPage PowerPage.qml
