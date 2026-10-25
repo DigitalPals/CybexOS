@@ -422,7 +422,8 @@ Integration notes (as implemented):
   catalog.
 - **Small windows.** At the 640 × 480 minimum, or with large text, the step
   rail hides (its optional section hides first when only height is short),
-  a short window drops the lead line, and the practice task list stacks
+  a short window drops the lead line (the window height decides, never the
+  step area whose margin the choice changes: that was a binding loop), and the practice task list stacks
   under its card. The wallpaper step fills the viewport, with a
   `Theme.scaled(240)` floor; below it the step scrolls rather than clipping.
 
