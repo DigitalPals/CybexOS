@@ -106,9 +106,9 @@ test("roving keyboard pickers move focus before they commit", () => {
     const activate = tabs.slice(tabs.indexOf("function activateTab("));
     order(activate, "if (target) target.forceActiveFocus();",
         "Popouts.openPanel(name, \"right\");", "drawer tabs");
-    const wallpaper = read("Settings/WallpaperPage.qml");
-    order(wallpaper.slice(wallpaper.indexOf("function focusThumbnail(")),
-        "target.forceActiveFocus();", "wallGrid.currentIndex = clamped;", "wallpaper grid");
+    const wallpaper = read("Settings/WallpaperGrid.qml");
+    order(wallpaper.slice(wallpaper.indexOf("function focusItem(")),
+        "item.forceActiveFocus();", "currentIndex = next;", "wallpaper grid");
     const folders = read("Settings/FolderDialog.qml");
     order(folders.slice(folders.indexOf("function focusFolder(")),
         "target.forceActiveFocus();", "folderList.currentIndex = clamped;", "folder list keys");

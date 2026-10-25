@@ -18,6 +18,22 @@ Singleton {
         : Settings.wallDir.indexOf("~/") === 0
         ? Quickshell.env("HOME") + Settings.wallDir.slice(1) : Settings.wallDir
     property var files: []
+    // Installed runtime: ../wallpapers; checkout: ../../assets/wallpapers.
+    // The probe reads only directory entries, never image data or settings.
+    readonly property string bundledDir: (installedCollection.status === FolderListModel.Ready
+        ? installedCollection.count > 0 : !Quickshell.shellDir.endsWith("/desktop/quickshell"))
+        ? Quickshell.shellDir + "/../wallpapers"
+        : Quickshell.shellDir + "/../../assets/wallpapers"
+    readonly property string defaultPath: bundledDir + "/moon-mountains.png"
+    readonly property var bundledNames: ["moon-mountains.png", "quiet-fjord.png", "dusk-ridges.png",
+        "copper-horizon.png", "forest-distance.png", "blue-hour.png", "winter-silence.png"]
+    readonly property var bundledFiles: bundledNames.map(name => url(bundledDir + "/" + name))
+    property string importName: ""
+    property string importDir: ""
+    property string importError: ""
+    readonly property bool importing: importName !== ""
+    signal applied(string fileName)
+
     readonly property bool loading: folderModel.status === FolderListModel.Loading
     property string pendingDir: ""
     property bool candidateLoadingSeen: false
@@ -33,7 +49,7 @@ Singleton {
     readonly property string currentIdentity: dir + "/" + Settings.wall
 
     readonly property string current:
-        Settings.wall !== "" ? url(dir + "/" + Settings.wall) : ""
+        Settings.wall !== "" ? url(dir + "/" + Settings.wall) : url(defaultPath)
 
     function url(path) {
         return path.startsWith("file:") ? path : "file://" + path;
@@ -64,11 +80,57 @@ Singleton {
         return true;
     }
 
+    function applyBundled(path) {
+        const name = basename(path);
+        if (bundledNames.indexOf(name) === -1 || importing)
+            return;
+        importName = name;
+        importDir = dir;
+        importError = "";
+        importProc.command = ["python3", Quickshell.shellDir + "/scripts/wallpaper-bundled.py", name, dir];
+        importProc.running = true;
+    }
+
+    FolderListModel {
+        id: installedCollection
+        folder: root.url(Quickshell.shellDir + "/../wallpapers")
+        nameFilters: ["moon-mountains.png"]
+        showDirs: false
+    }
+    Process {
+        id: importProc
+        property string body: ""
+        stdout: StdioCollector { onStreamFinished: importProc.body = text }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                return;
+            }
+            let name = "";
+            try { name = JSON.parse(body).fileName || ""; } catch (e) { name = ""; }
+            if (name !== "" && root.importDir === root.dir) {
+                root.reloadDirectory();
+                root.set(name);
+                root.applied(name);
+            } else if (name === "") {
+                root.importError = I18n.tr("Could not copy the bundled wallpaper. Check the wallpaper folder.");
+            }
+            root.importName = "";
+        }
+    }
+
     function shuffle() {
         if (files.length < 2)
             return;
         const others = files.filter(f => basename(f) !== Settings.wall);
         set(others[Math.floor(Math.random() * others.length)]);
+    }
+
+    function reloadDirectory() {
+        // A fresh install may not have this folder yet. FolderListModel does
+        // not watch a directory created after its first failed enumeration.
+        folderModel.folder = "";
+        Qt.callLater(() => { folderModel.folder = Qt.binding(() => root.url(root.dir)); });
     }
 
     function refreshFiles() {

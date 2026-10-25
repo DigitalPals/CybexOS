@@ -397,7 +397,7 @@ test("settings improvements expose fitting, embedded folders, undo, and shortcut
         "the editor maps visible gaps to configured indices");
     assert.match(modules, /LayoutHelpers\.moveWidget/,
         "both surfaces preserve the same move semantics");
-    assert.match(wallpaper, /GridView\s*\{/);
+    assert.match(wallpaper, /WallpaperPicker\s*\{/);
     assert.match(folder, /popupType:\s*Controls\.Popup\.Item/);
     assert.match(settings, /interval:\s*8000/);
     assert.match(settings, /function retrySave/);
@@ -778,16 +778,12 @@ test("wallpaper and module layouts switch before content can collide", () => {
     const wallpaper = read("Settings/WallpaperPage.qml");
     const modules = read("Settings/ModulesPage.qml");
 
-    assert.match(wallpaper, /columnCount:\s*width < Theme\.settingsNarrowWidth \? 1 : 2/);
-    assert.match(wallpaper, /cellWidth:\s*Math\.floor\(width \/ columnCount\)/);
-    // One bounded column like every SettingsPage, with Library/Online as a
-    // row at its top and Shuffle now beside the current image's name.
-    assert.match(wallpaper, /width: Math\.min\(Theme\.scaled\(640, Theme\.typeScale\), Math\.max\(0, page\.width - 8\)\)/);
-    assert.match(wallpaper, /PickerRow \{\s*id: viewTabs\s*width: parent\.width\s*label: "Browse"/);
-    assert.match(wallpaper, /label: "Current"[\s\S]*?text: "Shuffle now"[\s\S]{0,200}?onTriggered: Wallpaper\.shuffle\(\)/);
-    for (const grid of [wallpaper, read("Settings/WallpaperOnlineView.qml")])
-        assert.match(grid, /x: Theme\.settingsMarkInset\s*width: Math\.max\(0, parent\.width - x - Theme\.chipHeight \+ 7\)/,
-            "the tiles sit in the row grid, ending where the controls do");
+    const grid = read("Settings/WallpaperGrid.qml");
+    assert.match(grid, /columnCount: width >= 300 \? 3 : width >= 190 \? 2 : 1/);
+    assert.match(grid, /cellWidth: Math.floor\(width \/ columnCount\)/);
+    assert.match(grid, /cellHeight: Math.floor\(\(cellWidth - 8\) \* 10 \/ 16\) \+ 8/);
+    assert.match(wallpaper, /WallpaperPicker \{/);
+    assert.match(wallpaper, /label: "Current"[\s\S]*?text: "Shuffle now"[\s\S]{0,200}?onTriggered: Wallpaper.shuffle\(\)/);
     assert.match(modules, /columns: Math.max\(1, Math.min\(3/);
     assert.match(read("Settings/WidgetPill.qml"), /elide:\s*Text\.ElideRight/);
 

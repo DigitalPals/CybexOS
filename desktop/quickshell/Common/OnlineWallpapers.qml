@@ -5,27 +5,23 @@ import Quickshell.Hyprland
 import Quickshell.Io
 import "WallhavenHelpers.js" as WallhavenHelpers
 
-// Wallhaven search and download behind the Wallpaper page's Online view.
+// Wallhaven listings, selected-image details and explicit downloads.
 //
-// Nothing here reaches the network until that view asks. Opening it runs the
-// first search; after that only an explicit search, a filter change, "Show
-// more" or a picked image makes a request, which keeps a person well inside
-// Wallhaven's 45 requests a minute. Results live here rather than in the page,
-// which Settings releases shortly after it closes, so reopening the view does
-// not search again.
-//
-// A picked image is saved into the wallpaper folder by
-// scripts/wallpaper-download.py and then selected like any other file there,
-// so Matugen colours, rotation and the Library grid need nothing extra.
+// Creating the singleton never contacts Wallhaven. The chosen view asks for
+// its first listing; welcome first checks metering. Searches and details share
+// one request budget, and cached details survive the Settings view's lifetime.
+// A download starts only from Apply, saves into the user's wallpaper folder,
+// and joins the same Matugen/rotation flow as a local file.
 Singleton {
     id: root
 
-    // Which half of the Wallpaper page is showing: "library" or "online".
-    property string view: "library"
+    // Settings tab state; an embedded picker can keep its own tab.
+    property string view: "collection"
 
     // The filters start from these and the page's rows reset to them.
     readonly property var defaults: ({ sort: "popular", category: "general", size: "fit" })
     property string query: ""
+    property string color: ""
     property string sort: defaults.sort
     property string category: defaults.category
     property string size: defaults.size
@@ -45,7 +41,10 @@ Singleton {
     // Each output's mode in pixels, from Hyprland. Qt's screen scale is the
     // integer wl_output scale (2 for a 1.5 fractional scale), which would ask
     // a 4K output for 5K images. A rotated output (odd transform) swaps sides.
-    readonly property var screenSizes: Hyprland.monitors.values.map(monitor => {
+    readonly property var screenSizes: Hyprland.monitors.values.length === 0
+        ? Quickshell.screens.map(screen => ({ width: screen.width, height: screen.height,
+            devicePixelRatio: screen.devicePixelRatio }))
+        : Hyprland.monitors.values.map(monitor => {
         const transform = monitor.lastIpcObject ? Number(monitor.lastIpcObject.transform) : 0;
         const rotated = transform % 2 === 1;
         return {
@@ -66,50 +65,171 @@ Singleton {
         return names;
     }
 
-    function ensureLoaded() {
+    function ensureLoaded(automatic) {
+        if (automatic && !autoLoadAllowed())
+            return;
         if (!searched && !busy)
             search();
     }
 
-    // The welcome window's row: the default listing (Popular, General, sized
-    // for these displays, no query). Filters changed in Settings go back to
-    // their defaults; a default listing that already loaded, or is loading,
-    // is kept rather than searched again.
-    function showPopular() {
-        const isDefault = query === "" && sort === defaults.sort
-            && category === defaults.category && size === defaults.size;
-        if (isDefault && (busy || (searched && error === "")))
-            return;
-        query = "";
-        sort = defaults.sort;
-        category = defaults.category;
-        size = defaults.size;
-        search();
+    signal applied(string fileName)
+    property var selected: null
+    readonly property var details: selected ? detailsCache[selected.id] || null : null
+    property var detailsCache: ({})
+    property bool detailsBusy: false
+    property string detailsError: ""
+    property var detailsRequest: null
+    property int detailsGeneration: 0
+    property var requestTimes: []
+    property double pausedUntil: 0
+    property double clockNow: Date.now()
+    property int rateRemaining: -1
+    property int rateLimit: -1
+    readonly property bool paused: pausedUntil > clockNow
+    readonly property string rateMessage: paused
+        ? I18n.tr("Wallhaven requests are paused. Try again in a minute.") : ""
+
+    // GENERAL.METERED reports both explicit and guessed metering. Unknown is
+    // conservative: welcome asks before loading, rather than guessing free.
+    property bool meteredKnown: false
+    property bool metered: true
+    function autoLoadAllowed() { return meteredKnown && !metered; }
+    function refreshMetered() {
+        meteredKnown = false;
+        metered = true;
+        if (!meteredProc.running)
+            meteredProc.running = true;
     }
 
-    // Picks a listed result by its Wallhaven id; false when it is not listed.
-    function pick(id) {
-        const item = results.find(entry => entry.id === id);
-        if (!item)
+    function reserveRequest() {
+        clockNow = Date.now();
+        requestTimes = WallhavenHelpers.requestWindow(requestTimes, clockNow);
+        if (paused || requestTimes.length >= 45) {
+            if (!paused)
+                pausedUntil = requestTimes[0] + 60000;
             return false;
-        apply(item);
+        }
+        requestTimes = requestTimes.concat([clockNow]);
         return true;
     }
 
-    // Everything the welcome window polls for while it waits on a search or
-    // a download, as one JSON-ready object.
-    function state() {
-        return {
-            busy: busy,
-            searched: searched,
-            error: error,
-            items: WallhavenHelpers.ipcItems(results, Settings.wall, saved),
-            downloading: downloadingId,
-            progress: downloadProgress,
-            downloadError: downloadError,
-            failedId: failedId,
-            current: Settings.wall
-        };
+    function readRate(xhr) {
+        const remaining = xhr.getResponseHeader("x-ratelimit-remaining") || "";
+        const limit = xhr.getResponseHeader("x-ratelimit-limit") || "";
+        rateRemaining = /^\d+$/.test(remaining) ? Number(remaining) : -1;
+        rateLimit = /^\d+$/.test(limit) ? Number(limit) : -1;
+        pausedUntil = Math.max(pausedUntil, WallhavenHelpers.ratePause(xhr.status,
+            remaining, limit, xhr.getResponseHeader("retry-after") || "", Date.now()));
+        clockNow = Date.now();
+    }
+
+    function select(id) {
+        const item = results.find(entry => entry.id === id);
+        if (!item || !WallhavenHelpers.validId(id))
+            return false;
+        selected = item;
+        detailsGeneration++;
+        detailsDeadline.stop();
+        if (detailsRequest) {
+            detailsRequest.onreadystatechange = null;
+            detailsRequest.abort();
+            detailsRequest = null;
+        }
+        detailsBusy = false;
+        detailsError = "";
+        if (detailsCache[id])
+            return true;
+        if (!reserveRequest()) {
+            detailsError = rateMessage;
+            return true;
+        }
+        const token = detailsGeneration;
+        try {
+            const xhr = new XMLHttpRequest();
+            detailsRequest = xhr;
+            detailsBusy = true;
+            xhr.onreadystatechange = () => {
+                if (token !== root.detailsGeneration || xhr.readyState !== XMLHttpRequest.DONE)
+                    return;
+                detailsDeadline.stop();
+                root.detailsRequest = null;
+                root.detailsBusy = false;
+                root.readRate(xhr);
+                if (xhr.status !== 200) {
+                    root.detailsError = I18n.format(WallhavenHelpers.statusError(xhr.status), [xhr.status]);
+                    return;
+                }
+                try {
+                    const cache = Object.assign({}, root.detailsCache);
+                    cache[id] = WallhavenHelpers.parseDetails(xhr.responseText, id);
+                    root.detailsCache = cache;
+                } catch (e) {
+                    root.detailsError = I18n.tr("Wallhaven returned unreadable details. Try selecting again.");
+                }
+            };
+            xhr.open("GET", WallhavenHelpers.detailsUrl(id));
+            detailsDeadline.restart();
+            xhr.send();
+        } catch (e) {
+            detailsDeadline.stop();
+            detailsRequest = null;
+            detailsBusy = false;
+            detailsError = I18n.tr("The details could not load. Try selecting again.");
+        }
+        return true;
+    }
+
+    function moreLike(id) {
+        const queryString = WallhavenHelpers.likeQuery(id);
+        if (queryString === "")
+            return;
+        query = queryString;
+        search();
+    }
+
+    Timer {
+        interval: 1000
+        running: root.pausedUntil > 0
+        repeat: true
+        onTriggered: {
+            root.clockNow = Date.now();
+            if (!root.paused)
+                root.pausedUntil = 0;
+        }
+    }
+    Timer {
+        id: detailsDeadline
+        interval: 15000
+        onTriggered: {
+            root.detailsGeneration++;
+            if (root.detailsRequest) {
+                root.detailsRequest.onreadystatechange = null;
+                root.detailsRequest.abort();
+                root.detailsRequest = null;
+            }
+            root.detailsBusy = false;
+            root.detailsError = I18n.tr("The details could not load. Try selecting again.");
+        }
+    }
+    Process {
+        id: meteredProc
+        command: ["python3", Quickshell.shellDir + "/scripts/network-tool.py", "metered"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const state = JSON.parse(text);
+                    root.metered = state.metered !== false;
+                    root.meteredKnown = state.known === true;
+                } catch (e) {
+                    root.meteredKnown = false;
+                    root.metered = true;
+                }
+            }
+        }
+    }
+    Connections {
+        target: NetworkStatus
+        function onMonitorEvent(line) { root.refreshMetered(); }
     }
 
     function search() {
@@ -141,6 +261,8 @@ Singleton {
     }
 
     function fetchPage(target) {
+        if (!reserveRequest())
+            return;
         cancelSearch();
         const nextPage = target > 1;
         if (!nextPage) {
@@ -156,6 +278,7 @@ Singleton {
         const token = generation;
         const url = WallhavenHelpers.searchUrl({
             query: query,
+            color: color,
             sort: sort,
             category: category,
             minimum: size === "fit" ? minimum : "",
@@ -171,14 +294,15 @@ Singleton {
                     return;
                 deadline.stop();
                 root.request = null;
+                root.readRate(xhr);
                 let parsed = null;
                 if (xhr.status !== 200) {
-                    root.error = WallhavenHelpers.statusError(xhr.status);
+                    root.error = I18n.format(WallhavenHelpers.statusError(xhr.status), [xhr.status]);
                 } else {
                     try {
                         parsed = WallhavenHelpers.parseResults(xhr.responseText);
                     } catch (e) {
-                        root.error = "Wallhaven returned an unreadable response. Try again.";
+                        root.error = I18n.tr("Wallhaven returned an unreadable response. Try again.");
                     }
                 }
                 if (parsed !== null) {
@@ -201,14 +325,14 @@ Singleton {
             deadline.restart();
             xhr.send();
         } catch (e) {
-            failSearch("The search could not start. Try again.");
+            failSearch(I18n.tr("The search could not start. Try again."));
         }
     }
 
     Timer {
         id: deadline
         interval: 15000
-        onTriggered: root.failSearch("Wallhaven did not answer in time. Check your connection and try again.")
+        onTriggered: root.failSearch(I18n.tr("Wallhaven did not answer in time. Check your connection and try again."))
     }
 
     // ---- download ---------------------------------------------------------
@@ -231,6 +355,7 @@ Singleton {
         failedId = "";
         if (saved[item.fileName] && !downloadProc.running) {
             Wallpaper.set(item.fileName);
+            applied(item.fileName);
             return;
         }
         pendingItem = item;
@@ -247,6 +372,7 @@ Singleton {
             return;
         if (saved[item.fileName]) {
             Wallpaper.set(item.fileName);
+            applied(item.fileName);
             return;
         }
         downloadItem = item;
@@ -276,13 +402,16 @@ Singleton {
         if (result.indexOf("done ") === 0) {
             // A folder change while the image arrived: the file is saved
             // where it started, but it is not in the folder now on display.
-            if (directory === Wallpaper.dir)
+            if (directory === Wallpaper.dir) {
+                Wallpaper.reloadDirectory();
                 Wallpaper.set(result.slice(5));
+                applied(result.slice(5));
+            }
             return;
         }
         failedId = item ? item.id : "";
-        downloadError = WallhavenHelpers.downloadError(
-            result.indexOf("failed ") === 0 ? result.slice(7) : "");
+        downloadError = I18n.tr(WallhavenHelpers.downloadError(
+            result.indexOf("failed ") === 0 ? result.slice(7) : ""));
     }
 
     Process {

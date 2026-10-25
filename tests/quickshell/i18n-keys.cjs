@@ -46,6 +46,12 @@ function dataKeys() {
         if (typeof value === "string" && /[A-Za-z]{2}/.test(value))
             keys.add(value);
     };
+    const wallhaven = load("WallhavenHelpers.js");
+    for (const value of Object.values(wallhaven.DOWNLOAD_ERRORS))
+        add(value);
+    add(wallhaven.downloadError("unknown"));
+    for (const status of [0, 429, 503])
+        add(wallhaven.statusError(status));
     const search = load("SettingsSearchData.js");
     for (const row of search.ROWS) {
         add(row.label);

@@ -210,7 +210,7 @@ test("apply writes the lock screen and reload touches nothing", t => {
     assert.deepEqual(stubs.calls().filter(call => !call.startsWith("pkill ")), []);
 });
 
-test("the vendor lock screen is the dark default rendered without a wallpaper", () => {
+test("the vendor lock screen adds the bundled default to the same dark controls", () => {
     const vendor = fs.readFileSync(template, "utf8");
     // Installed with NixOS modules's template module: it must stay free of Jinja.
     assert.doesNotMatch(vendor, /\{[{%#]/);
@@ -218,7 +218,11 @@ test("the vendor lock screen is the dark default rendered without a wallpaper", 
     const lines = rendered.split("\n");
     assert.equal(lines[0], HEADER);
     assert.match(lines[1], /^# /);
-    assert.equal(vendor, lines.slice(2).join("\n"),
+    assert.match(vendor, /path = \$CYBEXOS_DEFAULT_WALLPAPER/);
+    assert.match(vendor, /blur_passes = 3/);
+    assert.match(vendor, /brightness = 0.4/);
+    const withoutBackdrop = vendor.replace(/^  (?:path|blur_passes|blur_size|brightness) = .*\n/gm, "");
+    assert.equal(withoutBackdrop, lines.slice(2).join("\n"),
         "the fallback before the shell's first export must match the renderer");
 });
 

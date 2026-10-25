@@ -65,7 +65,7 @@ Singleton {
             size: Common.Theme.fontBaseSize},
         radius: Common.Theme.surfaceRadius,
         glass: Common.Theme.glassActive,
-        wallpaper: Settings.wall !== "" ? Common.Wallpaper.currentIdentity : ""
+        wallpaper: Settings.wall !== "" ? Common.Wallpaper.currentIdentity : Common.Wallpaper.defaultPath
     })
     readonly property string serialized: JSON.stringify(tokens)
 

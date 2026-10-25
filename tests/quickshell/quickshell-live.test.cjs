@@ -62,7 +62,7 @@ qs_live_pid_command() {
   touch "$QS_TEST_DIR/inspected-$1"
   if [[ $QS_TEST_MODE == unknown ]]; then echo 'qs --help';
   elif [[ $QS_TEST_MODE == managed ]]; then echo 'qs -p /fixture/quickshell';
-  else echo 'qs ipc --any-display -p /fixture/quickshell call wallpaper results'; fi
+  else echo 'qs ipc --any-display -p /fixture/quickshell call wallpaper status'; fi
 }
 qs_live_pid_cgroup() {
   if [[ $QS_TEST_MODE == managed ]]; then echo /fixture/quickshell.service;

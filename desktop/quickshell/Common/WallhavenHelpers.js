@@ -13,6 +13,19 @@
 const SEARCH_URL = "https://wallhaven.cc/api/v1/search";
 const PAGE_URL = "https://wallhaven.cc/w/";
 const MAX_QUERY = 100;
+// Search accepts only this fixed palette; returned image swatches may be any
+// six-digit hex (https://wallhaven.cc/help/api, checked 2026-10-25).
+const COLORS = ["660000", "990000", "cc0000", "cc3333", "ea4c88", "993399",
+    "663399", "333399", "0066cc", "0099cc", "66cccc", "77cc33", "669900",
+    "336600", "666600", "999900", "cccc33", "ffff00", "ffcc33", "ff9900",
+    "ff6600", "cc6633", "996633", "663300", "000000", "999999", "cccccc",
+    "ffffff", "424153"];
+const TOPICS = [
+    { value: "minimalism", label: "Minimal" }, { value: "nature", label: "Nature" },
+    { value: "space", label: "Space" }, { value: "city", label: "City" },
+    { value: "abstract", label: "Abstract" }, { value: "dark", label: "Dark" },
+    { value: "pixel art", label: "Pixel art" }
+];
 
 const SORTS = [
     { value: "popular", label: "Popular" },
@@ -61,6 +74,9 @@ function searchUrl(options) {
     const query = typeof opts.query === "string" ? opts.query.trim().slice(0, MAX_QUERY) : "";
     if (query !== "")
         params.push(["q", query]);
+    const color = typeof opts.color === "string" ? opts.color.toLowerCase() : "";
+    if (COLORS.indexOf(color) !== -1)
+        params.push(["colors", color]);
     const sortParams = SORT_PARAMS[sort];
     for (const key of Object.keys(sortParams))
         params.push([key, sortParams[key]]);
@@ -143,6 +159,7 @@ function parseItem(item) {
         height: item.dimension_y,
         size: item.file_size,
         favorites: count(item.favorites),
+        colors: imageColors(item.colors),
         category: typeof item.category === "string" ? item.category : "",
         thumb: thumb,
         image: image,
@@ -199,25 +216,74 @@ function statusError(status) {
         return "Wallhaven is limiting requests. Wait a minute and try again.";
     if (status === 0)
         return "Wallhaven could not be reached. Check your connection and try again.";
-    return "Wallhaven is unavailable right now (HTTP " + status + "). Try again later.";
+    return "Wallhaven is unavailable right now (HTTP %1). Try again later.";
 }
 
-// What `ipc wallpaper results` reports for each listed image: the fields the
-// welcome window draws, plus whether the image is the current wallpaper or
-// already saved in the wallpaper folder. current: Settings.wall; saved: a
-// { fileName: true } map.
-function ipcItems(items, current, saved) {
-    const names = saved || {};
-    return (items || []).map(item => ({
-        id: item.id,
-        thumb: item.thumb,
-        width: item.width,
-        height: item.height,
-        size: item.size,
-        fileName: item.fileName,
-        current: item.fileName === current,
-        saved: names[item.fileName] === true
-    }));
+function validId(id) {
+    return typeof id === "string" && ID.test(id);
+}
+
+function detailsUrl(id) {
+    return validId(id) ? "https://wallhaven.cc/api/v1/w/" + id : "";
+}
+
+function likeQuery(id) {
+    return validId(id) ? "like:" + id : "";
+}
+
+function imageColors(colors) {
+    return Array.isArray(colors) ? colors.filter(color =>
+        typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color))
+        .slice(0, 10).map(color => color.toLowerCase()) : [];
+}
+
+function plain(value, limit) {
+    return typeof value === "string" ? value.replace(/[\x00-\x1f\x7f]/g, "").trim().slice(0, limit) : "";
+}
+
+// These are navigation links only, never image/download sources. Disallow
+// credentials, whitespace and control characters as well as other schemes.
+function httpUrl(value) {
+    return typeof value === "string" && value.length <= 2048
+        && /^https?:\/\/[^/\s@?#]+(?:[/?#][^\s]*)?$/i.test(value)
+        && !/[\x00-\x20\x7f\\<>"]/.test(value) ? value : "";
+}
+
+function parseDetails(body, expectedId) {
+    const data = JSON.parse(body);
+    const raw = data && data.data;
+    const item = parseItem(raw);
+    if (!item || item.id !== expectedId)
+        throw new Error("Invalid Wallhaven details");
+    return Object.assign(item, {
+        uploader: plain(raw.uploader && raw.uploader.username, 64),
+        tags: Array.isArray(raw.tags) ? raw.tags.filter(tag => tag && tag.purity === "sfw")
+            .slice(0, 30).map(tag => plain(tag.name, 64)).filter(Boolean) : [],
+        source: httpUrl(raw.source),
+        short_url: httpUrl(raw.short_url)
+    });
+}
+
+// Shared by listings and detail requests. A sliding window counts cancelled
+// attempts too. Reserve the last two server slots for other Wallhaven users
+// behind this connection; missing headers never bypass our own limit.
+function requestWindow(times, now) {
+    return (times || []).filter(time => now - time < 60000);
+}
+
+function ratePause(status, remaining, limit, retryAfter, now) {
+    const number = value => typeof value === "string" && /^\d+$/.test(value.trim())
+        ? Number(value) : NaN;
+    const left = number(remaining);
+    const maximum = number(limit);
+    if (status === 429) {
+        const retry = number(retryAfter);
+        const date = Date.parse(retryAfter);
+        return now + Math.max(60000, Number.isFinite(retry) ? retry * 1000
+            : Number.isFinite(date) ? date - now : 0);
+    }
+    return Number.isFinite(left) && left <= 2 && (!Number.isFinite(maximum) || maximum > 0)
+        ? now + 60000 : 0;
 }
 
 // The download helper's failure codes, in the words the page shows.
@@ -237,6 +303,7 @@ function downloadError(code) {
 
 if (typeof module !== "undefined")
     module.exports = {
-        SORTS, CATEGORIES, SIZES, searchUrl, minimumFor, allLandscape,
-        parseResults, merge, formatBytes, describe, statusError, downloadError, ipcItems
+        SORTS, CATEGORIES, SIZES, COLORS, TOPICS, searchUrl, minimumFor, allLandscape,
+        parseResults, merge, formatBytes, describe, statusError, downloadError, validId, detailsUrl, likeQuery, imageColors,
+        parseDetails, httpUrl, requestWindow, ratePause, DOWNLOAD_ERRORS
     };

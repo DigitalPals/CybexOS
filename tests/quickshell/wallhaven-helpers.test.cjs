@@ -112,7 +112,7 @@ test("results keep only safe-for-work images with Wallhaven's own URLs", () => {
     assert.equal(parsed.seed, "WPvrQV");
     assert.deepEqual(parsed.items[0], {
         id: "qroy2d", width: 3840, height: 2160, size: 5322122, favorites: 98,
-        category: "general",
+        category: "general", colors: [],
         thumb: "https://th.wallhaven.cc/lg/qr/qroy2d.jpg",
         image: "https://w.wallhaven.cc/full/qr/wallhaven-qroy2d.png",
         page: "https://wallhaven.cc/w/qroy2d",
@@ -143,7 +143,7 @@ test("a later page appends without repeating images already shown", () => {
 test("status copy names rate limiting and offline separately", () => {
     assert.match(H.statusError(429), /Wait a minute/);
     assert.match(H.statusError(0), /connection/);
-    assert.match(H.statusError(503), /HTTP 503/);
+    assert.match(H.statusError(503), /HTTP %1/);
     assert.equal(H.describe({ width: 3840, height: 2160, size: 5322122 }), "3840 × 2160 · 5.3 MB");
     assert.equal(H.formatBytes(840000), "840 kB");
 });
@@ -156,47 +156,64 @@ test("every download failure code the helper prints has page copy", () => {
         assert.notEqual(H.downloadError(code), H.downloadError("unknown-code"), code);
 });
 
-test("the Online view reaches the network only once chosen", () => {
-    const page = read("Settings/WallpaperPage.qml");
+test("the picker loads online only when chosen and previews without applying", () => {
+    const picker = read("Settings/WallpaperPicker.qml");
+    const grid = read("Settings/WallpaperGrid.qml");
     const view = read("Settings/WallpaperOnlineView.qml");
     const online = read("Common/OnlineWallpapers.qml");
-
-    assert.match(online, /property string view:\s*"library"/,
-        "the page opens on the local Library");
-    assert.match(page, /Loader \{[\s\S]*?active:\s*page\.online/,
-        "the Online view is instantiated only while chosen");
-    assert.match(view, /Component\.onCompleted:\s*OnlineWallpapers\.ensureLoaded\(\)/);
-    assert.doesNotMatch(online, /Component\.onCompleted/,
-        "creating the singleton must not search");
-    assert.match(view, /model:\s*ScriptModel\s*\{\s*values:\s*root\.results\s*\}/,
-        "a later page appends tiles instead of resetting the grid");
-    assert.match(view, /onAtYEndChanged:\s*\{\s*if \(atYEnd\)\s*Qt\.callLater\(root\.loadMoreAtEnd\);/,
-        "the end-of-list check never runs inside the footer's own resize");
-    assert.match(view,
-        /function loadMoreAtEnd\(\) \{\s*if \(resultGrid\.atYEnd && resultGrid\.contentHeight > resultGrid\.height\)\s*OnlineWallpapers\.more\(\);/,
-        "a short first page must not chain requests by itself");
-    const handler = online.slice(online.indexOf("xhr.onreadystatechange"), online.indexOf("xhr.open("));
-    assert.ok(handler.indexOf("root.page = parsed.page") < handler.indexOf("root.busy = false"),
-        "a page's results land before the listing stops being busy");
-    assert.ok(handler.indexOf("root.page = parsed.page") < handler.indexOf("root.appending = false"));
-    assert.match(online, /wallpaper-download\.py/);
-    assert.match(online,
-        /onRunningChanged:\s*\{\s*if \(!running && root\.downloadItem !== null\)\s*root\.finishDownload\(\)/,
-        "a helper that never started must still settle its download");
+    assert.match(picker, /active: root.tab === "online"/);
+    assert.match(view, /OnlineWallpapers.ensureLoaded\(automatic\)/);
+    assert.doesNotMatch(online, /Component\.onCompleted/);
+    assert.match(grid, /model: ScriptModel \{ values: root.items \}/);
+    assert.match(view, /OnlineWallpapers.select\(item.id\)/);
+    assert.doesNotMatch(grid, /OnlineWallpapers.apply|Wallpaper.set/);
+    assert.doesNotMatch(view, /onAtYEndChanged|OnlineWallpapers.apply/);
+    assert.match(online, /requestTimes.length >= 45/);
+    assert.match(online, /root.readRate\(xhr\)/);
+    assert.match(online, /detailsCache\[id\]/);
+    assert.match(online, /onRunningChanged:\s*\{\s*if \(!running && root.downloadItem !== null\)\s*root.finishDownload\(\)/);
     assert.match(read("Common/qmldir"), /^singleton OnlineWallpapers OnlineWallpapers\.qml$/m);
-    assert.match(read("Settings/qmldir"), /^WallpaperOnlineView WallpaperOnlineView\.qml$/m);
 });
 
+test("all fixed search colours and only validated like IDs are accepted", () => {
+    assert.equal(H.COLORS.length, 29);
+    assert.equal(new Set(H.COLORS).size, 29);
+    for (const color of H.COLORS)
+        assert.equal(new URL(H.searchUrl({ color })).searchParams.get("colors"), color);
+    for (const color of ["#660000", "123456", "red", "660000&purity=111", null])
+        assert.equal(new URL(H.searchUrl({ color })).searchParams.has("colors"), false);
+    assert.equal(H.likeQuery("qroy2d"), "like:qroy2d");
+    assert.equal(new URL(H.searchUrl({ query: H.likeQuery("qroy2d") })).searchParams.get("q"), "like:qroy2d");
+    for (const id of ["../foo", "QROY2D", "a&purity=111", "", null]) {
+        assert.equal(H.likeQuery(id), "");
+        assert.equal(H.detailsUrl(id), "");
+    }
+});
 
-test("the IPC listing reports what the welcome row draws", () => {
-    const listed = [{ id: "qroy2d", thumb: "t1", width: 3840, height: 2160, size: 5, fileName: "wallhaven-qroy2d.png",
-        favorites: 9, category: "general", image: "i1", page: "p1" },
-    { id: "rdwjj7", thumb: "t2", width: 4096, height: 2561, size: 6, fileName: "wallhaven-rdwjj7.jpg" }];
-    assert.deepEqual(H.ipcItems(listed, "wallhaven-rdwjj7.jpg", { "wallhaven-qroy2d.png": true }), [
-        { id: "qroy2d", thumb: "t1", width: 3840, height: 2160, size: 5, fileName: "wallhaven-qroy2d.png",
-            current: false, saved: true },
-        { id: "rdwjj7", thumb: "t2", width: 4096, height: 2561, size: 6, fileName: "wallhaven-rdwjj7.jpg",
-            current: true, saved: false }
-    ]);
-    assert.deepEqual(H.ipcItems(undefined, "", undefined), []);
+test("details bound untrusted attribution, enforce SFW and match the selected ID", () => {
+    const raw = item("qroy2d", { uploader: { username: "a".repeat(90) + "\\n" },
+        source: "https://example.org/art?a=1", short_url: "https://whvn.cc/qroy2d",
+        colors: ["#abbcda", "red", "#ABCDEF", "#12345", null],
+        tags: [{ name: "nature", purity: "sfw" }, { name: "hidden", purity: "nsfw" }] });
+    const details = H.parseDetails(JSON.stringify({ data: raw }), "qroy2d");
+    assert.equal(details.uploader.length, 64);
+    assert.deepEqual(details.colors, ["#abbcda", "#abcdef"]);
+    assert.deepEqual(details.tags, ["nature"]);
+    assert.equal(details.source, raw.source);
+    assert.equal(details.short_url, raw.short_url);
+    assert.throws(() => H.parseDetails(JSON.stringify({ data: raw }), "rdwjj7"));
+    assert.throws(() => H.parseDetails(JSON.stringify({ data: { ...raw, purity: "nsfw" } }), "qroy2d"));
+    for (const source of ["javascript:alert(1)", "file:///etc/passwd", "https://a:b@example.org/", "https://host/\\n", "https://host/<img>", "https://host/" + "x".repeat(2048)])
+        assert.equal(H.httpUrl(source), "", source);
+    const listed = H.parseResults(reply([raw])).items[0];
+    assert.deepEqual(listed.colors, details.colors, "listing swatches need no details request");
+});
+
+test("request windows and server limits pause searches and details together", () => {
+    assert.deepEqual(H.requestWindow([1, 30000, 59999], 60001), [30000, 59999]);
+    assert.equal(H.ratePause(200, "2", "45", "", 1000), 61000);
+    assert.equal(H.ratePause(200, "3", "45", "", 1000), 0);
+    assert.equal(H.ratePause(200, null, null, "", 1000), 0);
+    assert.equal(H.ratePause(429, "", "", "120", 1000), 121000);
+    assert.equal(H.ratePause(429, "", "", "nonsense", 1000), 61000);
 });

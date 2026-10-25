@@ -47,8 +47,8 @@ test('responsive controls and focus scrolling respect their content bounds', () 
 
 test('notification actions wrap and image captions retain independent contrast', () => {
     assert.match(read('Common/NotifActions.qml'), /Flow \{\s*width: root.width/);
-    const wallpaper = read('Settings/WallpaperPage.qml');
-    const caption = wallpaper.slice(wallpaper.indexOf('id: fileName'), wallpaper.indexOf('visible: cell.current'));
+    const wallpaper = read('Settings/WallpaperGrid.qml');
+    const caption = wallpaper.slice(wallpaper.indexOf('id: badge'), wallpaper.indexOf('visible: cell.chosen'));
     assert.match(caption, /color: "#ffffff"/);
     assert.match(read('ShortcutsOverlay.qml'), /contentHeight: body.implicitHeight/);
     const shortcuts = read('ShortcutsOverlay.qml');

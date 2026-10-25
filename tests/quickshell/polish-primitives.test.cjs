@@ -238,7 +238,7 @@ test("primary loading and empty states use a settled, gated placeholder", () => 
     for (const rel of [
         "Popovers/GitHubPopover.qml", "Popovers/NotifsPopover.qml",
         "Popovers/T3InboxPage.qml", "Popovers/T3ThreadPage.qml",
-        "Settings/WallpaperPage.qml"
+        "Settings/WallpaperPicker.qml"
     ])
         assert.match(read(rel), /StatusPlaceholder\s*\{/,
             `${rel} still lacks the shared empty/loading treatment`);
