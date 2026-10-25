@@ -145,3 +145,40 @@ test('a protected remap keeps its reserved defaults and stores only the extra ke
     assert.equal(M.dirty(data),false);
     assert.throws(()=>M.setKeys(data,'shell.lock',[]),/at least one/);
 });
+test('a rejected keybindings.json refuses edits except resetAll, which is applied as an explicit replacement', () => {
+    const data = model();
+    const snapshot = {state:{v:1,error:'invalid number at byte 148',actions:catalog.map(row=>({...row,keys:row.defaultKeys})),custom:[],diagnostics:[]},
+        preferences:{v:1},version:'broken-hash',binds,preferencesError:'Shortcut preferences are invalid.'};
+    data.loaded = false;
+    M.ingest(data, snapshot);
+    assert.equal(data.loaded,true);
+    assert.equal(M.broken(data),true);
+    assert.deepEqual(plain(M.problem(data)),{file:'Shortcut preferences are invalid.',lua:'invalid number at byte 148'});
+    assert.equal(M.dirty(data),false);
+    for (const edit of [()=>M.setKeys(data,'apps.first',['SUPER + T']),()=>M.reset(data,'apps.first'),
+        ()=>M.addCustom(data,{group:'Apps',label:'X',keys:['SUPER + T'],run:{type:'command',command:'true'}}),
+        ()=>M.updateCustom(data,'custom.x',{label:'Y'}),()=>M.removeCustom(data,'custom.x')])
+        assert.throws(edit,/Reset all shortcuts/);
+    assert.equal(M.dirty(data),false);
+    M.resetAll(data);
+    assert.equal(M.dirty(data),true);
+    assert.deepEqual(plain(M.request(data)),{action:'apply',version:'broken-hash',preferences:{v:1},replaceInvalid:true});
+    M.discard(data);
+    assert.equal(M.dirty(data),false);
+    M.resetAll(data);
+    M.applied(data,{version:'new-hash',preferences:{v:1}});
+    assert.equal(M.broken(data),false);
+    assert.equal(M.dirty(data),false);
+    assert.equal(data.version,'new-hash');
+    M.setKeys(data,'apps.first',['SUPER + T']);
+    assert.equal(M.request(data).replaceInvalid,undefined);
+});
+test('Lua alone rejecting the file also makes the editor read only, and a healthy file is never read only', () => {
+    const data = model();
+    const state = {v:1,error:'catalog failed',actions:catalog.map(row=>({...row,keys:row.defaultKeys})),custom:[],diagnostics:[]};
+    M.ingest(data,{state,preferences:{v:1},version:'h',binds,preferencesError:''});
+    assert.equal(M.broken(data),true);
+    M.ingest(data,{state:{...state,error:null},preferences:{v:1},version:'h',binds,preferencesError:''});
+    assert.equal(M.broken(data),false);
+    M.setKeys(data,'apps.first',['SUPER + T']);
+});

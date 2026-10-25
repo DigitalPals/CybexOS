@@ -449,6 +449,21 @@ return `{state, preferences, version, binds}`. The successful apply returns
 `KeybindingsModel.js` contains pure draft/merge helpers; saved resolution is
 always read from Lua's state, and only an unsaved draft is resolved in JS.
 
+A `keybindings.json` that the loader rejects does not stop the page. The
+snapshot still returns Lua's `state` and the live `binds`, with `preferences`
+`{v: 1}`, the exact bytes' hash as `version`, and `preferencesError` (a string,
+`""` when the file is fine). `Keybindings` exposes `preferencesError`, preferring
+Lua's published reason, and `readOnly`, true while either side rejects the file.
+While `readOnly`, every edit except `resetAll()` is refused with a failure.
+`resetAll()` marks the draft dirty even though it looks unchanged; the next
+`apply()` sends `replaceInvalid: true`. Only then does the backend replace the
+file, after copying its exact bytes to `keybindings.json.invalid-<UTC
+timestamp>` beside it (mode 0600, never overwritten or deleted). If that copy
+fails nothing changes. The usual version check and reload rollback apply, and
+the backup stays after a rollback. A file that is not a regular file (a
+symlink, a FIFO) or is over 1 MiB is reported but cannot be replaced; repair it
+by hand. `replaceInvalid` is ignored when the file is valid.
+
 One transport addition touches `LauncherWindow.qml`: the existing `launcher`
 IPC target now has `launchDesktop(desktopId: string): string`, returning
 `ok`, `unknown` or `invalid`. This is needed to use the Apps tab's actual

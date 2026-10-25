@@ -157,6 +157,12 @@ configuration load before `user.lua`. The shell reads that result and compares
 it with live Hyprland bindings to mark changes made in `user.lua`. Settings
 never writes that Lua file: your personal layer below still loads last.
 
+If `keybindings.json` cannot be loaded, the vendor shortcuts stay active, the
+editor shows the reason and is read only, and **Reset all** is the way out.
+Applying it replaces the file only after copying the old bytes to
+`keybindings.json.invalid-<timestamp>` in the same directory; that copy is
+never deleted.
+
 ## Your own shortcuts
 
 Add personal bindings to `~/.config/cybexos/hypr/user.lua`. Cybex OS loads it

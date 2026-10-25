@@ -14,6 +14,16 @@ Singleton {
         return root.localError || (backend.error ? I18n.tr(backend.error)
             : root.model.state.error ? I18n.format("Could not load keyboard shortcuts: %1", root.model.state.error) : "");
     }
+    // Why keybindings.json is not in effect, "" when it is. Lua's published
+    // reason wins over the backend's. While set, only resetAll() is accepted;
+    // applying that reset replaces the file after a backup copy is kept.
+    readonly property string preferencesError: {
+        root.revision;
+        const problem = Model.problem(root.model);
+        return problem.lua ? I18n.format("Could not load keyboard shortcuts: %1", problem.lua)
+            : problem.file ? I18n.tr(problem.file) : "";
+    }
+    readonly property bool readOnly: { root.revision; return Model.broken(root.model); }
     readonly property var actions: root.rows.actions
     readonly property var userBinds: root.rows.userBinds
     readonly property var diagnostics: root.rows.diagnostics

@@ -138,10 +138,17 @@ function merge(state, binds) {
     return { actions: rows, userBinds: user, diagnostics: copy(state.diagnostics || []) };
 }
 function create() {
-    return { loaded: false, version: "", saved: {v: 1}, draft: {v: 1},
+    return { loaded: false, version: "", saved: {v: 1}, draft: {v: 1}, problem: "", recover: false,
         state: {actions: [], custom: [], diagnostics: []}, binds: [], pending: null };
 }
-function dirty(model) { return !equal(model.saved, model.draft); }
+// A rejected keybindings.json: the backend's reason (model.problem) or the one
+// Lua published (state.error). Nothing can be edited until resetAll() is applied.
+function broken(model) { return !!(model.problem || model.state.error); }
+function problem(model) { return { file: model.problem || "", lua: model.state.error || "" }; }
+function guardBroken(model) {
+    if (broken(model)) throw new Error("Reset all shortcuts before editing; keybindings.json could not be loaded");
+}
+function dirty(model) { return model.recover || !equal(model.saved, model.draft); }
 function ingest(model, snapshot) {
     model.binds = copy(snapshot.binds || []);
     if (!model.loaded || !dirty(model)) {
@@ -149,6 +156,7 @@ function ingest(model, snapshot) {
         model.saved = copy(snapshot.preferences);
         model.draft = copy(snapshot.preferences);
         model.version = snapshot.version;
+        model.problem = snapshot.preferencesError || "";
     }
     model.loaded = true;
 }
@@ -218,6 +226,7 @@ function checkedKeys(keys) {
     return out;
 }
 function setKeys(model, id, keys) {
+    guardBroken(model);
     var row = action(model, id);
     if (!row || !row.editable) throw new Error("This shortcut cannot be edited");
     keys = checkedKeys(keys);
@@ -240,6 +249,7 @@ function setKeys(model, id, keys) {
     }
 }
 function reset(model, id) {
+    guardBroken(model);
     if (id.indexOf("custom.") === 0) {
         var saved = (model.saved.custom || []).find(function(row) { return row.id === id; });
         removeCustom(model, id);
@@ -252,6 +262,9 @@ function reset(model, id) {
 function resetAll(model) {
     delete model.draft.actions;
     delete model.draft.custom;
+    // The saved document of a rejected file is empty, so the draft would look
+    // unchanged; mark the pending replacement explicitly.
+    if (broken(model)) model.recover = true;
 }
 function checkCustom(entry) {
     if (!entry || typeof entry.group !== "string" || typeof entry.label !== "string"
@@ -270,6 +283,7 @@ function checkCustom(entry) {
 }
 function byteLength(value) { return unescape(encodeURIComponent(value)).length; }
 function addCustom(model, entry) {
+    guardBroken(model);
     entry = checkCustom(copy(entry));
     var index = 1;
     var all = (model.saved.custom || []).concat(model.draft.custom || []);
@@ -280,6 +294,7 @@ function addCustom(model, entry) {
     return entry.id;
 }
 function updateCustom(model, id, patch) {
+    guardBroken(model);
     var index = (model.draft.custom || []).findIndex(function(row) { return row.id === id; });
     if (index < 0) throw new Error("Unknown custom shortcut");
     if (Object.keys(patch).some(function(key) { return ["group", "label", "keys", "run"].indexOf(key) < 0; }))
@@ -287,22 +302,27 @@ function updateCustom(model, id, patch) {
     model.draft.custom[index] = checkCustom(Object.assign({}, model.draft.custom[index], copy(patch)));
 }
 function removeCustom(model, id) {
+    guardBroken(model);
     model.draft.custom = (model.draft.custom || []).filter(function(row) { return row.id !== id; });
     if (!model.draft.custom.length) delete model.draft.custom;
 }
-function discard(model) { model.draft = copy(model.saved); }
+function discard(model) { model.draft = copy(model.saved); model.recover = false; }
 function request(model) {
     model.pending = copy(model.draft);
-    return {action: "apply", version: model.version, preferences: copy(model.pending)};
+    var message = {action: "apply", version: model.version, preferences: copy(model.pending)};
+    if (model.recover) message.replaceInvalid = true;
+    return message;
 }
 function applied(model, result) {
+    model.recover = false;
+    model.problem = "";
     model.version = result.version;
     model.saved = copy(result.preferences || model.pending);
     model.state = resolve(model.state.actions, model.saved);
     model.pending = null;
     // Edits made while the request was running remain a dirty draft.
 }
-var exported = { create: create, ingest: ingest, view: view, resolve: resolve, merge: merge, dirty: dirty,
+var exported = { create: create, ingest: ingest, broken: broken, problem: problem, view: view, resolve: resolve, merge: merge, dirty: dirty,
     action: action, keysFor: keysFor, conflicts: conflicts, setKeys: setKeys, reset: reset, resetAll: resetAll,
     addCustom: addCustom, updateCustom: updateCustom, removeCustom: removeCustom, discard: discard,
     request: request, applied: applied, checkedKeys: checkedKeys };

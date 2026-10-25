@@ -120,6 +120,95 @@ class KeybindingsBackend(unittest.TestCase):
             self.service.read()
         self.run.assert_not_called()
 
+    def test_malformed_preferences_still_return_lua_state_binds_and_the_reason(self):
+        for raw in (b'{"v":1,"v":1}', b'{"v":2}', b'not json', b'\xff', b' ' * 65537):
+            with self.subTest(raw=raw[:20]):
+                self.service.path.write_bytes(raw)
+                self.run.reset_mock()
+                self.run.return_value = '[{"modmask":64,"key":"B","description":"Personal: Browser"}]'
+                result = self.service.snapshot()
+                self.assertEqual(result['state'], self.state)
+                self.assertEqual(result['preferences'], {'v': 1})
+                self.assertEqual(result['version'], hashlib.sha256(raw).hexdigest())
+                self.assertEqual(len(result['binds']), 1)
+                self.assertTrue(result['preferencesError'])
+        self.service.path.write_bytes(b'{"v":1}')
+        self.assertEqual(self.service.snapshot()['preferencesError'], '')
+
+    def test_unreadable_preferences_report_an_error_but_cannot_be_replaced(self):
+        outside = self.service.path.parent / 'target.json'
+        outside.write_text('{"v":1}')
+        self.service.path.symlink_to(outside)
+        self.run.return_value = '[]'
+        self.assertIn('regular file', self.service.snapshot()['preferencesError'])
+        with self.assertRaisesRegex(ValueError, 'regular file'):
+            self.service.dispatch({'action': 'apply', 'preferences': {'v': 1}, 'version': '',
+                                   'replaceInvalid': True})
+        self.assertTrue(self.service.path.is_symlink())
+        self.assertEqual(outside.read_text(), '{"v":1}')
+        self.assertNotIn(['hyprctl', 'reload'], [call.args[0] for call in self.run.call_args_list])
+
+    def test_a_malformed_file_is_replaced_only_by_an_explicit_reset_and_a_backup_is_kept(self):
+        broken = b'{"v":1,"actions":{"apps.browser":{"keys":["SUPER + B; os.execute(1)"]}}}'
+        self.service.path.write_bytes(broken)
+        self.run.side_effect = lambda args: '[]' if args == ['hyprctl', '-j', 'binds'] else 'ok'
+        version = self.service.snapshot()['version']
+        with self.assertRaisesRegex(ValueError, 'invalid'):
+            self.service.dispatch({'action': 'apply', 'preferences': {'v': 1}, 'version': version})
+        self.assertEqual(self.service.path.read_bytes(), broken)
+        self.assertEqual(list(self.service.path.parent.glob('keybindings.json.invalid-*')), [])
+        self.assertNotIn(['hyprctl', 'reload'], [call.args[0] for call in self.run.call_args_list])
+        with self.assertRaisesRegex(ValueError, 'changed elsewhere'):
+            self.service.dispatch({'action': 'apply', 'preferences': {'v': 1}, 'version': 'stale',
+                                   'replaceInvalid': True})
+        self.assertEqual(list(self.service.path.parent.glob('keybindings.json.invalid-*')), [])
+        result = self.service.dispatch({'action': 'apply', 'preferences': {'v': 1}, 'version': version,
+                                        'replaceInvalid': True})
+        backups = list(self.service.path.parent.glob('keybindings.json.invalid-*'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_bytes(), broken)
+        self.assertEqual(backups[0].stat().st_mode & 0o777, 0o600)
+        self.assertEqual(self.service.read()[0], {'v': 1})
+        self.assertEqual(result['preferences'], {'v': 1})
+        self.assertIn(['hyprctl', 'reload'], [call.args[0] for call in self.run.call_args_list])
+        # A second reset in the same second never overwrites the first backup.
+        self.service.path.write_bytes(b'{"v":')
+        self.service.dispatch({'action': 'apply', 'preferences': {'v': 1}, 'replaceInvalid': True,
+                               'version': self.service.snapshot()['version']})
+        self.assertEqual(len(list(self.service.path.parent.glob('keybindings.json.invalid-*'))), 2)
+        self.assertIn(broken, [path.read_bytes() for path in self.service.path.parent.glob('keybindings.json.invalid-*')])
+
+    def test_failed_reset_restores_the_broken_bytes_and_keeps_the_backup(self):
+        broken = b'{"v":1,"custom":{}}'
+        self.service.path.write_bytes(broken)
+        self.run.side_effect = ['ok', ValueError('eval failed'), 'ok']
+        with self.assertRaisesRegex(ValueError, 'Previous preferences were restored'):
+            self.service.dispatch({'action': 'apply', 'preferences': {'v': 1}, 'replaceInvalid': True,
+                                   'version': hashlib.sha256(broken).hexdigest()})
+        self.assertEqual(self.service.path.read_bytes(), broken)
+        self.assertEqual([path.read_bytes() for path in self.service.path.parent.glob('keybindings.json.invalid-*')], [broken])
+
+    def test_a_valid_file_ignores_the_replace_flag_and_makes_no_backup(self):
+        self.apply()
+        self.service.dispatch({'action': 'apply', 'preferences': {'v': 1}, 'replaceInvalid': True,
+                               'version': self.service.read()[1]})
+        self.assertEqual(list(self.service.path.parent.glob('keybindings.json.invalid-*')), [])
+
+    def test_a_backup_failure_changes_nothing(self):
+        broken = b'oops'
+        self.service.path.write_bytes(broken)
+        real_open = os.open
+        def deny_backup(path, flags, *args):
+            if 'invalid-' in str(path):
+                raise PermissionError
+            return real_open(path, flags, *args)
+        with patch.object(backend.os, 'open', side_effect=deny_backup):
+            with self.assertRaisesRegex(ValueError, 'backup copy'):
+                self.service.dispatch({'action': 'apply', 'preferences': {'v': 1}, 'replaceInvalid': True,
+                                       'version': hashlib.sha256(broken).hexdigest()})
+        self.assertEqual(self.service.path.read_bytes(), broken)
+        self.run.assert_not_called()
+
     def test_custom_schema_and_multibyte_command_limits(self):
         entry = {'id': 'custom.notes', 'group': 'Apps', 'label': 'Notes', 'keys': ['SUPER + N'],
                  'run': {'type': 'command', 'command': 'kitty -e nvim ~/notes.md'}}
