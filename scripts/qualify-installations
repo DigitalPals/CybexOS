@@ -46,6 +46,155 @@ def check_installed_identity(media, installed, source):
                      if source.get('type') == 'path' else 'same exact source revision and NAR'}
 
 
+#: Ungated action IDs other streams rely on (welcome-and-shortcuts.md §1.1).
+REQUIRED_ACTIONS = (
+    'shell.launcher', 'shell.settings', 'shell.shortcuts', 'shell.control-panel',
+    'shell.notifications', 'shell.lock', 'shell.exit', 'apps.terminal', 'apps.browser',
+    'apps.files', 'windows.close', 'windows.overview', 'windows.toggle-floating',
+    *('workspaces.%s.%d' % (kind, n) for kind in ('switch', 'move') for n in range(1, 11)),
+    'webapps.slack', 'webapps.whatsapp', 'webapps.youtube', 'webapps.google-photos', 'webapps.x',
+    'clipboard.history', 'capture.region')
+# A free remap and a website shortcut, applied and reset through the service.
+SHORTCUT_REMAP = 'SUPER + ALT + B'
+SHORTCUT_CUSTOM = {'id': 'custom.qa-docs', 'group': 'Web', 'label': 'QA docs',
+                   'keys': ['SUPER + ALT + D'], 'run': {'type': 'url', 'url': 'https://example.org'}}
+MODIFIER_MASKS = {'SHIFT': 1, 'CTRL': 4, 'ALT': 8, 'SUPER': 64}
+
+
+def bound(binds, description, combo):
+    """Whether `hyprctl binds -j` holds the canonical combination with that description."""
+    *modifiers, key = combo.split(' + ')
+    mask = sum(MODIFIER_MASKS[modifier] for modifier in modifiers)
+    for bind in binds:
+        if bind.get('description') != description or bind.get('submap') or bind.get('modmask') != mask:
+            continue
+        if key.startswith('code:') and bind.get('keycode') == int(key[5:]):
+            return True
+        if not key.startswith('code:') and str(bind.get('key', '')).lower() == key.lower():
+            return True
+    return False
+
+
+def check_shortcut_state(state, binds, required=REQUIRED_ACTIONS):
+    """The resolved state is valid, complete, error-free and live in Hyprland."""
+    assert isinstance(state, dict) and state.get('v') == 1, 'state version'
+    assert state.get('error') is None, 'state error: %r' % state.get('error')
+    rows = {row['id']: row for row in state['actions']}
+    missing = [name for name in required if not rows.get(name, {}).get('keys')]
+    assert not missing, 'actions missing or unbound: %s' % missing
+    unbound = ['%s %s' % (row['id'], key) for row in state['actions'] + state['custom']
+               for key in row['keys'] if not key.split(' + ')[-1].lower().startswith('mouse')
+               and not bound(binds, row['group'] + ': ' + row['label'], key)]
+    assert not unbound, 'state keys absent from hyprctl binds: %s' % unbound[:20]
+    return rows
+
+
+def onboarding_qml_errors(lines):
+    """Split a journal into onboarding QML errors and any other QML errors."""
+    errors = [line for line in lines if re.search(r'TypeError|ReferenceError|Binding loop', line)]
+    onboarding = [line for line in errors if re.search(r'Welcome|Shortcut|Keybind|Wallpaper', line)]
+    return onboarding, [line for line in errors if line not in onboarding]
+
+
+SHORTCUTS_DRIVER = r'''
+import base64, hashlib, json, pwd, re, subprocess, time
+from pathlib import Path
+user = pwd.getpwuid(1000)
+base = ['runuser', '-u', user.pw_name, '--', 'env', 'XDG_RUNTIME_DIR=/run/user/1000',
+        'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus']
+def out(*args):
+    return subprocess.check_output(base + list(args), text=True, timeout=60).strip()
+# The service runs with the shell's own environment, as the Settings page does.
+pid = out('systemctl', '--user', 'show', 'quickshell.service', '-p', 'MainPID', '--value')
+environ = [part for part in Path('/proc', pid, 'environ').read_bytes().decode().split('\0') if '=' in part]
+shell = ['runuser', '-u', user.pw_name, '--', 'env', '-i', *environ]
+def run(*args, stdin=None):
+    return subprocess.run(shell + list(args), input=stdin, text=True, capture_output=True,
+                          timeout=60, check=True).stdout.strip()
+runtime = dict(part.split('=', 1) for part in environ)
+service = ['python3', '-B', out('cybexos-runtime', 'path', 'quickshell') + '/scripts/system-settings.py', 'keybindings']
+def request(document):
+    reply = json.loads(run(*service, stdin=json.dumps(document) + '\n'))
+    assert reply.get('success') is True, reply
+    return reply
+state_path = Path(runtime['XDG_RUNTIME_DIR'], 'cybexos/keybindings-state.json')
+def live():
+    binds = json.loads(run('hyprctl', '-j', 'binds'))
+    assert isinstance(binds, list) and binds, 'hyprctl binds -j is not a non-empty JSON list'
+    return json.loads(state_path.read_text()), binds
+def nil_error():
+    return run('hyprctl', 'eval', 'assert(__cybexos_keybindings_error == nil, __cybexos_keybindings_error)').lower() == 'ok'
+def settle(predicate):
+    for attempt in range(20):
+        state, binds = live()
+        if predicate(state, binds):
+            return state, binds
+        time.sleep(0.5)
+    return state, binds
+user_lua = Path(user.pw_dir, '.config/cybexos/hypr/user.lua')
+digest = lambda: hashlib.sha256(user_lua.read_bytes()).hexdigest() if user_lua.exists() else 'absent'
+evidence = {'userLuaBefore': digest()}
+state, binds = live()
+rows = check_shortcut_state(state, binds)
+assert nil_error(), '__cybexos_keybindings_error is set'
+evidence['defaults'] = {'actions': len(state['actions']), 'binds': len(binds),
+                        'describedBinds': len([bind for bind in binds if bind.get('description')]),
+                        'requiredActions': len(REQUIRED_ACTIONS), 'stateError': None, 'evalErrorNil': True,
+                        'browser': rows['apps.browser']['keys']}
+snapshot = request({'action': 'snapshot'})
+keymap = snapshot['keymap']
+assert keymap and keymap.get('10') == '1', 'keymap from xkbcli: %d entries, 10=%r' % (len(keymap), keymap.get('10'))
+assert snapshot['preferencesError'] == '' and snapshot['state']['error'] is None, snapshot['preferencesError']
+evidence['keymap'] = {'entries': len(keymap), 'keycode10': keymap['10'],
+                      'layout': [(item.get('layout'), item.get('active_keymap')) for item in
+                                 json.loads(run('hyprctl', '-j', 'devices')).get('keyboards', []) if item.get('main')]}
+browser = rows['apps.browser']
+preferences = {'v': 1, 'actions': {'apps.browser': {'keys': [SHORTCUT_REMAP]}}, 'custom': [SHORTCUT_CUSTOM]}
+applied = request({'action': 'apply', 'version': snapshot['version'], 'preferences': preferences})
+custom_description = SHORTCUT_CUSTOM['group'] + ': ' + SHORTCUT_CUSTOM['label']
+browser_description = browser['group'] + ': ' + browser['label']
+def remapped(state, binds):
+    return (bound(binds, browser_description, SHORTCUT_REMAP)
+            and bound(binds, custom_description, SHORTCUT_CUSTOM['keys'][0]))
+state, binds = settle(remapped)
+assert remapped(state, binds), 'remap or custom shortcut is not bound'
+assert not any(bound(binds, browser_description, key) for key in browser['defaultKeys']), 'default browser key still bound'
+rows = check_shortcut_state(state, binds)
+assert rows['apps.browser']['keys'] == [SHORTCUT_REMAP] and rows['apps.browser']['changed'] is True, rows['apps.browser']
+assert [entry['id'] for entry in state['custom']] == [SHORTCUT_CUSTOM['id']], state['custom']
+assert nil_error(), '__cybexos_keybindings_error after apply'
+again = request({'action': 'snapshot'})
+assert again['version'] == applied['version'] and again['preferences'] == preferences
+assert again['state']['custom'] == state['custom']
+evidence['applied'] = {'browser': rows['apps.browser']['keys'], 'custom': state['custom'],
+                       'diagnostics': state['diagnostics'],
+                       'customBind': [bind for bind in binds if bind.get('description') == custom_description]}
+request({'action': 'apply', 'version': applied['version'], 'preferences': {'v': 1}})
+def restored(state, binds):
+    return (all(bound(binds, browser_description, key) for key in browser['defaultKeys'])
+            and not any(bind.get('description') == custom_description for bind in binds))
+state, binds = settle(restored)
+assert restored(state, binds), 'reset did not restore the default bindings'
+rows = check_shortcut_state(state, binds)
+assert rows['apps.browser']['keys'] == browser['defaultKeys'] and rows['apps.browser']['changed'] is False
+assert state['custom'] == [] and not any(row['changed'] for row in state['actions']), 'changed rows after reset'
+assert nil_error(), '__cybexos_keybindings_error after reset'
+evidence['reset'] = {'browser': rows['apps.browser']['keys'], 'custom': state['custom'], 'changedRows': 0}
+evidence['userLuaAfter'] = digest()
+assert evidence['userLuaAfter'] == evidence['userLuaBefore'], 'user.lua changed'
+print('QA_SHORTCUTS:' + base64.b64encode(json.dumps(evidence).encode()).decode())
+'''
+
+
+def shortcuts_script():
+    """The guest script: these constants and checks, then SHORTCUTS_DRIVER."""
+    import inspect
+    constants = ''.join('%s = %r\n' % (name, globals()[name]) for name in
+                        ('REQUIRED_ACTIONS', 'SHORTCUT_REMAP', 'SHORTCUT_CUSTOM', 'MODIFIER_MASKS'))
+    helpers = ''.join(inspect.getsource(item) + '\n' for item in (bound, check_shortcut_state))
+    return constants + helpers + SHORTCUTS_DRIVER
+
+
 class VM:
     def __init__(self, directory, disk, iso=None, *, extra_qemu_args=()):
         self.directory, self.disk, self.iso = directory, disk, iso
@@ -239,9 +388,85 @@ test "$(runuser -u cybexqa -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BU
             "XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus "
             "cybexos-runtime ipc welcome " + method).strip()
 
+    def settings(self, method):
+        return self.command("runuser -u cybexqa -- env HOME=/home/cybexqa "
+            "XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus "
+            "cybexos-runtime ipc settings " + method).strip()
+
+    def hello_services(self, timeout=30):
+        """The Hello step's installer summary comes from the region and input services."""
+        deadline = time.monotonic() + timeout
+        while True:
+            services = json.loads(self.settings('status'))['services']
+            hello = {name: {key: services[name][key] for key in ('loaded', 'failed')} for name in ('region', 'input')}
+            if all(state['loaded'] or state['failed'] for state in hello.values()) or time.monotonic() >= deadline:
+                return hello
+            time.sleep(0.5)
+
+    def wait_welcome_unmapped(self):
+        """A dismissed guide must leave the compositor, not only report it."""
+        self.command('''for n in $(seq 1 40); do
+  clients=$(runuser -u cybexqa -- env XDG_RUNTIME_DIR=/run/user/1000 hyprctl -i 0 -j clients)
+  printf %s "$clients" | python3 -c 'import json, sys; sys.exit(any(c.get("title") == "Welcome to Cybex OS" for c in json.load(sys.stdin)))' && exit 0
+  sleep 0.25
+done
+exit 1''', timeout=60)
+
     def check_welcome_closed(self):
         state = json.loads(self.welcome('status'))
         assert state['open'] is False and state['status'] == 'dismissed', state
+
+    def python(self, source, timeout=300):
+        """Run a guest Python script sent in base64 chunks, free of shell quoting."""
+        import base64
+        encoded = base64.b64encode(source.encode()).decode()
+        self.command('rm -f /run/qa-script.b64')
+        for start in range(0, len(encoded), 2048):
+            self.command('printf %s ' + encoded[start:start + 2048] + ' >> /run/qa-script.b64')
+        return self.command('base64 -d /run/qa-script.b64 > /run/qa-script.py\npython3 -B /run/qa-script.py', timeout=timeout)
+
+    def keyboard_shortcuts(self, screenshots=None):
+        """The installed Hyprland session's shortcut catalog and the Settings apply path.
+
+        The shipped system-settings `keybindings` service runs as the session
+        user with the shell's own environment and PATH, exactly as Settings
+        calls it, against the real compositor's reload and `hyprctl` output.
+        """
+        import base64
+        body = self.python(shortcuts_script())
+        evidence = json.loads(base64.b64decode(re.search(r'QA_SHORTCUTS:([A-Za-z0-9+/=]+)', body).group(1)))
+        # Settings → Keyboard shortcuts through the shell's IPC, as Super+K's
+        # "Edit shortcuts" opens it.
+        self.settings('open shortcuts')
+        deadline = time.monotonic() + 30
+        while True:
+            status = json.loads(self.settings('status'))
+            if status['open'] and status['page'] == 'shortcuts':
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError('Settings did not open on the shortcuts page: ' + json.dumps(status))
+            time.sleep(0.5)
+        # The page's claim makes one backend request before its rows draw.
+        time.sleep(4)
+        if screenshots:
+            self.screenshot(screenshots / 'settings-shortcuts.png')
+        evidence['settingsPage'] = {'opened': 'cybexos-runtime ipc settings open shortcuts', 'page': status['page']}
+        self.settings('close')
+        # Only the count and QML error lines cross the serial console.
+        count, *lines = self.command('invocation=$(runuser -u cybexqa -- env XDG_RUNTIME_DIR=/run/user/1000 '
+                                     'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus systemctl --user show '
+                                     'quickshell.service -p InvocationID --value)\ntest -n "$invocation"\n'
+                                     'journalctl --no-pager -o cat _SYSTEMD_INVOCATION_ID=$invocation > /run/qa-shell.log\n'
+                                     'wc -l < /run/qa-shell.log\n'
+                                     "grep -E 'TypeError|ReferenceError|Binding loop' /run/qa-shell.log || true",
+                                     timeout=120).strip().splitlines()
+        onboarding, other = onboarding_qml_errors(lines)
+        evidence['journal'] = {'lines': int(count), 'onboardingQmlErrors': onboarding[:20],
+                               'otherQmlErrors': len(other), 'otherQmlErrorSamples': other[:5]}
+        if onboarding:
+            raise RuntimeError('Onboarding QML errors in the current shell journal: ' + json.dumps(onboarding[:20]))
+        evidence['result'] = 'passed'
+        return evidence
 
     def check_desktop_defaults(self):
         self.command(r'''python3 - <<'QA_DEFAULTS'
@@ -835,21 +1060,39 @@ QA_SOURCE''').strip())
             if time.monotonic() >= deadline:
                 raise RuntimeError('Welcome did not open at first login: ' + json.dumps(welcome))
             time.sleep(0.5)
+        hello = vm.hello_services()
         if screenshots:
             vm.screenshot(screenshots / 'welcome-first-login.png')
         vm.welcome('close')
         vm.check_welcome_closed()
-        milestones['welcomeFirstLogin'] = {'result': 'passed', 'opened': True, 'dismissed': True}
+        vm.wait_welcome_unmapped()
+        # A failed summary fails the case after the remaining checks have run.
+        summarized = all(state['loaded'] and not state['failed'] for state in hello.values())
+        milestones['welcomeFirstLogin'] = {'result': 'passed' if summarized else 'failed', 'opened': True,
+                                           'dismissed': True, 'unmapped': True, 'helloSummaryServices': hello}
         if screenshots:
+            # The compositor's next frame follows the unmapped window.
+            time.sleep(2)
             vm.screenshot(screenshots / 'installed-desktop.png')
+        # A failure here fails the case after the remaining checks have run.
+        try:
+            milestones['keyboardShortcutsRuntime'] = vm.keyboard_shortcuts(screenshots)
+        except (RuntimeError, ValueError, KeyError, AttributeError) as error:
+            milestones['keyboardShortcutsRuntime'] = {'result': 'failed', 'error': str(error)[-4000:]}
         milestones['authenticatedDesktopHealth'] = {'result': 'passed', 'login': 'SDDM automatic login after disk unlock, keyring unlocked' if encrypted else 'SDDM password login'}
         vm.password_change(encrypted, milestones.setdefault('sharedPasswordChanges', {}))
         if milestones['quietBoot']['result'] != 'passed':
             raise RuntimeError('The installed boot printed console text: ' + json.dumps(milestones['quietBoot']))
+        if lifecycle:
+            qualify_lifecycle(vm, encrypted, evidence.setdefault('lifecycle', {}))
+        if milestones['welcomeFirstLogin']['result'] != 'passed':
+            raise RuntimeError('The welcome guide could not summarize the installer choices: '
+                               + json.dumps(milestones['welcomeFirstLogin']['helloSummaryServices']))
+        if milestones['keyboardShortcutsRuntime']['result'] != 'passed':
+            raise RuntimeError('Keyboard shortcuts runtime check failed: ' + milestones['keyboardShortcutsRuntime']['error'][-2000:])
         if not lifecycle:
             evidence.update(result='passed', scope='actual ISO install, installed boot/login, encryption; no update application')
         else:
-            qualify_lifecycle(vm, encrypted, evidence.setdefault('lifecycle', {}))
             evidence.update(result='passed', scope='actual ISO installation, boot/login, local updater failure/interruption, staged application, GRUB trial boot, unconfirmed-trial fallback, confirmation and rollback; no signed channel or physical qualification')
         return evidence
     except Exception:

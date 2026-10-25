@@ -54,6 +54,64 @@ class InstalledSourceIdentityTests(unittest.TestCase):
             qualification.check_installed_identity(self.media, dict(self.installed, revision='b' * 40), self.path_source)
 
 
+class KeyboardShortcutsRuntimeTests(unittest.TestCase):
+    @staticmethod
+    def bind(modmask, key, description, keycode=0, submap=''):
+        return {'modmask': modmask, 'key': key, 'keycode': keycode, 'description': description, 'submap': submap}
+
+    def live(self):
+        rows = [{'id': name, 'group': 'G', 'label': name, 'keys': ['SUPER + code:%d' % (100 + index)],
+                 'defaultKeys': []} for index, name in enumerate(qualification.REQUIRED_ACTIONS)]
+        rows.append({'id': 'windows.move-window', 'group': 'Windows', 'label': 'Move window',
+                     'keys': ['SUPER + mouse:272'], 'defaultKeys': []})
+        rows[0]['keys'] = ['SUPER + SPACE']
+        binds = [self.bind(64, '', 'G: ' + row['label'], 100 + index) for index, row in enumerate(rows[:-1])]
+        binds[0] = self.bind(64, 'space', 'G: ' + rows[0]['label'])
+        return {'v': 1, 'error': None, 'actions': rows, 'custom': [], 'diagnostics': []}, binds
+
+    def test_bound_matches_modifiers_keys_case_insensitively_and_keycodes(self):
+        binds = [self.bind(72, 'b', 'Apps: Browser'), self.bind(65, '', 'Workspaces: Move', 10)]
+        self.assertTrue(qualification.bound(binds, 'Apps: Browser', 'SUPER + ALT + B'))
+        self.assertTrue(qualification.bound(binds, 'Workspaces: Move', 'SUPER + SHIFT + code:10'))
+        self.assertFalse(qualification.bound(binds, 'Apps: Browser', 'SUPER + B'))
+        self.assertFalse(qualification.bound(binds, 'Apps: Files', 'SUPER + ALT + B'))
+        self.assertFalse(qualification.bound([self.bind(72, 'B', 'Apps: Browser', submap='resize')],
+                                             'Apps: Browser', 'SUPER + ALT + B'))
+
+    def test_complete_live_state_passes_and_skips_mouse_keys(self):
+        state, binds = self.live()
+        rows = qualification.check_shortcut_state(state, binds)
+        self.assertIn('workspaces.move.10', rows)
+
+    def test_state_error_missing_action_or_unbound_key_fails(self):
+        state, binds = self.live()
+        for change in (lambda s, b: s.update(error='bad file'),
+                       lambda s, b: s['actions'].pop(3),
+                       lambda s, b: s['actions'][3].update(keys=[]),
+                       lambda s, b: b.pop(3),
+                       lambda s, b: s['custom'].append({'id': 'custom.x', 'group': 'Web', 'label': 'X',
+                                                         'keys': ['SUPER + ALT + D']})):
+            state, binds = self.live()
+            change(state, binds)
+            with self.subTest(change=change), self.assertRaises(AssertionError):
+                qualification.check_shortcut_state(state, binds)
+
+    def test_only_onboarding_qml_errors_fail_the_journal(self):
+        lines = ['file:///nix/store/x/Welcome/HelloStep.qml:9: TypeError: Cannot read property',
+                 'file:///nix/store/x/Settings/ShortcutRow.qml:4: Binding loop detected for property "width"',
+                 'file:///nix/store/x/Bar/Clock.qml:3: ReferenceError: foo is not defined',
+                 'qt.qpa.wayland: harmless warning']
+        onboarding, other = qualification.onboarding_qml_errors(lines)
+        self.assertEqual(onboarding, lines[:2])
+        self.assertEqual(other, lines[2:3])
+
+    def test_guest_script_compiles_with_its_checks(self):
+        source = qualification.shortcuts_script()
+        compile(source, 'qa-script.py', 'exec')
+        self.assertIn('def check_shortcut_state', source)
+        self.assertIn("SHORTCUT_REMAP = 'SUPER + ALT + B'", source)
+
+
 class BootMenuIdentityTests(unittest.TestCase):
     profiles = [
         {'kernel': '/boot/kernel-a', 'initrd': '/boot/initrd-a', 'system': '/nix/store/system-a'},
