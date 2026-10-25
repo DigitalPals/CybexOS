@@ -1,0 +1,9 @@
+FinishStep FinishStep.qml
+GuideText GuideText.qml
+HelloStep HelloStep.qml
+Keycaps Keycaps.qml
+KeysStep KeysStep.qml
+ShortcutsStep ShortcutsStep.qml
+StyleStep StyleStep.qml
+WallpaperStep WallpaperStep.qml
+WelcomeView WelcomeView.qml

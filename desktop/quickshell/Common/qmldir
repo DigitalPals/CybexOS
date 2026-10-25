@@ -116,3 +116,5 @@ JsonCommand JsonCommand.qml
 singleton DefaultApplications DefaultApplications.qml
 singleton Software Software.qml
 singleton Maintenance Maintenance.qml
+
+singleton Welcome Welcome.qml

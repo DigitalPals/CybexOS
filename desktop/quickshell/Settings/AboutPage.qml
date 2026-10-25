@@ -104,6 +104,21 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
+            title: I18n.tr("Welcome guide")
+            ValueRow {
+                width: parent.width
+                label: I18n.tr("Welcome guide")
+                hint: I18n.tr("Make yourself at home. Continue where you left off.")
+                SettingsAction {
+                    text: I18n.tr("Open")
+                    Accessible.name: I18n.tr("Open the welcome guide")
+                    onTriggered: Welcome.show("")
+                }
+            }
+        }
+
+        SettingsGroup {
+            width: parent.width
             title: I18n.tr("Settings file")
 
             ValueRow {

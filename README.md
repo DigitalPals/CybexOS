@@ -23,6 +23,7 @@ file; personal modules and persistent data are separate from vendor releases.
 - [Architecture and ownership](docs/architecture/ownership.md)
 - [Independent updates](docs/updates.md)
 - [Personal configuration and plugin development](docs/customization.md)
+- [Welcome guide](docs/welcome.md)
 - [Cybex OS Assistant](docs/assistant.md)
 - [Release publishing and signing keys](docs/releasing.md)
 - [Recovery, persistence and garbage collection](docs/recovery.md)

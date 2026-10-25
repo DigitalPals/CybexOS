@@ -269,7 +269,7 @@ While a shortcut is being recorded, the recording window activates Quickshell
 ```json
 { "v": 1, "status": "new|open|completed|dismissed", "step": "wallpaper",
   "seen": ["hello", "wallpaper"], "practice": { "launcher": true },
-  "checklist": { "backup": "later" }, "version": "1.0.0-beta.3" }
+  "checklist": { "backup": "later" }, "version": "1.0.0-beta.3", "notified": false }
 ```
 
 - **When it opens:** a missing file means first login. The guide opens once
@@ -281,6 +281,14 @@ While a shortcut is being recorded, the recording window activates Quickshell
 - **Persistence:** progress is saved on every step change, so a shell
   restart resumes on the same step. An unreadable file is reported and not
   overwritten, following the same rule as `shell.json`.
+- **Dismissal:** Escape, the window close button, IPC `close`, and **Skip for
+  now** (including on the finish step) set `dismissed`, keeping all progress.
+  It never reopens automatically after dismissal. The first dismissal sends
+  “You can finish setting up any time: open the launcher and search for Welcome.”
+  `notified` remembers this across restarts. **Finish** sets `completed`.
+  Manual reopening resumes the saved step; a completed guide starts at `hello`.
+- **Readiness:** Settings is loaded and the wallpaper window has rendered its
+  first decoded image frame, or its solid fallback when there is no image.
 - **Reopening:** the launcher (`Welcome to Cybex OS`; search terms: welcome,
   setup, tour, getting started), Settings → About, and
   `cybexos-runtime ipc welcome open`.
@@ -319,8 +327,21 @@ While a shortcut is being recorded, the recording window activates Quickshell
 
    "Later" is remembered per item.
 
-Every step can be skipped. Back and Continue are always available. Escape
-asks to finish later rather than discarding progress.
+Web apps have no completion tick because keep/remove is a personal choice.
+Fingerprint setup is shown only for a ready reader. The existing security
+backend has no cheap, reliable FIDO device-presence probe, so security keys are
+an always-available plain Settings link without a tick. Other unavailable
+checklist probes also remain unticked links rather than inferred successes.
+
+Every step can be skipped. Back and Continue are available (Back is disabled
+on Hello); Escape dismisses, preserving progress as specified above.
+
+During parallel implementation, stream C embeds the existing WallpaperPage
+(which already includes WallpaperOnlineView and the library) for stream D to
+replace with WallpaperPicker. Its shortcut page temporarily shows live keycap
+rows for stream B to replace with ShortcutKeyboardMap. A single marked
+`Welcome.keysFor(id)` adapter maps stable action IDs to live bind descriptions;
+the integrator swaps it for Keybindings.keysFor and keeps keycap rendering.
 
 ### 2.4 IPC target `welcome`
 

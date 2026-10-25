@@ -92,6 +92,7 @@ var BUILTIN_ACTIONS = [
         choices: "webapps",
         command: ["cybexos-webapp", "remove", "--notify", "{argument}"]
     },
+    { id: "welcome", verb: "setup", name: "Welcome to Cybex OS", subtitle: "Make yourself at home with the welcome guide", keywords: ["welcome", "setup", "tour", "getting started"], glyph: "sparkles", command: ["cybexos-runtime", "ipc", "welcome", "open", ""] },
     { id: "default-applications", verb: "setup", name: "Default applications", subtitle: "Choose your browser, terminal, editor and viewers", keywords: ["browser", "terminal", "editor", "defaults"], glyph: "apps", settingsPage: "applications" },
     { id: "storage-cleanup", verb: "setup", name: "Storage & cleanup", subtitle: "Review disk space and retained recovery points", keywords: ["disk", "space", "cleanup", "garbage", "retention"], glyph: "archive", settingsPage: "storage" },
     {

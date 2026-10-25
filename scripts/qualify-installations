@@ -232,6 +232,17 @@ test -d /run/cybexos-autologin-used
 test "$(runuser -u cybexqa -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \\
   busctl --user get-property org.freedesktop.secrets /org/freedesktop/secrets/collection/login org.freedesktop.Secret.Collection Locked)" = "b false"''', timeout=240)
 
+    def welcome(self, method):
+        # Reach the installed shell as its session user, just like health and
+        # keyring checks; root's IPC/configuration directory is unrelated.
+        return self.command("runuser -u cybexqa -- env HOME=/home/cybexqa "
+            "XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus "
+            "cybexos-runtime ipc welcome " + method).strip()
+
+    def check_welcome_closed(self):
+        state = json.loads(self.welcome('status'))
+        assert state['open'] is False and state['status'] == 'dismissed', state
+
     def check_desktop_defaults(self):
         self.command(r'''python3 - <<'QA_DEFAULTS'
 import json, pathlib, pwd, subprocess
@@ -277,6 +288,7 @@ QA_DEFAULTS''', timeout=60)
             self.command('test ! -e /var/lib/cybexos/password-change.json')
             self.reboot(encrypted, password=new)
             self.login_desktop(password=new)
+            self.check_welcome_closed()
             self.command('test "$(timeout 20 ' + prefix + 'secret-tool lookup cybexos qualification)" = qa-keyring-value', timeout=35)
             evidence['roundTrips'] += 1
         self.command(prefix + 'secret-tool clear cybexos qualification')
@@ -814,6 +826,20 @@ QA_SOURCE''').strip())
         vm.login_desktop()
         vm.command('cybexos-health desktop-required',timeout=180)
         vm.check_desktop_defaults()
+        # The first frame can follow desktop health by a compositor turn.
+        deadline = time.monotonic() + 30
+        while True:
+            welcome = json.loads(vm.welcome('status'))
+            if welcome['open']:
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError('Welcome did not open at first login: ' + json.dumps(welcome))
+            time.sleep(0.5)
+        if screenshots:
+            vm.screenshot(screenshots / 'welcome-first-login.png')
+        vm.welcome('close')
+        vm.check_welcome_closed()
+        milestones['welcomeFirstLogin'] = {'result': 'passed', 'opened': True, 'dismissed': True}
         if screenshots:
             vm.screenshot(screenshots / 'installed-desktop.png')
         milestones['authenticatedDesktopHealth'] = {'result': 'passed', 'login': 'SDDM automatic login after disk unlock, keyring unlocked' if encrypted else 'SDDM password login'}
