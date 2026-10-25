@@ -1,6 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Window
+import Quickshell
 import "../Common"
 import "../Common/KeybindEditor.js" as Editor
 import "../Common/ShortcutEditor.js" as Helpers
@@ -10,6 +10,7 @@ import "../Settings" as SettingsUi
 // Settings page's, with the same recorder and its own Apply bar here.
 Column {
     id: root
+    objectName: "welcomeShortcutsStep"
     spacing: Theme.scaled(18)
     property string problem: ""
     property string recordFor: "row"
@@ -32,7 +33,7 @@ Column {
         root.problem = "";
         if (row.custom) { form.begin(id); return; }
         recordFor = "row";
-        recorder.start(id, row.label, Keybindings.keysFor(id), true);
+        recorderItem()?.start(id, row.label, Keybindings.keysFor(id), true);
     }
     function recorded(combo, mode) {
         if (recordFor === "form") { form.setKeys([combo]); return; }
@@ -63,7 +64,7 @@ Column {
         width: root.width
         onRecordRequested: (exceptId, label, keys) => {
             root.recordFor = "form";
-            recorder.start(exceptId, label, keys, false);
+            root.recorderItem()?.start(exceptId, label, keys, false);
         }
     }
     GuideText { width: root.width; text: I18n.tr("The main shortcuts"); font.weight: Theme.weightSemibold }
@@ -127,12 +128,25 @@ Column {
         glyph: "keyboard"
         onTriggered: Settings.showPanel("shortcuts")
     }
-    // A modal over the whole guide window, so it is not clipped by the
-    // step's scrolling viewport.
-    SettingsUi.ShortcutRecorder {
-        id: recorder
-        objectName: "welcomeShortcutRecorder"
-        parent: root.Window.window ? root.Window.window.contentItem : root
-        onAccepted: (combo, mode) => root.recorded(combo, mode)
+    // A modal over the whole guide window, so the step's clipped, scrolling
+    // viewport does not hold it. Created straight into the window's content
+    // item: an item reparented out of the clipped Flickable was never drawn.
+    property SettingsUi.ShortcutRecorder recorder: null
+    Component {
+        id: recorderComponent
+        SettingsUi.ShortcutRecorder {
+            objectName: "welcomeShortcutRecorder"
+            onAccepted: (combo, mode) => root.recorded(combo, mode)
+        }
+    }
+    // Lazily, on first use: the window is not attached yet at completion.
+    function recorderItem(): SettingsUi.ShortcutRecorder {
+        if (!recorder && root.QsWindow.contentItem)
+            recorder = recorderComponent.createObject(root.QsWindow.contentItem) as SettingsUi.ShortcutRecorder;
+        return recorder;
+    }
+    Component.onDestruction: {
+        if (recorder)
+            recorder.destroy();
     }
 }

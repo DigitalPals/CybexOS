@@ -105,6 +105,22 @@ TEST_IPC = '''
             return String(form.save());
         }
         function apply(): string { return String(Keybindings.apply()); }
+        function welcomeEdit(id: string): void {
+            shell.findNamed(shortcutWelcome.contentItem, "welcomeShortcutsStep").edit(id);
+        }
+        function welcomeRecorder(): string {
+            const recorder = shell.findNamed(shortcutWelcome.contentItem, "welcomeShortcutRecorder");
+            return JSON.stringify(recorder ? { shown: recorder.shown, listening: recorder.listening,
+                inhibiting: recorder.inhibiting, inhibitorEnabled: recorder.inhibitorEnabled,
+                windowActive: recorder.Window.active, hasWindow: recorder.QsWindow.window !== null,
+                combo: recorder.combo, kind: recorder.verdict.kind, visible: recorder.visible,
+                geometry: [recorder.x, recorder.y, recorder.width, recorder.height, recorder.z],
+                parentGeometry: recorder.parent ? [recorder.parent.width, recorder.parent.height, String(recorder.parent)] : [] } : null);
+        }
+        function sheet(): string {
+            return JSON.stringify({ open: Session.keysOpen, groups: Session.shortcutGroups.length,
+                settings: Settings.panelOpen, page: Settings.page });
+        }
         function mark(text: string): void { console.log("TEST-MARK " + text); }
     }'''
 
@@ -173,7 +189,8 @@ def main():
                            stdout=build_log, stderr=subprocess.STDOUT, check=True)
         entry = shell / 'shell.qml'
         source = entry.read_text().replace('SettingsWindow {}', 'SettingsWindow { id: shortcutSettings }')
-        assert 'shortcutSettings' in source
+        source = source.replace('WelcomeWindow {}', 'WelcomeWindow { id: shortcutWelcome }')
+        assert 'shortcutSettings' in source and 'shortcutWelcome' in source
         source = source.replace('    id: shell', '    id: shell' + TEST_IPC, 1)
         entry.write_text(source)
 
@@ -361,11 +378,40 @@ def main():
             ipc('shortcut-test', 'scroll', '0')
             screenshot('shortcuts-changed-filter.png')
 
-            # The welcome guide's step uses the same map and keycaps.
+            # The Super+K sheet marks the changed browser and the user.lua row,
+            # and "Edit shortcuts" opens this page.
             ipc('settings', 'close')
+            ipc('session', 'keys')
+            wait(lambda: json.loads(ipc('shortcut-test', 'sheet')).get('groups'), 'Super+K sheet')
+            screenshot('super-k-sheet.png')
+            subprocess.run(['swaymsg', '[title="Cybex OS Settings"]', 'focus'], env=env, capture_output=True)
+            keyboard = start(['wtype', '-s', '600', '-k', 'Tab', '-s', '200', '-k', 'Return', '-s', '200'], 'sheet-keys.log')
+            sheet = wait(lambda: (v := json.loads(ipc('shortcut-test', 'sheet'))).get('settings') and v,
+                         'Edit shortcuts opens Settings', 15)
+            keyboard.wait(timeout=5)
+            assert not sheet['open'] and sheet['page'] == 'shortcuts', sheet
+            ipc('settings', 'close')
+
+            # The welcome guide's step uses the same map, keycaps and recorder.
             assert ipc('welcome', 'open', 'shortcuts') == 'ok'
             time.sleep(1.5)
             screenshot('welcome-shortcuts.png')
+            ipc('shortcut-test', 'welcomeEdit', 'apps.terminal')
+            subprocess.run(['swaymsg', '[title="Welcome to Cybex OS"]', 'focus'], env=env, check=True, capture_output=True)
+            welcome = lambda: json.loads(ipc('shortcut-test', 'welcomeRecorder')) or {}
+            try:
+                wait(lambda: welcome().get('inhibiting'), 'welcome recorder inhibits shortcuts')
+            except AssertionError:
+                raise
+            keyboard = start(['wtype', '-s', '500', '-M', 'logo', '-k', 'q', '-m', 'logo', '-s', '200'], 'welcome-keys.log')
+            caught = wait(lambda: (v := welcome()).get('kind') == 'replace' and v, 'Super+Q conflicts with Close window')
+            assert caught['combo'] == 'SUPER + Q' and not caught['inhibiting'], caught
+            keyboard.wait(timeout=5)
+            screenshot('welcome-recorder.png')
+            keyboard = start(['wtype', '-s', '400', '-k', 'Escape', '-s', '200'], 'welcome-escape.log')
+            wait(lambda: welcome().get('shown') is False, 'Escape cancels the welcome recorder')
+            keyboard.wait(timeout=5)
+            assert json.loads(ipc('welcome', 'status')).get('open') is True, 'Escape in the recorder must not dismiss the guide'
             ipc('welcome', 'close')
 
             errors = [line for line in (base / 'qs.log').read_text(errors='replace').splitlines()
