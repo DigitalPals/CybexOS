@@ -214,6 +214,8 @@ function strength(test, keys) {
 }
 function conflicts(model, key, exceptId) {
     var result = [], current = view(model), test = matcher(model, key);
+    // `editable` is false for a hidden hardware key or a mouse drag: those
+    // can hold a key but an edit cannot take it away.
     function add(entry, level) {
         if (!level) return;
         if (level === 2) entry.uncertain = true;
@@ -222,18 +224,21 @@ function conflicts(model, key, exceptId) {
     function listed(id) { return result.some(function(other) { return other.id === id; }); }
     current.actions.forEach(function(row) {
         if (row.id !== exceptId)
-            add({ id: row.id, group: row.group, label: row.label, protected: row.protected, source: row.source },
+            add({ id: row.id, group: row.group, label: row.label, protected: row.protected, source: row.source,
+                editable: row.editable !== false, hidden: !!row.hidden },
                 strength(test, row.protected ? row.keys.concat(row.defaultKeys) : row.keys));
     });
     // user.lua runs after the next apply too. A draft remap must not hide
     // a live personal key that will still be present after the reload.
     merge(model.state, model.binds).actions.forEach(function(row) {
         if (row.source === "user" && row.id !== exceptId && !listed(row.id))
-            add({ id: row.id, group: row.group, label: row.label, protected: row.protected, source: "user" },
+            add({ id: row.id, group: row.group, label: row.label, protected: row.protected, source: "user",
+                editable: row.editable !== false, hidden: !!row.hidden },
                 strength(test, row.keys));
     });
     current.userBinds.forEach(function(row, index) {
-        add({ id: "user." + index, group: row.group, label: row.label, protected: false, source: "user" },
+        add({ id: "user." + index, group: row.group, label: row.label, protected: false, source: "user",
+            editable: false, hidden: false },
             strength(test, row.keys));
     });
     // Competing claims can be dropped by resolution; keep them visible while
@@ -245,7 +250,8 @@ function conflicts(model, key, exceptId) {
     claimed.forEach(function(row) {
         if (row && row.id !== exceptId && !listed(row.id))
             add({ id: row.id, group: row.group, label: row.label, protected: !!row.protected,
-                source: row.custom || row.id.indexOf("custom.") === 0 ? "custom" : "changed" },
+                source: row.custom || row.id.indexOf("custom.") === 0 ? "custom" : "changed",
+                editable: row.editable !== false, hidden: !!row.hidden },
                 strength(test, row.keys));
     });
     return result;

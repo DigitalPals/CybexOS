@@ -99,6 +99,43 @@ test('a decision follows the model conflicts, including protected defaults after
     assert.equal(S.decide('SUPER + J', M.conflicts(model, 'SUPER + J', 'apps.first')).kind, 'free');
 });
 
+test('a hidden hardware key blocks instead of offering a Replace that cannot work', () => {
+    const catalog = [
+        row('apps.terminal', 'Apps', 'Terminal', ['SUPER + Return']),
+        row('hardware.mute-audio', 'Hardware keys', 'Mute audio', ['XF86AudioMute'], {editable: false, hidden: true}),
+        row('hardware.volume-up', 'Hardware keys', 'Volume up', ['XF86AudioRaiseVolume', 'F10'], {editable: false, hidden: true}),
+        row('windows.move', 'Windows', 'Move window', ['SUPER + mouse:272'], {editable: false}),
+        row('webapps.slack', 'Web apps', 'Slack', ['SUPER + M'])
+    ];
+    const model = M.create();
+    // The live binds of the catalog above, so no row looks like a user.lua remap.
+    const binds = [['Return', 'Apps: Terminal', 64], ['XF86AudioMute', 'Hardware keys: Mute audio', 0],
+        ['XF86AudioRaiseVolume', 'Hardware keys: Volume up', 0], ['F10', 'Hardware keys: Volume up', 0],
+        ['mouse:272', 'Windows: Move window', 64], ['M', 'Web apps: Slack', 64]]
+        .map(([key, description, modmask]) => ({modmask, key, description}));
+    M.ingest(model, {state: M.resolve(catalog, {v: 1}), preferences: {v: 1}, version: 'a', binds});
+    const conflicts = M.conflicts(model, 'XF86AudioMute', 'apps.terminal');
+    assert.deepEqual(plain(conflicts).map(entry => [entry.id, entry.editable, entry.hidden]), [['hardware.mute-audio', false, true]]);
+    const verdict = plain(S.decide('XF86AudioMute', conflicts, id => M.action(model, id)));
+    assert.equal(verdict.kind, 'blocked');
+    assert.equal(verdict.reason, 'hardware');
+    assert.deepEqual(verdict.blockers.map(entry => entry.id), ['hardware.mute-audio']);
+    assert.deepEqual(verdict.replace, [], 'nothing is offered to Replace');
+    // The edit really is refused, so Replace could never have worked.
+    assert.throws(() => M.setKeys(model, 'hardware.mute-audio', []), /cannot be edited/);
+    // Editable holders keep their flags and stay replaceable.
+    const editable = plain(M.conflicts(model, 'SUPER + M', 'apps.terminal'));
+    assert.deepEqual(editable.map(entry => [entry.id, entry.editable, entry.hidden]), [['webapps.slack', true, false]]);
+    assert.equal(S.decide('SUPER + M', editable).kind, 'replace');
+    // A hardware holder next to a replaceable one still blocks, and a user.lua holder wins the reason.
+    const mixed = plain(S.decide('F10', [...plain(M.conflicts(model, 'F10', 'apps.terminal')), editable[0]]));
+    assert.equal(mixed.kind, 'blocked');
+    assert.deepEqual(mixed.replace.map(entry => entry.id), ['webapps.slack']);
+    assert.equal(S.decide('F10', [...conflicts, {id: 'user.0', source: 'user', editable: false}]).reason, 'user');
+    // A read-only holder that is not hidden has its own reason.
+    assert.equal(S.decide('SUPER + P', [{id: 'windows.move', source: 'default', protected: false, editable: false, hidden: false}]).reason, 'fixed');
+});
+
 test('uncertain holders warn without blocking or being unbound', () => {
     const slack = {id: 'webapps.slack', group: 'Web apps', label: 'Slack', protected: false, source: 'default'};
     const move = {id: 'workspaces.move.1', group: 'Workspaces', label: 'Move window to workspace 1', protected: false,

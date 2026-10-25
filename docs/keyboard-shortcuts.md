@@ -75,6 +75,10 @@ keys:
   with **Replace**.
 - A combination that `user.lua` binds cannot be taken here: `user.lua` loads
   after these settings and wins. Change it in that file.
+- A hardware key (volume, brightness, media) that already uses the keys
+  cannot be taken either; the recorder names it ("Used by a hardware key
+  (Hardware keys: Mute audio). Choose another key.") and offers only
+  **Record again**.
 - Any other shortcut using the keys is named, and **Replace** takes the keys
   from it.
 - When your keyboard layout cannot be read, a `Shift` combination is stored

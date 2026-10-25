@@ -16,9 +16,9 @@ import "../Common/ShortcutEditor.js" as Helpers
 //
 // The host calls start(); `accepted(combo, mode)` follows once a
 // combination is chosen. Conflicts are checked against Keybindings: a
-// protected action's reserved default or user.lua blocks the key, any other
-// holder is offered as "Replace", which unbinds that key from it in the draft
-// first. A holder that only might share the physical key (`uncertain`) is a
+// protected action's reserved default, user.lua or a non-editable holder (a
+// hidden hardware key) blocks the key, any other holder is offered as
+// "Replace", which unbinds that key from it in the draft first. A holder that only might share the physical key (`uncertain`) is a
 // warning: "Use anyway" keeps it bound.
 //
 // A protected action's reserved defaults (`lockedKeys`) always stay bound.
@@ -125,11 +125,13 @@ FocusScope {
         accepted(chosen, allowAdd ? mode : "replace");
     }
     // Two names at most, then a count: a Shift guess can name ten holders.
-    function owners(list) {
-        const names = list.map(row => I18n.actionLabel(row.label));
+    function nameList(names) {
         return names.length > 3 ? I18n.format("%1 and %2 more", [names.slice(0, 2).join(", "), names.length - 2])
             : names.join(", ");
     }
+    function owners(list) { return nameList(list.map(row => I18n.actionLabel(row.label))); }
+    // "Group: Label" for hardware keys, whose label alone ("Volume up") says little.
+    function holders(list) { return nameList(list.map(row => I18n.tr(row.group) + ": " + I18n.actionLabel(row.label))); }
     readonly property string status: {
         if (paused)
             return I18n.tr("Recording paused because the window lost focus. Record again to continue.");
@@ -143,6 +145,10 @@ FocusScope {
             return I18n.tr("This combination is kept for system recovery.");
         if (verdict.kind === "blocked" && verdict.reason === "protected")
             return I18n.format("%1 needs this key and it cannot be taken.", [owners(verdict.blockers)]);
+        if (verdict.kind === "blocked" && verdict.reason === "hardware")
+            return I18n.format("Used by a hardware key (%1). Choose another key.", [holders(verdict.blockers)]);
+        if (verdict.kind === "blocked" && verdict.reason === "fixed")
+            return I18n.format("%1 cannot be changed. Choose another key.", [owners(verdict.blockers)]);
         if (verdict.kind === "blocked")
             return I18n.format("Your user.lua binds this key to %1. Change it there; user.lua loads last.", [owners(verdict.blockers)]);
         if (verdict.kind === "replace" && verdict.maybe.length)

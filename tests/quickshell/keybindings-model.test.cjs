@@ -77,7 +77,7 @@ test('draft remaps retain conflict warnings for keys user.lua will bind again', 
     M.setKeys(data,'apps.first',['SUPER + T']);
     assert.deepEqual(plain(M.keysFor(data,'apps.first')),['SUPER + T']);
     assert.deepEqual(plain(M.conflicts(data,'SUPER + N','apps.second')),
-        [{id:'apps.first',group:'Apps',label:'apps.first',protected:false,source:'user'}]);
+        [{id:'apps.first',group:'Apps',label:'apps.first',protected:false,source:'user',editable:true,hidden:false}]);
 });
 test('custom CRUD preserves sparse preferences, validates, resets and checks conflicts', () => {
     const data = model();

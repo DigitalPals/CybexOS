@@ -96,7 +96,8 @@ TEST_IPC = '''
                     reserved: recorder.reserved, kind: recorder.verdict.kind, reason: recorder.verdict.reason,
                     inhibiting: recorder.inhibiting, inhibitorEnabled: recorder.inhibitorEnabled,
                     windowActive: recorder.Window.active, status: recorder.status,
-                    lockedKeys: recorder.lockedKeys, allowAdd: recorder.allowAdd, maybe: recorder.verdict.maybe.length } : null,
+                    lockedKeys: recorder.lockedKeys, allowAdd: recorder.allowAdd, maybe: recorder.verdict.maybe.length,
+                    replace: recorder.verdict.replace.length, blockers: recorder.verdict.blockers.map(row => row.id) } : null,
                 browser: row("apps.browser"), slack: row("webapps.slack"), lock: row("shell.lock"),
                 terminal: row("apps.terminal"), move1: row("workspaces.move.1"),
                 readOnly: Keybindings.readOnly, preferencesError: Keybindings.preferencesError,
@@ -480,6 +481,22 @@ def main():
             wait(lambda: recorder().get('shown') is False, 'cancel the keysym recording')
             keyboard.wait(timeout=5)
             assert not state()['dirty']
+
+            # A hardware key (a hidden, non-editable row) cannot be taken away,
+            # so the card blocks it instead of offering a Replace that fails.
+            ipc('shortcut-test', 'edit', 'apps.terminal')
+            focus_settings()
+            wait(lambda: recorder().get('inhibiting'), 'recording a hardware key')
+            keyboard = start(['wtype', '-s', '500', '-k', 'XF86AudioMute', '-s', '300'], 'hardware.log')
+            hardware = wait(lambda: (r := recorder()).get('kind') == 'blocked' and r, 'hardware key blocked', 10)
+            keyboard.wait(timeout=5)
+            assert hardware['combo'] == 'XF86AudioMute' and hardware['reason'] == 'hardware', hardware
+            assert hardware['replace'] == 0 and hardware['blockers'] == ['hardware.mute-audio'], hardware
+            assert hardware['status'].startswith(('Used by a hardware key', 'Gebruikt door een hardwaretoets')), hardware['status']
+            assert not state()['dirty'], 'a blocked key must leave the draft alone'
+            keyboard = start(['wtype', '-s', '300', '-k', 'Escape', '-s', '200'], 'hardware-escape.log')
+            wait(lambda: recorder().get('shown') is False, 'cancel the hardware recording')
+            keyboard.wait(timeout=5)
 
             # A protected action keeps its default: Replace edits only the
             # keys added beside it, and the file stores only those.

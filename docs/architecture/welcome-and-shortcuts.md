@@ -213,7 +213,7 @@ readonly property bool dirty                 // draft differs from the saved fil
 function refresh()
 function keysFor(id) -> [keyString]          // effective keys, including the draft; [] if unbound or unknown
 function action(id) -> row | null
-function conflicts(keyString, exceptId) -> [{ id, group, label, protected, source, uncertain? }]
+function conflicts(keyString, exceptId) -> [{ id, group, label, protected, source, editable, hidden, uncertain? }]
 function setKeys(id, keys) / disable(id) / reset(id) / resetAll()
 function addCustom({ group, label, keys, run }) -> id
 function updateCustom(id, patch) / removeCustom(id)
@@ -278,8 +278,9 @@ As built:
   feeds `KeybindEditor.fromKeyEvent`; Escape cancels, a bare Backspace/Delete
   clears. A reserved combination keeps listening and shows its reason. A
   complete one is checked with `Keybindings.conflicts(keys, actionId)`:
-  reserved protected defaults and `user.lua` holders block, because
-  `user.lua` loads last; other holders are offered as Replace, which removes
+  reserved protected defaults, `user.lua` holders and non-editable holders (a
+  hidden hardware key) block, because `user.lua` loads last and an edit cannot
+  unbind a hardware key; other holders are offered as Replace, which removes
   that key from them in the draft before the host applies the new keys.
   Uncertain holders only warn (see §6). The `ShortcutInhibitor` is enabled only while
   listening and is released when a combination completes, on cancel and
@@ -605,7 +606,9 @@ moves, run-target validation with the backend's limits, and the sheet marks.
 maybe}`. `kind` is one of:
 
 - `reserved`, with reason `modifier`, `mouse`, `power`, `system` or `invalid`;
-- `blocked`, with reason `protected` or `user`;
+- `blocked`, with reason `protected`, `user`, `hardware` (a hidden,
+  non-editable holder) or `fixed` (any other non-editable holder). A holder
+  with `editable: false` always blocks, since `setKeys` would refuse it;
 - `replace`;
 - `maybe`, when only `uncertain` holders remain;
 - `free`.
