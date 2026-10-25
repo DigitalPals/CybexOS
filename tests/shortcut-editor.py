@@ -23,6 +23,8 @@ import subprocess
 import tempfile
 import time
 
+import shell_fonts
+
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = Path(os.environ.get('CYBEXOS_SHORTCUT_SCREENSHOTS', '/data/tmp/cybexos-onboarding-B'))
 QML_ERRORS = re.compile(r'TypeError|ReferenceError|Binding loop|is not a type|Type \w+ unavailable'
@@ -54,6 +56,12 @@ elif sys.argv[1:] == ['reload']:
     result = subprocess.run([os.environ['CYBEXOS_TEST_LUA'], os.environ['CYBEXOS_TEST_RESOLVER']],
                             capture_output=True, text=True)
     print('ok' if result.returncode == 0 else result.stderr)
+elif sys.argv[1:] in (['-j', 'devices'], ['devices', '-j']):
+    # No layout until the check asks for one: the editor must cope without it.
+    if not (base / 'keymap-us').exists():
+        sys.exit(1)
+    print(json.dumps({'keyboards': [{'name': 'test-keyboard', 'main': True, 'layout': 'us', 'variant': '',
+                                     'options': '', 'rules': '', 'model': '', 'active_keymap': 'English (US)'}]}))
 elif len(sys.argv) > 1 and sys.argv[1] == 'eval':
     error = json.loads(state.read_text()).get('error')
     print('ok' if error is None else error)
@@ -87,9 +95,24 @@ TEST_IPC = '''
                     paused: recorder.paused, combo: recorder.combo, complete: recorder.complete,
                     reserved: recorder.reserved, kind: recorder.verdict.kind, reason: recorder.verdict.reason,
                     inhibiting: recorder.inhibiting, inhibitorEnabled: recorder.inhibitorEnabled,
-                    windowActive: recorder.Window.active, status: recorder.status } : null,
+                    windowActive: recorder.Window.active, status: recorder.status,
+                    lockedKeys: recorder.lockedKeys, allowAdd: recorder.allowAdd, maybe: recorder.verdict.maybe.length } : null,
                 browser: row("apps.browser"), slack: row("webapps.slack"), lock: row("shell.lock"),
+                terminal: row("apps.terminal"), move1: row("workspaces.move.1"),
+                readOnly: Keybindings.readOnly, preferencesError: Keybindings.preferencesError,
+                keymapSize: Object.keys(Keybindings.keymap).length,
+                formOpen: page ? shell.findNamed(page, "shortcutForm").opened : false,
+                banner: page ? shell.findNamed(page, "shortcutsReadOnly").visible : false,
+                confirmingReset: page ? page.confirmingReset : false,
                 custom: Keybindings.actions.filter(item => item.custom) });
+        }
+        function refresh(): void { Keybindings.refresh(); }
+        function discard(): string { return String(Keybindings.discard()); }
+        function askReset(): void { shell.shortcutsPage().confirmingReset = true; }
+        function resetAll(): string { return String(Keybindings.resetAll()); }
+        function welcomeBanner(): string {
+            const banner = shell.findNamed(shortcutWelcome.contentItem, "welcomeShortcutsReadOnly");
+            return JSON.stringify(banner ? { visible: banner.visible } : null);
         }
         function edit(id: string): void { shell.shortcutsPage().edit(id); }
         function view(value: string): void { shell.shortcutsPage().view = value; }
@@ -219,7 +242,7 @@ def main():
                'PATH': str(base / 'bin') + os.pathsep + os.environ['PATH'],
                'QT_PLUGIN_PATH': subprocess.check_output(['qtpaths', '--query', 'QT_INSTALL_PLUGINS'], text=True).strip(),
                'QML_IMPORT_PATH': str(native / 'qml') + ':' + os.environ.get('CYBEXOS_QML_IMPORT_PATH', ''),
-               'PYTHONDONTWRITEBYTECODE': '1'}
+               'PYTHONDONTWRITEBYTECODE': '1', **shell_fonts.fontconfig(base)}
         for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE', 'SWAYSOCK', 'DBUS_SESSION_BUS_ADDRESS'):
             env.pop(name, None)
         subprocess.run([str(hyprctl), 'reload'], env=env, check=True, capture_output=True)
@@ -414,12 +437,167 @@ def main():
             assert json.loads(ipc('welcome', 'status')).get('open') is True, 'Escape in the recorder must not dismiss the guide'
             ipc('welcome', 'close')
 
+            # Without a layout map a Shift combination is recorded as code:N and
+            # only might share a key: a warning that "Use anyway" accepts
+            # without unbinding anyone. wtype numbers its keys from xkb 9 in
+            # command order, so Shift_L (ignored: a lone modifier) puts 1 on
+            # xkb keycode 10, as on a US keyboard.
+            shift_one = ['-k', 'Shift_L', '-s', '200', '-M', 'logo', '-M', 'shift', '-k', '1',
+                         '-m', 'shift', '-m', 'logo', '-s', '300']
+            ipc('settings', 'open', 'shortcuts')
+            wait(lambda: (s := state()).get('page') and s.get('loaded') and s, 'shortcuts page again')
+            assert state()['keymapSize'] == 0
+            ipc('shortcut-test', 'edit', 'apps.terminal')
+            focus_settings()
+            wait(lambda: recorder().get('inhibiting'), 'recording Shift+1 without a keymap')
+            keyboard = start(['wtype', '-s', '500', *shift_one], 'shift-unknown.log')
+            maybe = wait(lambda: (r := recorder()).get('kind') == 'maybe' and r, 'uncertain conflict', 10)
+            keyboard.wait(timeout=5)
+            assert maybe['combo'] == 'SUPER + SHIFT + code:10' and maybe['maybe'] >= 1, maybe
+            assert maybe['status'].startswith(('May conflict', 'Mogelijk')), maybe['status']
+            screenshot('shortcuts-recorder-maybe.png')
+            keyboard = start(['wtype', '-s', '300', '-k', 'Return', '-s', '200'], 'use-anyway.log')
+            accepted = wait(lambda: (s := state()).get('dirty') and not s['recorder']['shown'] and s, 'Use anyway')
+            keyboard.wait(timeout=5)
+            assert accepted['terminal']['keys'] == ['SUPER + SHIFT + code:10'], accepted['terminal']
+            assert accepted['move1']['keys'] == ['SUPER + SHIFT + 1'], 'an uncertain holder is never unbound'
+            assert ipc('shortcut-test', 'discard') == 'true'
+            wait(lambda: not state().get('dirty'), 'discarded')
+
+            # With the layout's keymap the same keys are SUPER + SHIFT + 1, a
+            # certain conflict with "Move window to workspace 1".
+            (runtime / 'keymap-us').touch()
+            ipc('shortcut-test', 'refresh')
+            wait(lambda: state().get('keymapSize', 0) > 50, 'layout keymap in the snapshot', 30)
+            ipc('shortcut-test', 'edit', 'apps.terminal')
+            focus_settings()
+            wait(lambda: recorder().get('inhibiting'), 'recording Shift+1 with a keymap')
+            keyboard = start(['wtype', '-s', '500', *shift_one], 'shift-us.log')
+            named = wait(lambda: (r := recorder()).get('kind') == 'replace' and r, 'keysym conflict', 10)
+            keyboard.wait(timeout=5)
+            assert named['combo'] == 'SUPER + SHIFT + 1' and named['maybe'] == 0, named
+            keyboard = start(['wtype', '-s', '300', '-k', 'Escape', '-s', '200'], 'keymap-escape.log')
+            wait(lambda: recorder().get('shown') is False, 'cancel the keysym recording')
+            keyboard.wait(timeout=5)
+            assert not state()['dirty']
+
+            # A protected action keeps its default: Replace edits only the
+            # keys added beside it, and the file stores only those.
+            ipc('shortcut-test', 'edit', 'shell.lock')
+            focus_settings()
+            first = wait(lambda: (r := recorder()).get('inhibiting') and r, 'recording Lock screen')
+            assert first['lockedKeys'] == ['SUPER + L'] and not first['allowAdd'], first
+            keyboard = start(['wtype', '-s', '500', '-M', 'logo', '-k', 'i', '-m', 'logo', '-s', '600',
+                              '-k', 'Return', '-s', '200'], 'lock-first.log')
+            wait(lambda: (s := state()).get('lock', {}).get('keys') == ['SUPER + I', 'SUPER + L'] and s, 'extra lock key')
+            keyboard.wait(timeout=5)
+            ipc('shortcut-test', 'edit', 'shell.lock')
+            focus_settings()
+            second = wait(lambda: (r := recorder()).get('inhibiting') and r, 'recording Lock screen again')
+            assert second['allowAdd'] and second['lockedKeys'] == ['SUPER + L'], second
+            keyboard = start(['wtype', '-s', '500', '-M', 'logo', '-k', 'o', '-m', 'logo', '-s', '600'], 'lock-second.log')
+            wait(lambda: recorder().get('kind') == 'free', 'Super+O is free')
+            keyboard.wait(timeout=5)
+            screenshot('shortcuts-recorder-protected.png')
+            keyboard = start(['wtype', '-s', '300', '-k', 'Return', '-s', '200'], 'lock-accept.log')
+            replaced = wait(lambda: (s := state()).get('lock', {}).get('keys') == ['SUPER + O', 'SUPER + L'] and s,
+                            'Replace kept the default')
+            keyboard.wait(timeout=5)
+            assert ipc('shortcut-test', 'apply') == 'true'
+            wait(lambda: (s := state()).get('loaded') and not s['dirty'] and not s['busy'] and s, 'protected applied', 30)
+            stored = json.loads((home / '.config/cybexos/keybindings.json').read_text())
+            assert stored['actions']['shell.lock'] == {'keys': ['SUPER + O']}, stored
+            resolved = json.loads((runtime / 'cybexos/keybindings-state.json').read_text())
+            assert next(row for row in resolved['actions'] if row['id'] == 'shell.lock')['keys'] == ['SUPER + O', 'SUPER + L']
+            ipc('shortcut-test', 'search', 'lock')
+            time.sleep(0.5)
+            screenshot('shortcuts-protected-row.png')
+            ipc('shortcut-test', 'search', '')
+            ipc('shortcut-test', 'view', 'map')
+            ipc('shortcut-test', 'select', 'SUPER + L')
+            screenshot('shortcuts-map-protected.png')
+            ipc('shortcut-test', 'view', 'list')
+
+            # Escape closes an open Add form first and Settings only after.
+            ipc('shortcut-test', 'add', '', 'app')
+            wait(lambda: state().get('formOpen'), 'Add form open')
+            focus_settings()
+            keyboard = start(['wtype', '-s', '500', '-k', 'Escape', '-s', '200'], 'form-escape.log')
+            wait(lambda: state().get('formOpen') is False, 'Escape closes the Add form')
+            keyboard.wait(timeout=5)
+            assert json.loads(ipc('settings', 'status')).get('open') is True, 'the first Escape must not close Settings'
+            focus_settings()
+            keyboard = start(['wtype', '-s', '300', '-k', 'Escape', '-s', '200'], 'settings-escape.log')
+            wait(lambda: json.loads(ipc('settings', 'status')).get('open') is False, 'a second Escape closes Settings')
+            keyboard.wait(timeout=5)
+
+            # A malformed keybindings.json: the defaults apply, the page and
+            # the welcome step say why and offer only Reset all, which keeps
+            # the broken bytes as keybindings.json.invalid-<time>.
+            broken = b'{"v": 1, "actions": {"apps.browser": {"keys": ["SUPER + M"]}'
+            (home / '.config/cybexos/keybindings.json').write_bytes(broken)
+            subprocess.run([str(hyprctl), 'reload'], env=env, check=True, capture_output=True)
+            ipc('settings', 'open', 'shortcuts')
+            ipc('shortcut-test', 'refresh')
+            frozen = wait(lambda: (s := state()).get('readOnly') and s.get('banner') and s, 'read-only page', 30)
+            assert frozen['preferencesError'], frozen
+            assert frozen['browser']['keys'] == ['SUPER + B'], 'the defaults are in effect'
+            ipc('shortcut-test', 'scroll', '0')
+            screenshot('shortcuts-read-only.png')
+            ipc('shortcut-test', 'edit', 'apps.browser')
+            time.sleep(0.5)
+            assert not state()['recorder']['shown'], 'no recording while read only'
+            ipc('shortcut-test', 'add', 'SUPER + D', 'url')
+            assert not state()['formOpen'], 'no custom shortcut while read only'
+            ipc('settings', 'close')
+            assert ipc('welcome', 'open', 'shortcuts') == 'ok'
+            wait(lambda: (json.loads(ipc('shortcut-test', 'welcomeBanner')) or {}).get('visible'), 'welcome banner')
+            time.sleep(1)
+            screenshot('welcome-shortcuts-read-only.png')
+            ipc('welcome', 'close')
+            ipc('settings', 'open', 'shortcuts')
+            wait(lambda: state().get('page'), 'page for Reset all')
+            ipc('shortcut-test', 'askReset')
+            wait(lambda: state().get('confirmingReset'), 'reset question')
+            screenshot('shortcuts-reset-invalid.png')
+            assert ipc('shortcut-test', 'resetAll') == 'true'
+            wait(lambda: state().get('dirty'), 'pending replacement')
+            assert ipc('shortcut-test', 'apply') == 'true'
+            recovered = wait(lambda: (s := state()).get('loaded') and not s['dirty'] and not s['busy']
+                             and not s['readOnly'] and s, 'file replaced', 30)
+            assert not recovered['error'], recovered['error']
+            backups = list((home / '.config/cybexos').glob('keybindings.json.invalid-*'))
+            assert len(backups) == 1 and backups[0].read_bytes() == broken, backups
+            assert json.loads((home / '.config/cybexos/keybindings.json').read_text()) == {'v': 1}
+            ipc('settings', 'close')
+
+            # The page, its map and the recorder at Settings' minimum size.
+            ipc('settings', 'open', 'shortcuts')
+            wait(lambda: (s := state()).get('page') and s.get('loaded') and s, 'page for the minimum size')
+            subprocess.run(['swaymsg', '[title="Cybex OS Settings"]', 'resize set 480 400'], env=env,
+                           check=True, capture_output=True)
+            ipc('shortcut-test', 'view', 'list')
+            ipc('shortcut-test', 'scroll', '0')
+            screenshot('shortcuts-minimum.png')
+            ipc('shortcut-test', 'view', 'map')
+            screenshot('shortcuts-map-minimum.png')
+            ipc('shortcut-test', 'view', 'list')
+            ipc('shortcut-test', 'edit', 'shell.lock')
+            focus_settings()
+            wait(lambda: recorder().get('listening'), 'recorder at the minimum size')
+            screenshot('shortcuts-recorder-minimum.png')
+            keyboard = start(['wtype', '-s', '300', '-k', 'Escape', '-s', '200'], 'minimum-escape.log')
+            wait(lambda: recorder().get('shown') is False, 'cancel at the minimum size')
+            keyboard.wait(timeout=5)
+            ipc('settings', 'close')
+
             errors = [line for line in (base / 'qs.log').read_text(errors='replace').splitlines()
                       if QML_ERRORS.search(line) or 'activeFocusOnTab' in line
                       or re.search(r'(WARN|ERROR).*(Shortcut\w*\.qml|Keybind\w*\.qml|ShortcutEditor\.js|ShortcutsStep)', line)]
             assert not errors, '\n'.join(errors)
             print('PASS: real page, user.lua rows, recorder with ShortcutInhibitor, reserved/protected/Replace '
-                  'decisions, focus-loss release, Escape, map, apply through the real Lua resolver')
+                  'decisions, focus-loss release, Escape, map, apply through the real Lua resolver, layout keymap, '
+                  'uncertain conflicts, protected defaults, Add-form Escape and read-only recovery')
         except Exception:
             for query in ('get_seats', 'get_tree'):
                 result = subprocess.run(['swaymsg', '-t', query], env=env, capture_output=True, text=True)

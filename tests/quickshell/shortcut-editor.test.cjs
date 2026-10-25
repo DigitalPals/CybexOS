@@ -2,7 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {load, plain, root} = require('./keybindings-support.cjs');
+const os = require('node:os');
+const {spawnSync} = require('node:child_process');
+const {load, plain, root, luaBinary, stub} = require('./keybindings-support.cjs');
 const S = load('ShortcutEditor.js');
 const M = load('KeybindingsModel.js');
 const row = (id, group, label, keys, extra = {}) => ({id, group, label, keys, defaultKeys: keys, editable: true,
@@ -11,7 +13,7 @@ const actions = [
     row('apps.terminal', 'Apps', 'Terminal', ['SUPER + Return']),
     row('apps.browser', 'Apps', 'Browser', ['SUPER + SHIFT + B'], {defaultKeys: ['SUPER + B'], changed: true, source: 'changed'}),
     row('shell.lock', 'Shell', 'Lock screen', ['SUPER + L'], {protected: true}),
-    row('shell.settings', 'Shell', 'Cybex OS Settings', ['SUPER + ALT + S'], {protected: true, defaultKeys: ['SUPER + comma'], changed: true, source: 'changed'}),
+    row('shell.settings', 'Shell', 'Cybex OS Settings', ['SUPER + ALT + S', 'SUPER + comma'], {protected: true, defaultKeys: ['SUPER + comma'], changed: true, source: 'changed'}),
     row('windows.move', 'Windows', 'Move window', ['SUPER + mouse:272'], {editable: false}),
     row('hardware.mute', 'Hardware keys', 'Mute', ['XF86AudioMute'], {editable: false, hidden: true}),
     row('custom.shortcut-1', 'Web', 'Docs', ['SUPER + H'], {defaultKeys: [], custom: true, changed: true, source: 'custom',
@@ -63,7 +65,7 @@ test('search matches labels, groups, translations and key combinations', () => {
 });
 
 test('recorder decisions: reserved keys keep listening, protected and user.lua block, others replace', () => {
-    assert.deepEqual(plain(S.decide('B', [])), {kind: 'reserved', reason: 'modifier', blockers: [], replace: []});
+    assert.deepEqual(plain(S.decide('B', [])), {kind: 'reserved', reason: 'modifier', blockers: [], replace: [], maybe: []});
     assert.equal(S.decide('CTRL + ALT + F2', []).reason, 'system');
     assert.equal(S.decide('CTRL + ALT + Delete', []).reason, 'system');
     assert.equal(S.decide('XF86PowerOff', []).reason, 'power');
@@ -75,7 +77,7 @@ test('recorder decisions: reserved keys keep listening, protected and user.lua b
     const user = {id: 'user.0', group: 'Mine', label: 'Notes', protected: false, source: 'user'};
     assert.equal(S.decide('SUPER + M', [slack]).kind, 'replace');
     assert.deepEqual(plain(S.decide('SUPER + M', [slack]).replace), [slack]);
-    assert.deepEqual(plain(S.decide('SUPER + L', [slack, lock])), {kind: 'blocked', reason: 'protected', blockers: [lock], replace: [slack]});
+    assert.deepEqual(plain(S.decide('SUPER + L', [slack, lock])), {kind: 'blocked', reason: 'protected', blockers: [lock], replace: [slack], maybe: []});
     assert.equal(S.decide('SUPER + N', [user]).reason, 'user');
     assert.equal(S.decide('SUPER + J', []).kind, 'free');
 });
@@ -95,6 +97,136 @@ test('a decision follows the model conflicts, including protected defaults after
         'the resolver still reserves a remapped protected default');
     assert.equal(S.decide('SUPER + M', M.conflicts(model, 'SUPER + M', 'apps.first')).kind, 'replace');
     assert.equal(S.decide('SUPER + J', M.conflicts(model, 'SUPER + J', 'apps.first')).kind, 'free');
+});
+
+test('uncertain holders warn without blocking or being unbound', () => {
+    const slack = {id: 'webapps.slack', group: 'Web apps', label: 'Slack', protected: false, source: 'default'};
+    const move = {id: 'workspaces.move.1', group: 'Workspaces', label: 'Move window to workspace 1', protected: false,
+        source: 'default', uncertain: true};
+    const lock = {id: 'shell.lock', group: 'Shell', label: 'Lock screen', protected: true, source: 'default', uncertain: true};
+    const user = {id: 'user.0', group: 'Mine', label: 'Notes', protected: false, source: 'user', uncertain: true};
+    const maybe = plain(S.decide('SUPER + SHIFT + code:10', [move, lock, user]));
+    assert.equal(maybe.kind, 'maybe', 'uncertain protected and user.lua holders do not block');
+    assert.deepEqual(maybe.maybe.map(entry => entry.id), ['workspaces.move.1', 'shell.lock', 'user.0']);
+    assert.deepEqual(maybe.replace, [], 'an uncertain holder is never unbound');
+    assert.deepEqual(maybe.blockers, []);
+    const mixed = plain(S.decide('SUPER + SHIFT + code:10', [slack, move]));
+    assert.equal(mixed.kind, 'replace');
+    assert.deepEqual(mixed.replace.map(entry => entry.id), ['webapps.slack']);
+    assert.deepEqual(mixed.maybe.map(entry => entry.id), ['workspaces.move.1']);
+    const certain = {...lock, uncertain: undefined};
+    assert.equal(S.decide('SUPER + SHIFT + code:10', [move, certain]).kind, 'blocked', 'a certain protected holder still blocks');
+    // The real model without a layout map reports uncertain holders.
+    const fixtures = JSON.parse(fs.readFileSync(path.join(root, 'tests/fixtures/keybindings/resolution.json')));
+    const model = M.create();
+    const rows = [{id: 'workspaces.move.1', group: 'Workspaces', label: 'Move', keys: ['SUPER + SHIFT + 1'],
+        defaultKeys: ['SUPER + SHIFT + 1'], editable: true, protected: false, hidden: false, custom: false}];
+    M.ingest(model, {state: M.resolve(rows, {v: 1}), preferences: {v: 1}, version: 'a',
+        binds: [{modmask: 65, key: '1', description: 'Workspaces: Move'}]});
+    const verdict = plain(S.decide('SUPER + SHIFT + code:10', M.conflicts(model, 'SUPER + SHIFT + code:10', 'apps.x')));
+    assert.equal(verdict.kind, 'maybe');
+    assert.ok(fixtures.catalog.length > 0);
+});
+
+test('protected rows lock their defaults; Replace edits only the extra keys', () => {
+    const lock = row('shell.lock', 'Shell', 'Lock screen', ['SUPER + T', 'SUPER + L'],
+        {protected: true, defaultKeys: ['SUPER + L'], changed: true});
+    assert.deepEqual(plain(S.lockedKeys(lock)), ['SUPER + L']);
+    assert.deepEqual(plain(S.editableKeys(lock)), ['SUPER + T']);
+    assert.deepEqual(plain(S.lockedKeys(actions[0])), [], 'ordinary rows lock nothing');
+    assert.deepEqual(plain(S.editableKeys(actions[0])), ['SUPER + Return']);
+    assert.deepEqual(plain(S.nextKeys(S.editableKeys(lock), 'SUPER + Y', 'replace')), ['SUPER + Y']);
+    assert.deepEqual(plain(S.nextKeys(S.editableKeys(lock), 'SUPER + Y', 'add')), ['SUPER + T', 'SUPER + Y']);
+    // Only a protected holder's reserved default blocks; its extra key is an
+    // ordinary claim that Replace may take.
+    const holder = {id: 'shell.lock', group: 'Shell', label: 'Lock screen', protected: true, source: 'changed'};
+    const lookup = id => id === 'shell.lock' ? lock : null;
+    assert.equal(S.decide('SUPER + L', [holder], lookup).kind, 'blocked');
+    assert.equal(S.decide('SUPER + T', [holder], lookup).kind, 'replace');
+    assert.equal(S.decide('SUPER + T', [holder]).kind, 'blocked', 'without a lookup, protected holders block');
+});
+
+const lua = luaBinary();
+function resolveWithLua(preferences) {
+    assert.ok(lua, 'Lua is required: run these tests through nix develop');
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'cybexos-shortcut-editor-'));
+    try {
+        for (const dir of ['config/cybexos', 'runtime/cybexos']) fs.mkdirSync(path.join(temporary, dir), {recursive: true});
+        if (preferences) fs.writeFileSync(path.join(temporary, 'config/cybexos/keybindings.json'), JSON.stringify(preferences));
+        const result = spawnSync(lua, ['-'], {encoding: 'utf8', input:
+            `package.path = ${JSON.stringify(path.join(root, 'desktop/hypr/?.lua'))} .. ';' .. package.path\n`
+            + 'package.preload.features = function() return {} end\n' + stub
+            + "\nrequire('bindings')\nrequire('keybinding_preferences')\n",
+            env: {...process.env, HOME: temporary, XDG_CONFIG_HOME: path.join(temporary, 'config'),
+                XDG_RUNTIME_DIR: path.join(temporary, 'runtime')}});
+        assert.equal(result.status, 0, result.stderr);
+        return JSON.parse(fs.readFileSync(path.join(temporary, 'runtime/cybexos/keybindings-state.json')));
+    } finally { fs.rmSync(temporary, {recursive: true, force: true}); }
+}
+function liveBinds(state) {
+    const masks = {SUPER: 64, CTRL: 4, ALT: 8, SHIFT: 1};
+    return state.actions.concat(state.custom || []).flatMap(action => action.keys.map(key => {
+        const parts = key.split(' + ');
+        return {modmask: parts.slice(0, -1).reduce((mask, mod) => mask | masks[mod], 0), key: parts.at(-1),
+            description: action.group + ': ' + action.label};
+    }));
+}
+
+test('a protected action edited the editor\'s way matches the real Lua resolver', () => {
+    const model = M.create();
+    let state = resolveWithLua(null);
+    const ingest = preferences => M.ingest(model, {state, preferences, version: 'v', binds: liveBinds(state)});
+    ingest({v: 1});
+    const record = (id, combo, mode) => M.setKeys(model, id, S.nextKeys(S.editableKeys(M.action(model, id)), combo, mode));
+    const commit = () => {
+        const {preferences} = M.request(model);
+        state = resolveWithLua(preferences);
+        assert.equal(state.error, null);
+        M.applied(model, {version: 'v', preferences});
+        ingest(preferences);
+        return preferences;
+    };
+    let lock = M.action(model, 'shell.lock');
+    assert.deepEqual(plain(S.lockedKeys(lock)), ['SUPER + L']);
+    assert.deepEqual(plain(S.editableKeys(lock)), []);
+
+    record('shell.lock', 'SUPER + T', 'replace');
+    const preview = plain(M.keysFor(model, 'shell.lock'));
+    assert.deepEqual(preview, ['SUPER + T', 'SUPER + L']);
+    assert.deepEqual(plain(commit().actions), {'shell.lock': {keys: ['SUPER + T']}}, 'only the extra key is stored');
+    assert.deepEqual(plain(state.actions.find(entry => entry.id === "shell.lock").keys), preview, 'the draft preview is what Lua binds');
+
+    // Replace changes only the extra key; the default stays bound.
+    record('shell.lock', 'SUPER + I', 'replace');
+    assert.deepEqual(plain(commit().actions), {'shell.lock': {keys: ['SUPER + I']}});
+    assert.deepEqual(plain(state.actions.find(entry => entry.id === "shell.lock").keys), ['SUPER + I', 'SUPER + L']);
+    record('shell.lock', 'SUPER + U', 'add');
+    assert.deepEqual(plain(commit().actions), {'shell.lock': {keys: ['SUPER + I', 'SUPER + U']}});
+    lock = M.action(model, 'shell.lock');
+    assert.deepEqual(plain(lock.keys), ['SUPER + I', 'SUPER + U', 'SUPER + L']);
+    assert.deepEqual(plain(S.lockedKeys(lock)), ['SUPER + L']);
+
+    // The map and the row agree: only the default is locked.
+    const map = plain(S.keyboardMap(M.view(model).actions, [])).flat();
+    assert.equal(map.find(key => key.key === 'L').protected, true);
+    assert.equal(map.find(key => key.key === 'I').protected, false);
+    assert.equal(map.find(key => key.key === 'I').owner.id, 'shell.lock');
+
+    // Another action may take the extra key; Replace leaves the default.
+    const lookup = id => M.action(model, id);
+    const taken = S.decide('SUPER + I', M.conflicts(model, 'SUPER + I', 'apps.browser'), lookup);
+    assert.equal(taken.kind, 'replace');
+    assert.equal(S.decide('SUPER + L', M.conflicts(model, 'SUPER + L', 'apps.browser'), lookup).kind, 'blocked');
+    M.setKeys(model, 'shell.lock', S.withoutKey(M.keysFor(model, 'shell.lock'), 'SUPER + I'));
+    record('apps.browser', 'SUPER + I', 'replace');
+    assert.deepEqual(plain(commit().actions), {'shell.lock': {keys: ['SUPER + U']}, 'apps.browser': {keys: ['SUPER + I']}});
+    assert.deepEqual(plain(state.actions.find(entry => entry.id === "shell.lock").keys), ['SUPER + U', 'SUPER + L']);
+    assert.deepEqual(state.diagnostics, []);
+
+    // Recording the default itself removes the override; it cannot be disabled.
+    record('shell.lock', 'SUPER + L', 'replace');
+    assert.equal(M.request(model).preferences.actions['shell.lock'], undefined);
+    assert.throws(() => M.setKeys(model, 'shell.lock', []), /at least one/);
 });
 
 test('recorded keys replace or join the row, and replacement removes only that key', () => {
@@ -135,7 +267,7 @@ test('keyboard map lays out Super+digit and letter rows with owners, protection 
     assert.equal(key('L').protected, true);
     assert.equal(key('L').owner.id, 'shell.lock');
     assert.equal(key('L').free, false);
-    // Settings moved to Super+Alt+S, yet Super+Comma is not in the map;
+    // Settings gained Super+Alt+S beside its locked Super+Comma, neither in the map;
     // Super+H is a custom shortcut and Super+M is shared with user.lua.
     assert.equal(key('H').owner.source, 'custom');
     assert.equal(key('M').shared, true);
@@ -145,13 +277,21 @@ test('keyboard map lays out Super+digit and letter rows with owners, protection 
     assert.equal(key('E').free, true);
     assert.equal(key('Z').free, true);
     assert.equal(key('1').combo, 'SUPER + 1');
-    // A protected default stays reserved after its action is remapped.
-    const remapped = plain(S.keyboardMap([row('shell.lock', 'Shell', 'Lock screen', ['SUPER + ALT + L'],
-        {protected: true, defaultKeys: ['SUPER + L']})], []));
+    // A protected default stays locked beside its extra keys, which are not.
+    const remapped = plain(S.keyboardMap([row('shell.lock', 'Shell', 'Lock screen', ['SUPER + T', 'SUPER + L'],
+        {protected: true, defaultKeys: ['SUPER + L'], changed: true, source: 'changed'})], []));
     const lock = remapped.flat().find(entry => entry.key === 'L');
     assert.equal(lock.free, false);
     assert.equal(lock.protected, true);
-    assert.equal(lock.reservedBy.id, 'shell.lock');
+    assert.equal(lock.owner.id, 'shell.lock');
+    assert.equal(lock.reservedBy, null, 'its own action holds it');
+    const extra = remapped.flat().find(entry => entry.key === 'T');
+    assert.equal(extra.owner.id, 'shell.lock');
+    assert.equal(extra.protected, false, 'an extra key of a protected action can move');
+    // Should user.lua unbind the default, the key is still reserved for it.
+    const unbound = plain(S.keyboardMap([row('shell.lock', 'Shell', 'Lock screen', ['SUPER + T'],
+        {protected: true, defaultKeys: ['SUPER + L'], source: 'user'})], []));
+    assert.equal(unbound.flat().find(entry => entry.key === 'L').reservedBy.id, 'shell.lock');
 });
 
 test('map labels shorten workspace switches only', () => {
@@ -227,7 +367,12 @@ test('the editor UI is wired to the shared contract', () => {
     assert.match(recorder, /ShortcutInhibitor \{[\s\S]*?window: root\.QsWindow\.window/);
     assert.match(recorder, /onListeningChanged: inhibitor\.enabled = listening/);
     assert.match(recorder, /Component\.onDestruction: \{[\s\S]*?inhibitor\.enabled = false/);
-    assert.match(recorder, /Editor\.fromKeyEvent/);
+    assert.match(recorder, /Editor\.fromKeyEvent\([\s\S]*?, Keybindings\.keymap\)/, 'the layout keymap names Shift combinations');
+    assert.match(recorder, /Helpers\.decide\([^\n]*Keybindings\.action\(id\)\)/);
+    assert.match(recorder, /verdict\.kind === "maybe" \? I18n\.tr\("Use anyway"\)/);
+    assert.match(page, /readOnly[\s\S]*?Keybindings\.preferencesError/);
+    assert.match(page, /function handleEscape\(\): bool \{[\s\S]*?form\.opened[\s\S]*?form\.close\(\)/);
+    assert.match(read('Settings/SettingsView.qml'), /pageLoader\.item as ShortcutsPage;[\s\S]*?shortcuts\.handleEscape\(\)/);
     assert.match(recorder, /Keybindings\.conflicts\(/);
     assert.match(recorder, /onActiveChanged[\s\S]*?Window\.window\.active[\s\S]*?root\.listening = false/, 'focus loss ends recording');
     assert.match(recorder, /Component\.onDestruction/);
@@ -242,4 +387,26 @@ test('the editor UI is wired to the shared contract', () => {
     assert.doesNotMatch(step, /INTEGRATION: stream B|Welcome\.keysFor/);
     assert.match(step, /ShortcutKeyboardMap \{/);
     assert.match(step, /Keybindings\.keysFor\(/);
+    assert.match(step, /Keybindings\.preferencesError/);
+    assert.match(step, /Keybindings\.resetAll\(\)/);
+    for (const host of [page, step])
+        assert.match(host, /Helpers\.nextKeys\(Helpers\.editableKeys\(/, 'protected defaults stay locked when recording');
+});
+
+test('numbered action labels translate through their stem, everywhere the editor names an action', () => {
+    const I18nHelpers = load('I18nHelpers.js');
+    const nl = require(path.join(root, 'desktop/quickshell/Common/i18n/nl.js')).MESSAGES;
+    const singleton = fs.readFileSync(path.join(root, 'desktop/quickshell/Common/I18n.qml'), 'utf8');
+    const body = singleton.match(/function actionLabel\(label: string\): string \{([\s\S]*?)\n    \}/)[1];
+    const actionLabel = (catalog, label) => new Function('label', 'I18nHelpers', 'root', body)(label, I18nHelpers, {
+        catalog, tr: text => I18nHelpers.translate(catalog, text), format: (text, args) => I18nHelpers.format(catalog, text, args)});
+    assert.equal(actionLabel(nl, 'Switch to workspace 10'), 'Naar werkblad 10 gaan');
+    assert.equal(actionLabel(nl, 'Move window to workspace 3'), 'Venster naar werkblad 3 verplaatsen');
+    assert.equal(actionLabel(nl, 'Launcher'), I18nHelpers.translate(nl, 'Launcher'));
+    assert.equal(actionLabel(nl, 'Notes 2'), 'Notes 2', 'a custom label without a stem entry stays as typed');
+    assert.equal(actionLabel({}, 'Switch to workspace 10'), 'Switch to workspace 10');
+    const shell = path.join(root, 'desktop/quickshell');
+    for (const name of ['Settings/ShortcutRow.qml', 'Settings/ShortcutKeyboardMap.qml', 'Settings/ShortcutRecorder.qml',
+        'ShortcutsOverlay.qml', 'Welcome/ShortcutsStep.qml'])
+        assert.doesNotMatch(fs.readFileSync(path.join(shell, name), 'utf8'), /I18n\.tr\([\w.]*\.label\)/, name);
 });

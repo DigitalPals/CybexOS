@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import "../Common"
+import "../Common/WallpaperNames.js" as WallpaperNames
 
 // Shared picker above the existing current, rotation and folder rows.
 Item {
@@ -42,7 +43,8 @@ Item {
             anchors.bottom: options.top
             anchors.bottomMargin: Theme.settingsGroupSpacing
             label: I18n.tr("Current")
-            hint: Settings.wall !== "" ? Settings.wall : I18n.tr("Cybex OS default")
+            // The readable name, then the file itself.
+            hint: Settings.wall !== "" ? WallpaperNames.label(Settings.wall, false) + " · " + Settings.wall : I18n.tr("Cybex OS default")
             dirty: false
             resetKeys: []
             Row {

@@ -4,7 +4,8 @@ import "../Common"
 import "../Common/ShortcutEditor.js" as Helpers
 
 // The Super+letter and Super+digit keys, drawn as a keyboard, each with the
-// action it runs. Protected keys carry a lock; free keys are lit. Choosing a
+// action it runs. A protected action's reserved defaults carry a lock (its
+// other keys can move like any key); free keys are lit. Choosing a
 // bound key asks to edit its action; choosing a free key offers to make it
 // open an app, a website, a web app or a command. Used by Settings →
 // Keyboard shortcuts and by the welcome guide.
@@ -15,6 +16,8 @@ Column {
 
     property var actions: Keybindings.actions
     property var userBinds: Keybindings.userBinds
+    // While keybindings.json is rejected the map only shows what is bound.
+    property bool readOnly: Keybindings.readOnly
     readonly property var map: Helpers.keyboardMap(actions, userBinds)
     // The key whose details show under the map, by combination.
     property string selected: ""
@@ -69,13 +72,13 @@ Column {
         if (!owner)
             return "";
         const workspace = Helpers.workspaceNumber(owner.label);
-        return workspace ? I18n.format("Workspace %1", [workspace]) : I18n.tr(owner.label);
+        return workspace ? I18n.format("Workspace %1", [workspace]) : I18n.actionLabel(owner.label);
     }
     function describe(key) {
         if (key.free)
             return I18n.tr("Free");
         if (key.reservedBy)
-            return I18n.format("Kept for %1", [I18n.tr(key.reservedBy.label)]);
+            return I18n.format("Kept for %1", [I18n.actionLabel(key.reservedBy.label)]);
         let text = label(key.owner);
         if (key.shared)
             text = I18n.format("%1 and %2 more", [text, key.owners.length - 1]);
@@ -85,7 +88,7 @@ Column {
     }
     function activate(key) {
         selected = key.combo;
-        if (key.owner && key.owner.editable && !key.shared)
+        if (!readOnly && key.owner && key.owner.editable && !key.shared)
             editRequested(key.owner.id);
     }
     function focusKey(row, column) {
@@ -137,7 +140,7 @@ Column {
                         activeFocusOnTab: current
                         Accessible.role: Accessible.Button
                         Accessible.name: I18n.format("Super+%1: %2", [modelData.key, root.describe(modelData)])
-                        Accessible.description: modelData.protected ? I18n.tr("Protected: it always keeps a key.") : ""
+                        Accessible.description: modelData.protected ? I18n.tr("A protected shortcut always keeps this key.") : ""
                         Accessible.onPressAction: root.activate(modelData)
 
                         Keys.onPressed: event => {
@@ -184,16 +187,25 @@ Column {
                             size: Theme.iconSmall
                             color: keyCap.modelData.free ? Theme.accentText : Theme.textFaint
                         }
+                        // Two lines at word boundaries; one elided line when a
+                        // word alone is wider than the key (a narrow map, a
+                        // long translation), so it never runs into the next.
+                        TextMetrics {
+                            id: longestWord
+                            font: keyLabel.font
+                            text: keyLabel.text.split(/\s+/).reduce((longest, word) => word.length > longest.length ? word : longest, "")
+                        }
                         Text {
+                            id: keyLabel
                             x: Theme.scaled(5)
                             anchors.bottom: parent.bottom
                             anchors.bottomMargin: Theme.scaled(3)
                             width: parent.width - Theme.scaled(8)
                             visible: !keyCap.modelData.free
-                            text: keyCap.modelData.reservedBy ? I18n.tr(keyCap.modelData.reservedBy.label)
+                            text: keyCap.modelData.reservedBy ? I18n.actionLabel(keyCap.modelData.reservedBy.label)
                                 : root.label(keyCap.modelData.owner)
-                            wrapMode: Text.WordWrap
-                            maximumLineCount: 2
+                            wrapMode: longestWord.advanceWidth <= width ? Text.WordWrap : Text.NoWrap
+                            maximumLineCount: wrapMode === Text.NoWrap ? 1 : 2
                             elide: Text.ElideRight
                             lineHeight: 0.9
                             font.family: Theme.fontMenu
@@ -224,7 +236,7 @@ Column {
         spacing: Theme.panelSectionSpacing
 
         Legend { fill: Theme.accentAlpha(0.16); edge: Theme.accentAlpha(0.55); text: I18n.tr("Free") }
-        Legend { fill: Theme.cardFill; edge: Theme.stroke; glyph: "lock"; text: I18n.tr("Protected") }
+        Legend { fill: Theme.cardFill; edge: Theme.stroke; glyph: "lock"; text: I18n.tr("Protected default") }
         Legend { fill: Theme.cardFill; edge: Theme.amber; text: I18n.tr("Used more than once") }
         Legend { fill: Theme.cardFill; edge: Theme.stroke; text: I18n.tr("Italic: from user.lua") }
     }
@@ -254,7 +266,7 @@ Column {
                     width: Math.min(implicitWidth, detailBody.width - Theme.scaled(120))
                     elide: Text.ElideRight
                     text: !root.selectedKey ? ""
-                        : root.selectedKey.free ? I18n.tr("This key is free. Make it open:")
+                        : root.selectedKey.free ? (root.readOnly ? I18n.tr("This key is free.") : I18n.tr("This key is free. Make it open:"))
                         : root.describe(root.selectedKey)
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.control
@@ -266,8 +278,12 @@ Column {
                 width: parent.width
                 visible: text !== ""
                 wrapMode: Text.Wrap
-                text: !root.selectedKey || root.selectedKey.free ? ""
-                    : root.selectedKey.reservedBy ? I18n.tr("A protected shortcut keeps this key even after you move it.")
+                text: !root.selectedKey ? ""
+                    : root.readOnly ? I18n.tr("Shortcuts cannot be changed until keybindings.json is reset.")
+                    : root.selectedKey.free ? ""
+                    : root.selectedKey.reservedBy ? I18n.tr("A protected shortcut always keeps this key.")
+                    : root.selectedKey.protected ? I18n.format("%1 always keeps this key. You can give it other keys as well.",
+                        [root.label(root.selectedKey.owner)])
                     : root.selectedKey.owner.source === "user" ? I18n.tr("Set in ~/.config/cybexos/hypr/user.lua. Change it there.")
                     : root.selectedKey.shared ? root.selectedKey.owners.map(owner => root.label(owner)).join(", ")
                     : !root.selectedKey.owner.editable ? I18n.tr("This shortcut cannot be changed here.") : ""
@@ -278,7 +294,7 @@ Column {
             Flow {
                 width: parent.width
                 spacing: Theme.iconTextSpacing
-                visible: root.selectedKey !== null && root.selectedKey.free
+                visible: root.selectedKey !== null && root.selectedKey.free && !root.readOnly
 
                 Repeater {
                     model: [{ type: "app", label: I18n.tr("An app"), glyph: "apps" },
@@ -296,14 +312,14 @@ Column {
             Flow {
                 width: parent.width
                 spacing: Theme.iconTextSpacing
-                visible: root.selectedKey !== null && root.selectedKey.shared
+                visible: root.selectedKey !== null && root.selectedKey.shared && !root.readOnly
 
                 Repeater {
                     model: root.selectedKey && root.selectedKey.shared
                         ? root.selectedKey.owners.filter(owner => owner.editable) : []
                     delegate: SettingsAction {
                         required property var modelData
-                        text: I18n.format("Edit %1", [I18n.tr(modelData.label)])
+                        text: I18n.format("Edit %1", [I18n.actionLabel(modelData.label)])
                         glyph: "edit"
                         onTriggered: root.editRequested(modelData.id)
                     }

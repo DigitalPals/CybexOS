@@ -84,22 +84,23 @@ GridView {
                 fillMode: Image.PreserveAspectCrop
                 sourceSize.width: 360
             }
+            // The size or name badge shows whole or not at all: an elided
+            // "256…440" reads as a different size. The preview names it too.
             Rectangle {
                 anchors.left: parent.left
                 anchors.leftMargin: 6
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 6
-                width: Math.min(parent.width - 12, badge.implicitWidth + 10)
+                visible: width <= parent.width - 12 && height <= parent.height - 12
+                width: badge.implicitWidth + 10
                 height: badge.implicitHeight + 6
                 radius: 4
                 color: Qt.rgba(0, 0, 0, 0.65)
                 Text {
                     id: badge
                     anchors.centerIn: parent
-                    width: Math.max(0, parent.width - 10)
                     textFormat: Text.PlainText
                     text: cell.resolution
-                    elide: Text.ElideMiddle
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
                     color: "#ffffff"

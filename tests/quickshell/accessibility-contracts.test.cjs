@@ -167,5 +167,13 @@ test("the reusable wallpaper picker separates accessible preview and apply actio
     assert.match(preview, /id: useButton[\s\S]*primary: true[\s\S]*Use this wallpaper/);
     assert.match(preview, /anchors.bottom: useButton.top/,
         "the primary action remains visible while metadata scrolls");
-    assert.match(online, /Accessible.role: Accessible.RadioButton[\s\S]*Accessible.name:.*Filter by colour %1/);
+    // The colour palette is one compact control that opens a swatch grid.
+    const colour = read("Settings/WallpaperColourFilter.qml");
+    assert.match(online, /WallpaperColourFilter \{[\s\S]*?current: OnlineWallpapers\.color/);
+    assert.match(colour, /Accessible.role: Accessible.ComboBox[\s\S]*Accessible.name:.*Filter by colour"/);
+    assert.match(colour, /Accessible.role: Accessible.RadioButton[\s\S]*Accessible.name:.*Filter by colour %1/);
+    assert.match(colour, /activeFocusOnTab: index === grid.focusIndex/, "the grid is one tab stop");
+    for (const key of ["Left", "Right", "Up", "Down", "Home", "End", "Return", "Enter", "Space"])
+        assert.match(colour, new RegExp(`Qt.Key_${key}`));
+    assert.match(colour, /closePolicy: Controls.Popup.CloseOnEscape/);
 });

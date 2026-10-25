@@ -7,9 +7,17 @@ Column {
     spacing: Theme.scaled(18)
     readonly property var region: SystemSettings.region.snapshot
     readonly property var input: SystemSettings.input.snapshot.keyboard || ({})
+    readonly property var layoutCatalog: SystemSettings.input.snapshot.catalog || []
+    // xkb's own descriptions ("English (US)", "English (Dvorak)"); a layout
+    // missing from the catalog keeps its code.
+    function layoutName(entry) {
+        const layout = root.layoutCatalog.find(choice => choice.value === entry.layout);
+        const variant = layout && entry.variant ? (layout.variants || []).find(choice => choice.value === entry.variant) : null;
+        return variant ? variant.label : layout ? layout.label : entry.layout + (entry.variant ? " · " + entry.variant : "");
+    }
     readonly property var chips: [
-        {label: I18n.tr("Language"), value: region.locale || I18n.tr("Not available"), page: "region"},
-        {label: I18n.tr("Keyboard layout"), value: (input.layouts || []).map(entry => entry.layout + (entry.variant ? " · " + entry.variant : "")).join(", ") || I18n.tr("Not available"), page: "keyboard"},
+        {label: I18n.tr("Language"), value: region.locale ? I18n.localeName(region.locale) : I18n.tr("Not available"), page: "region"},
+        {label: I18n.tr("Keyboard layout"), value: (input.layouts || []).map(entry => root.layoutName(entry)).join(", ") || I18n.tr("Not available"), page: "keyboard"},
         {label: I18n.tr("Timezone"), value: region.timezone || I18n.tr("Not available"), page: "region"}
     ]
     Claim { active: root.visible; onClaimed: SystemSettings.region.acquire(); onReleased: SystemSettings.region.release() }

@@ -21,6 +21,8 @@ import subprocess
 import tempfile
 import time
 
+import shell_fonts
+
 ROOT = Path(__file__).resolve().parents[1]
 TITLE = 'Welcome to Cybex OS'
 ERRORS = re.compile(r'TypeError|ReferenceError|Binding loop|is not a type|Type \w+ unavailable'
@@ -77,6 +79,13 @@ TEST_IPC = '''
             grid.focusItem(grid.currentIndex);
         }
         function focusSearch(): void { shell.testItem("wallhavenSearch").forceActiveFocus(); }
+        function colour(): string {
+            const filter = shell.testItem("wallhavenColour");
+            if (!filter) return "missing";
+            filter.open();
+            return "ok";
+        }
+        function colourOpen(): string { const filter = shell.testItem("wallhavenColour"); return String(!!filter && filter.opened); }
         function focusRoot(): void { shell.testItem("welcomeView").focusInitial(); }
         function task(id: string): void {
             shell.testFind(welcomeWindow.contentItem, item => item.tasks !== undefined && item.selected !== undefined).selected = id;
@@ -149,7 +158,8 @@ class Session:
             'CYBEXOS_CONNECTED_WIDGETS': '0', 'CYBEXOS_DEVELOPER_TOOLS': '0', 'PYTHONDONTWRITEBYTECODE': '1',
             'CYBEXOS_THEME_ROOT': str(self.home / '.local/share/cybexos/themes'),
             'QML_IMPORT_PATH': str(imports) + ':' + os.environ.get('CYBEXOS_QML_IMPORT_PATH', ''),
-            'PATH': str(base / 'bin') + ':' + str(self.source / 'assets/scripts') + ':' + os.environ['PATH']}
+            'PATH': str(base / 'bin') + ':' + str(self.source / 'assets/scripts') + ':' + os.environ['PATH'],
+            **shell_fonts.fontconfig(base)}
         for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'SWAYSOCK', 'DBUS_SESSION_BUS_ADDRESS'):
             self.env.pop(key, None)
         self.processes = []
@@ -284,6 +294,14 @@ class Session:
         time.sleep(settle)
         path = directory / name
         subprocess.run(['grim', str(path)], env=self.env, check=True, timeout=15)
+        return path
+
+    def capture_guide(self, directory, name, settle=1.0):
+        """A screenshot cropped to the guide window, for reviewing its layout."""
+        from PIL import Image
+        path = self.capture(directory, name, settle)
+        rect = self.guide_rect()
+        Image.open(path).crop((rect['x'], rect['y'], rect['x'] + rect['width'], rect['y'] + rect['height'])).save(path)
         return path
 
     @property
@@ -509,12 +527,34 @@ def main():
             session.stop_process(session.shell)
             session.patch_settings(textScale='default', interfaceDensity='default')
 
-            session.env['CYBEXOS_LANG'] = 'nl'
-            session.start_shell('qs-dutch.log')
+            # The whole guide in English and Dutch, at the default and the
+            # minimum size, cropped to the window for layout review.
+            for language in ('en', 'nl'):
+                session.env['CYBEXOS_LANG'] = language
+                session.start_shell(f'qs-tour-{language}.log')
+                for size, (width, height) in (('normal', (1080, 800)), ('minimum', (640, 480))):
+                    for step in ('hello', 'wallpaper', 'style', 'keys', 'shortcuts', 'finish'):
+                        assert session.ipc('open', step) == 'ok'
+                        session.wait(lambda: session.state().get('step') == step and session.guide_rect(), step)
+                        session.sway(f'[title="{TITLE}"] resize set {width} {height}')
+                        session.wait(lambda: (r := session.guide_rect()) and (r['width'], r['height']) == (width, height),
+                                     f'{size} guide')
+                        session.capture_guide(shots, f'tour-{language}-{size}-{step}.png')
+                    # Wallhaven's colour grid opens over the picker and
+                    # Escape closes only the grid. Metering is unknown here,
+                    # so nothing is requested.
+                    session.ipc('open', 'wallpaper')
+                    session.call('welcome-test', 'tab', 'online')
+                    session.wait(lambda: session.call('welcome-test', 'colour') == 'ok', 'colour filter')
+                    session.wait(lambda: session.call('welcome-test', 'colourOpen') == 'true', 'colour grid open')
+                    session.capture_guide(shots, f'tour-{language}-{size}-colours.png')
+                    session.key('-k', 'Escape')
+                    session.wait(lambda: session.call('welcome-test', 'colourOpen') == 'false', 'Escape closes the grid')
+                    assert session.state()['open'], 'Escape in the colour grid must not dismiss the guide'
+                    assert session.probe()['requests'] == 0, 'the colour grid must not contact Wallhaven'
+                    session.call('welcome-test', 'tab', 'collection')
             session.ipc('open', 'hello')
             session.capture(shots, 'welcome-hello-nl.png')
-            session.ipc('open', 'keys')
-            session.capture(shots, 'welcome-keys-nl.png')
             session.ipc('close')
             session.wait(lambda: json.loads(session.state_path.read_text())['status'] == 'dismissed', 'saved Dutch dismissal')
             session.stop_process(session.shell)

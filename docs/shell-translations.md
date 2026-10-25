@@ -29,6 +29,12 @@ sheet's groups) at display time. `I18n.format` fills `%1`…`%9` after
 translation, so a translation may reorder them. Write whole sentences: a
 sentence assembled from pieces cannot be translated well.
 
+Two helpers cover composed names. `I18n.actionLabel(label)` translates a
+shortcut label; numbered ones that `bindings.lua` composes ("Switch to
+workspace 3") go through a `"<stem> %1"` entry. `I18n.localeName(value)` names
+a locale such as `en_US.UTF-8` from the English names in
+`Common/LocaleNames.js`.
+
 Names the logic compares (an `IpSettings` title, a model `value`) and product
 or technical names stay untranslated. Mark such a literal with a trailing
 `// i18n: untranslated` comment.

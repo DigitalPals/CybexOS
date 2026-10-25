@@ -9,6 +9,8 @@ import "../Common/ShortcutEditor.js" as Helpers
 // what conflicts and what user.lua binds, record new keys, reset, disable,
 // and add custom shortcuts. Edits form a draft that the Apply bar saves
 // through the keybindings service; user.lua still loads last and wins.
+// A keybindings.json the loader rejects makes the page read only: the banner
+// says why, and only Reset all (which keeps the broken file) is offered.
 SettingsPage {
     id: page
     objectName: "shortcutsPage"
@@ -23,12 +25,17 @@ SettingsPage {
     property string recordFor: "row"
     property var rowItems: ({})
     readonly property var groups: Helpers.groups(Keybindings.actions, Keybindings.userBinds,
-        Keybindings.diagnostics, { query: page.query, filter: page.filter, translate: text => I18n.tr(text) })
+        Keybindings.diagnostics, { query: page.query, filter: page.filter, translate: text => I18n.actionLabel(text) })
     readonly property var order: groups.reduce((all, group) => all.concat(group.rows.map(row => row.id)), [])
     readonly property var counts: Helpers.counts(Keybindings.actions, Keybindings.userBinds, Keybindings.diagnostics)
     readonly property bool anyChanged: Keybindings.dirty
         || Keybindings.actions.some(row => row.custom || (row.changed && row.source !== "user"))
-    readonly property string message: Keybindings.error !== "" ? Keybindings.error : page.problem
+    readonly property bool readOnly: Keybindings.readOnly
+    // The reset that replaces a rejected file is pending until applied.
+    readonly property bool recovering: Keybindings.readOnly && Keybindings.dirty
+    // Lua's load error is also preferencesError; the read-only banner shows it.
+    readonly property string message: Keybindings.error !== "" && Keybindings.error !== Keybindings.preferencesError
+        ? Keybindings.error : page.problem
     bottomInset: applyBar.reservedHeight
 
     Claim {
@@ -45,25 +52,27 @@ SettingsPage {
     function edit(id) {
         problem = "";
         const row = Keybindings.action(id);
-        if (!row || !row.editable)
+        if (!row || !row.editable || readOnly)
             return;
         if (row.custom) {
             form.begin(id);
             return;
         }
         recordFor = "row";
-        recorder.start(id, row.label, row.keys, true);
+        recorder.start(id, row.label, row.keys, true, Helpers.lockedKeys(row));
     }
     function add(combo, type) {
         problem = "";
-        form.begin("", combo || "", type || "app");
+        if (!readOnly)
+            form.begin("", combo || "", type || "app");
     }
     function recorded(combo, mode) {
         if (recordFor === "form") {
             form.setKeys(Helpers.nextKeys(form.keys, combo, "replace"));
             return;
         }
-        const keys = Helpers.nextKeys(Keybindings.keysFor(recorder.actionId), combo, mode);
+        // A protected action's locked defaults stay; only its extra keys change.
+        const keys = Helpers.nextKeys(Helpers.editableKeys(Keybindings.action(recorder.actionId)), combo, mode);
         if (keys)
             Keybindings.setKeys(recorder.actionId, keys);
         focusRow(recorder.actionId);
@@ -78,6 +87,20 @@ SettingsPage {
             page.currentId = id;
         });
     }
+    // SettingsView's Escape chain: an open reset question or Add form closes
+    // first, so only a second Escape closes Settings.
+    function handleEscape(): bool {
+        if (confirmingReset) {
+            confirmingReset = false;
+            return true;
+        }
+        if (form.opened) {
+            form.close();
+            Qt.callLater(() => page.forceActiveFocus());
+            return true;
+        }
+        return false;
+    }
     function moveFocus(id, delta) {
         const at = order.indexOf(id);
         if (at >= 0)
@@ -90,6 +113,7 @@ SettingsPage {
             pending: Keybindings.dirty
             title: I18n.tr("Shortcut changes not applied yet")
             detail: page.message !== "" ? page.message
+                : page.recovering ? I18n.tr("Apply replaces keybindings.json with the defaults. The broken file is kept beside it as keybindings.json.invalid-<time>.")
                 : I18n.tr("Apply reloads Hyprland. Your user.lua still loads last.")
             busy: Keybindings.backend.busy
             applyEnabled: Keybindings.loaded
@@ -116,6 +140,23 @@ SettingsPage {
             text: page.message !== "" ? page.message
                 : !Keybindings.loaded ? I18n.tr("Loading shortcuts…") : ""
             tone: page.message !== "" ? "error" : "info"
+        }
+        // keybindings.json was rejected: the defaults are in effect and
+        // nothing can be edited until Reset all replaces the file.
+        SettingsHint {
+            objectName: "shortcutsReadOnly"
+            width: parent.width
+            visible: page.readOnly
+            text: Keybindings.preferencesError
+            tone: "error"
+        }
+        SettingsHint {
+            width: parent.width
+            visible: page.readOnly
+            text: page.recovering
+                ? I18n.tr("Reset pending. Apply to replace keybindings.json with the defaults; the broken file is kept beside it as keybindings.json.invalid-<time>.")
+                : I18n.tr("The default shortcuts are in effect and nothing can be changed here. Repair keybindings.json by hand, or use Reset all to start again from the defaults.")
+            tone: page.recovering ? "warning" : "info"
         }
 
         SettingsGroup {
@@ -157,21 +198,22 @@ SettingsPage {
                 SettingsAction {
                     text: I18n.tr("Add shortcut")
                     glyph: "add"
-                    enabled: Keybindings.loaded
+                    enabled: Keybindings.loaded && !page.readOnly
                     onTriggered: page.add("", "app")
                 }
             }
             ValueRow {
                 width: parent.width
                 label: I18n.tr("All shortcuts")
-                hint: I18n.tr("Return every shortcut to its default and remove your own.")
+                hint: page.readOnly ? I18n.tr("Replace the unreadable keybindings.json with the defaults.")
+                    : I18n.tr("Return every shortcut to its default and remove your own.")
                 visible: !page.confirmingReset
                 property string searchAnchor: "shortcuts-reset"
 
                 SettingsAction {
                     text: I18n.tr("Reset all…")
                     glyph: "undo"
-                    enabled: Keybindings.loaded && page.anyChanged
+                    enabled: Keybindings.loaded && (page.anyChanged || page.readOnly) && !page.recovering
                     onTriggered: page.confirmingReset = true
                 }
             }
@@ -179,7 +221,9 @@ SettingsPage {
                 width: parent.width
                 visible: page.confirmingReset
                 label: I18n.tr("Reset all shortcuts?")
-                hint: I18n.tr("Every change and custom shortcut goes when you apply. Your user.lua is not touched.")
+                hint: page.readOnly
+                    ? I18n.tr("When you apply, keybindings.json is replaced with the defaults. The broken file is kept beside it as keybindings.json.invalid-<time>, so nothing is lost. Your user.lua is not touched.")
+                    : I18n.tr("Every change and custom shortcut goes when you apply. Your user.lua is not touched.")
                 hintTone: "warning"
 
                 SettingsAction {

@@ -12,7 +12,7 @@ Singleton {
     readonly property string error: {
         root.revision;
         return root.localError || (backend.error ? I18n.tr(backend.error)
-            : root.model.state.error ? I18n.format("Could not load keyboard shortcuts: %1", root.model.state.error) : "");
+            : root.model.state.error ? I18n.format("Could not load keyboard shortcuts: %1", [root.luaReason(root.model.state.error)]) : "");
     }
     // Why keybindings.json is not in effect, "" when it is. Lua's published
     // reason wins over the backend's. While set, only resetAll() is accepted;
@@ -20,7 +20,7 @@ Singleton {
     readonly property string preferencesError: {
         root.revision;
         const problem = Model.problem(root.model);
-        return problem.lua ? I18n.format("Could not load keyboard shortcuts: %1", problem.lua)
+        return problem.lua ? I18n.format("Could not load keyboard shortcuts: %1", [root.luaReason(problem.lua)])
             : problem.file ? I18n.tr(problem.file) : "";
     }
     readonly property bool readOnly: { root.revision; return Model.broken(root.model); }
@@ -42,6 +42,8 @@ Singleton {
     signal applied()
     signal failed(string message)
 
+    // Lua's error() prefixes "path/file.lua:72: "; the reason alone is for people.
+    function luaReason(text) { return String(text).replace(/^\S*\.lua:\d+:\s*/, ""); }
     function acquire() {
         watchers++;
         if (!held) {

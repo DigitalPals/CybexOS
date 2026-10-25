@@ -1,7 +1,8 @@
 # Welcome to Cybex OS
 
 The welcome guide opens on your focused display after your first desktop login.
-It shows your installed language, keyboard layout and time zone, then helps you
+It shows your installed language (by name, such as *English (United States)*,
+in the guide's language), keyboard layout and time zone, then helps you
 choose a wallpaper, appearance and a few useful shortcuts. Changes apply to the
 real desktop immediately. Hold Space on the wallpaper step to peek behind the
 guide; release it to return. While you type in the Wallhaven search field,
@@ -11,7 +12,7 @@ The wallpaper step is the same picker as **Settings → Wallpaper**: the Cybex O
 collection, Wallhaven and your own pictures. Wallhaven lists wallpapers
 automatically only on a known unmetered connection; nothing is downloaded until
 you choose **Use this wallpaper**. A fresh installation shows the bundled
-*moon mountains* wallpaper until you pick another.
+*Moon Mountains* wallpaper until you pick another.
 
 Use Tab and Enter to operate controls, and Ctrl+PageUp / Ctrl+PageDown to move
 between steps. Every step is optional. Escape, the close button and **Skip for
@@ -22,11 +23,18 @@ again at Hello when opened manually.
 
 Practice ticks come from what the shell observes: opening the launcher, opening
 and closing a new window, switching away from your starting workspace and back,
-opening the overview, and opening the shortcut sheet. The guide follows you
+opening the overview, and opening the shortcut sheet. The task list beside
+the keycaps numbers the five tasks and ticks each one once it is seen. The guide follows you
 between workspaces during practice. Its keycaps show your actual shortcuts,
 including ones changed in Settings or `user.lua`; an action you disabled shows
 **Not bound**. The guide reads them only while it is open. On another
 compositor the live shortcuts may be unavailable; you can still continue.
+
+The step list on the left also lists the optional items, each with its own
+icon and a tick once done; choosing one opens it on the Finish step. The
+Finish step sums up your choices: light or dark, a swatch of the accent and
+where it comes from (a theme such as *Cybex OS*, your wallpaper, or your own),
+the text size and the wallpaper's name.
 
 In a small window or with large text, the step list on the left is hidden.
 Back, Continue and Ctrl+PageUp / Ctrl+PageDown still move between steps.
@@ -55,8 +63,7 @@ cybexos-runtime ipc welcome reset           # delete only welcome.json
 ```
 
 For implementation and integration interfaces, see the
-[shared contract](architecture/welcome-and-shortcuts.md). The shortcut step uses
-live shortcut rows until the keyboard map is integrated.
+[shared contract](architecture/welcome-and-shortcuts.md).
 
 ## Validation
 
@@ -75,7 +82,12 @@ with a test-only IPC target. Shortcut state is served by a fake `hyprctl`
 - the Space peek, by comparing a frame taken while Space is held (past the
   key-repeat delay) with a desktop-only frame;
 - the minimum size at text/density extremes, Escape from inside the picker,
-  and the claim release.
+  and the claim release;
+- a tour of every step in English and Dutch at the default and minimum
+  sizes, saved as `tour-<language>-<size>-<step>.png` cropped to the guide.
+
+It draws with the installed desktop's fonts (`tests/shell_fonts.py`), so the
+screenshots match an installation rather than the host's font fallback.
 
 With wtype 0.5, `-P KEY` presses and `-p KEY` releases a key, and an unknown
 flag makes it exit before typing anything. Keep a press and its release in one

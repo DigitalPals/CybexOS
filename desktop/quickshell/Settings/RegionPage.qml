@@ -112,7 +112,11 @@ SettingsPage {
                 width: parent.width
                 label: I18n.tr("Language and region")
                 current: page.locale
-                model: Draft.filtered((page.service.snapshot.locales || []).map(value => ({value: value, label: value})), page.localeQuery, page.locale)
+                // Named as the welcome guide names it, so "Dutch" finds nl_NL too.
+                model: Draft.filtered((page.service.snapshot.locales || []).map(value => {
+                    const name = I18n.localeName(value);
+                    return {value: value, label: name === value ? value : name + " · " + value};
+                }), page.localeQuery, page.locale)
                 disabledReason: page.disabledReason
                 hint: I18n.tr("Installed locales only. Applies system wide after signing out; explicit regional format overrides are preserved.")
                 onPicked: value => page.locale = value
