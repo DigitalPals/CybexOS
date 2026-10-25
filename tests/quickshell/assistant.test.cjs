@@ -120,7 +120,7 @@ test("Super+I is one in-process shortcut: a tap types, a hold talks", () => {
     const shell = read("shell.qml");
     assert.match(shell, /GlobalShortcut \{\s*appid: "quickshell"\s*name: "assistantTalk"[\s\S]*?onPressed: Assistant\.shortcutPressed\(\)\s*onReleased: Assistant\.shortcutReleased\(\)/);
     const bindings = repo("desktop/hypr/bindings.lua");
-    assert.match(bindings, /if features\.assistant then\s*bind\(mainMod \.\. " \+ I", hl\.dsp\.global\("quickshell:assistantTalk"\),\s*\{ description = "Shell: Assistant" \}\)/);
+    assert.match(bindings, /if features\.assistant then\s*bind\(mainMod \.\. " \+ I", hl\.dsp\.global\("quickshell:assistantTalk"\),\s*\{ description = "Shell: Assistant" \}, "shell.assistant"\)/);
     assert.match(repo("desktop/hypr/features.lua"), /assistant = os\.getenv\("CYBEXOS_ASSISTANT"\) ~= "0"/);
     const assistant = read("Common/Assistant.qml");
     assert.match(assistant, /interval: AssistantHelpers\.HOLD_MS/);

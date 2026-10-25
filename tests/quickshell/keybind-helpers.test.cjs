@@ -193,7 +193,7 @@ for _, keys in ipairs(order) do
   end
 end
 `;
-    const result = spawnSync("luajit", ["-", path.resolve(shellDir, "../hypr/bindings.lua")],
+    const result = spawnSync(require("./keybindings-support.cjs").luaBinary(), ["-", path.resolve(shellDir, "../hypr/bindings.lua")],
         { input: lua, encoding: "utf8", env: { ...process.env, HOME: "/home/test" } });
     assert.equal(result.status, 0, result.stderr);
     const masks = { SUPER, SHIFT, CTRL, ALT: 8 };
@@ -206,9 +206,9 @@ end
     });
 }
 
-const luajit = spawnSync("luajit", ["-v"]).status === 0;
+const lua = require("./keybindings-support.cjs").luaBinary();
 
-test("every shipped vendor group is ordered and the sheet reads well", { skip: !luajit && "luajit is not installed" }, () => {
+test("every shipped vendor group is ordered and the sheet reads well", { skip: !lua && "Lua is not installed" }, () => {
     const full = vendorBinds("podman = true, developer_tools = true, connected_widgets = true, "
         + "proprietary_apps = true, private_portal = true");
     const minimal = vendorBinds("");

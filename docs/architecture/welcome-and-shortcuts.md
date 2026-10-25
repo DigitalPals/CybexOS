@@ -377,3 +377,65 @@ They are deleted. `browse`, `list`, `set` and `status` stay.
   actually run, not be skipped, for example with `nix shell nixpkgs#luajit`.
   `tests/run` and the QML lint must pass. Real-engine checks run the actual
   shell under a private headless Sway, as `tests/assistant-overlay.py` does.
+
+## 5. Stream A implementation notes and API additions
+
+The §1.6 names and resolved-state schema are unchanged. `Keybindings` also
+provides `acquire()` and `release()`. Consumers should use a `Claim` while
+visible (`onClaimed: Keybindings.acquire()`, `onReleased:
+Keybindings.release()`). Merely importing or reading the singleton starts no
+process. `refresh()` makes one request without a claim; holding a claim keeps
+the backend's existing 15-second refresh active. `busy` includes both reads
+and writes. Edits return `true` on success or `false` and emit `failed` on
+validation errors; `addCustom` returns the new ID or `false`. `apply()` returns
+whether the request was accepted; wait for `applied()` or `failed(message)`.
+`reset(id)` removes a vendor override, or restores a saved custom entry.
+`resetAll()` removes all overrides and custom entries. `discard()` restores
+the saved draft and refreshes. A refresh preserves a dirty draft and its
+original version, so a later apply still rejects concurrent external edits.
+
+`KeybindEditor.fromKeyEvent` returns `{keys: string, complete: bool}`; `keys`
+is one canonical combination, not an array. It uses numeric Qt key/modifier
+values and does not need a Qt object. Qt reports shifted symbols without the
+base keysym. Shifted non-letter printable keys therefore use `code:N` when a
+scan code exists, including international number rows; unknown keysyms use that fallback too.
+AltGr is a layout selector outside the four supported modifiers and leaves a
+recording incomplete. Qt Wayland's native scan code is already xkb
+(evdev + 8). Hyprland 0.56.2's Lua `code:` parser stores that value unchanged,
+and KeybindManager adds 8 to incoming evdev events before matching. Do not
+subtract 8. Synthetic events without a known keysym or a valid scan code are
+incomplete. This API is intended for Wayland, not Qt's other platform plugins.
+
+The recorder reserves unmodified keys except F-keys/XF86 keys; modifier-only,
+mouse, SysRq, power/sleep keys, Ctrl+Alt+F1–F12, Ctrl+Alt+Delete and
+Ctrl+Alt+Backspace are also reserved. The Lua resolver independently reserves
+the protected actions' default combinations, even when those actions have
+been remapped. A protected remap whose claims are all dropped falls back to
+its reserved defaults. Settings may show that fallback in the preview.
+
+The Python request is `{action: "apply", version, preferences}`; snapshots
+return `{state, preferences, version, binds}`. The successful apply returns
+`{version, preferences}` for the exact committed bytes. The service is
+`SystemSettings.keybindings`, with no monitor process while idle.
+`KeybindingsModel.js` contains pure draft/merge helpers; saved resolution is
+always read from Lua's state, and only an unsaved draft is resolved in JS.
+
+One transport addition touches `LauncherWindow.qml`: the existing `launcher`
+IPC target now has `launchDesktop(desktopId: string): string`, returning
+`ok`, `unknown` or `invalid`. This is needed to use the Apps tab's actual
+`DesktopEntry.execute()` path, including field codes and terminal apps,
+instead of interpreting desktop-file commands in Lua. IDs use ASCII desktop
+file names ending in `.desktop` (letters, digits, `_@.+-`, no paths), up to
+255 bytes. Web-app IDs use lowercase letters, digits and hyphens, up to 64
+bytes; URLs use lowercase `http://` or `https://` and at most 2048 bytes.
+These launch arguments are shell-quoted. Commands alone intentionally use
+`exec_cmd` verbatim. Group/label limits count Unicode characters; command
+limits count UTF-8 bytes.
+
+When multiple catalog actions share a description, live missing keys can be
+identified but additional user keys cannot be attributed to a particular
+dispatcher. Such missing rows have `source: "user"` and only their surviving
+keys. For unique descriptions, a remap or additional keys are shown on that
+action. Additional keys under shared descriptions, and submap bindings, are
+listed read-only in `userBinds`. Undescribed personal bindings are still omitted from `userBinds`,
+as required by the sheet's existing description convention.

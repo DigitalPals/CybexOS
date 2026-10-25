@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { shellDir, load } = require("./shell.cjs");
-const { qmlFiles, allKeys } = require("./i18n-keys.cjs");
+const { qmlFiles, allKeys, catalogBlocks } = require("./i18n-keys.cjs");
 
 const I18n = load("I18nHelpers.js");
 const catalog = require(path.join(shellDir, "Common/i18n/nl.js")).MESSAGES;
@@ -56,8 +56,12 @@ test("translations keep placeholders, outer whitespace and line breaks", () => {
 
 test("the catalog is generated: sorted, one entry per line, Node and QML loadable", () => {
     const source = fs.readFileSync(path.join(shellDir, "Common/i18n/nl.js"), "utf8");
-    const keys = Object.keys(catalog);
-    assert.deepEqual(keys, [...keys].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
+    const blocks = catalogBlocks(source);
+    const grouped = new Set(blocks.flatMap(block => block.keys));
+    for (const keys of [Object.keys(catalog).filter(key => !grouped.has(key)), ...blocks.map(block => block.keys)])
+        assert.deepEqual(keys, [...keys].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
+    const literals = [...source.matchAll(/^    ("(?:[^"\\]|\\.)*"): /gm)];
+    assert.equal(literals.length, Object.keys(catalog).length, "one definition per translation key");
     assert.match(source, /^var MESSAGES = \{$/m, "QML imports the file as a plain JS resource");
     assert.match(source, /module\.exports = \{ MESSAGES: MESSAGES \};/);
 });

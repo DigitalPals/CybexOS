@@ -77,7 +77,29 @@ function dataKeys() {
         if (!/ \.\. /.test(match[2]) && !/[\d ]$/.test(match[2]))
             add(match[2]);
     }
+    // These errors are translated dynamically by Keybindings.reject() and
+    // the service's error property, rather than literal QML tr() calls.
+    for (const [file, pattern] of [
+        ["Common/KeybindingsModel.js", /new Error\("([^"\n]+)"\)/g],
+        ["Common/Keybindings.qml", /reject\("([^"\n]+)"\)/g],
+        ["scripts/system_settings_keybindings.py", /raise ValueError\('([^'\n]+)'\)/g]
+    ]) {
+        const source = fs.readFileSync(path.join(shellDir, file), "utf8");
+        for (const match of source.matchAll(pattern)) {
+            // Lowercase reasons are internal assertions, replaced at the
+            // backend boundary by a complete user-facing error.
+            if (/^[A-Z]/.test(match[1])) add(match[1]);
+        }
+    }
     return keys;
+}
+
+// Named blocks let parallel feature streams keep their translations together
+// without losing generated sorting or dropping them on the next merge.
+function catalogBlocks(source) {
+    return [...source.matchAll(/    \/\/ i18n-block: ([a-z0-9-]+)\n([\s\S]*?)    \/\/ i18n-end: \1/g)]
+        .map(match => ({ id: match[1], keys: [...match[2].matchAll(/^    ("(?:[^"\\]|\\.)*"): /gm)]
+            .map(entry => JSON.parse(entry[1])) }));
 }
 
 function allKeys() {
@@ -87,7 +109,7 @@ function allKeys() {
     return keys;
 }
 
-module.exports = { qmlFiles, literalKeys, dataKeys, allKeys };
+module.exports = { qmlFiles, literalKeys, dataKeys, allKeys, catalogBlocks };
 
 if (require.main === module)
     process.stdout.write(JSON.stringify([...allKeys()].sort(), null, 1) + "\n");

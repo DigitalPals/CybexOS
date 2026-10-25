@@ -26,7 +26,7 @@ package.path = source_dir .. "/?.lua;" .. source_dir .. "/?/init.lua;"
   .. generated_dir .. "/?.lua;" .. generated_dir .. "/?/init.lua;"
   .. user_dir .. "/?.lua;" .. user_dir .. "/?/init.lua;" .. package.path
 
-for _, module in ipairs({ "features", "monitors", "input", "input_preferences", "bindings", "looknfeel", "autostart", "displays",
+for _, module in ipairs({ "features", "monitors", "input", "input_preferences", "bindings", "keybinding_preferences", "keybinding_helpers", "keybinding_json", "looknfeel", "autostart", "displays",
     "workspaces", "workspace_model", "workspace_state", "workspace_layouts" }) do
   package.loaded[module] = nil
 end
@@ -55,6 +55,10 @@ require("input")
 local input_ok, input_error = pcall(require, "input_preferences")
 if not input_ok then _G.__cybexos_input_error = tostring(input_error) end
 require("bindings")
+-- Personal shortcuts are data, with defaults already registered above. A
+-- contained failure stays visible to Settings without blocking the desktop.
+local keybindings_ok, keybindings_error = pcall(require, "keybinding_preferences")
+if not keybindings_ok then _G.__cybexos_keybindings_error = tostring(keybindings_error) end
 require("looknfeel")
 require("autostart")
 

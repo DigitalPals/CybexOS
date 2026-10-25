@@ -7,23 +7,24 @@ from system_settings_audio import AudioSettings
 from system_settings_network import NetworkSettings
 from system_settings_accounts import AccountSettings
 from system_settings_input import InputSettings
+from system_settings_keybindings import KeybindingsSettings, reject_duplicates
 from system_settings_region import RegionSettings
 from system_settings_security import SecuritySettings
 
 
 def main():
     try:
-        if len(sys.argv) != 2 or sys.argv[1] not in ('sound', 'network', 'accounts', 'input', 'region',
+        if len(sys.argv) != 2 or sys.argv[1] not in ('sound', 'network', 'accounts', 'input', 'keybindings', 'region',
                                                      'security'):
             raise ValueError('Unknown settings service')
         raw = sys.stdin.buffer.readline(65537)
         if len(raw) > 65536:
             raise ValueError('Settings request is too large')
-        request = json.loads(raw)
+        request = json.loads(raw, object_pairs_hook=reject_duplicates if sys.argv[1] == 'keybindings' else None)
         if not isinstance(request, dict):
             raise ValueError('Invalid settings request')
         service = {'sound': AudioSettings, 'network': NetworkSettings,
-                   'accounts': AccountSettings, 'input': InputSettings,
+                   'accounts': AccountSettings, 'input': InputSettings, 'keybindings': KeybindingsSettings,
                    'region': RegionSettings, 'security': SecuritySettings}[sys.argv[1]]()
         result = service.dispatch(request)
         print(json.dumps({'success': True, **result}), flush=True)

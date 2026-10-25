@@ -1,0 +1,10 @@
+[
+  {"a":"super+shift+b","b":"SHIFT + SUPER + B","equal":true},
+  {"a":"SUPER + Return","b":"super + RETURN","equal":true},
+  {"a":"CTRL + CTRL + B","b":"CTRL + b","equal":true},
+  {"a":"code:10","b":"Code:10","equal":true},
+  {"a":"SUPER + B","b":"SUPER + SHIFT + B","equal":false},
+  {"a":"SUPER + B","b":"SUPER + code:56","equal":false},
+  {"a":"","b":"","equal":false},
+  {"a":"SUPER","b":"SUPER","equal":false}
+]

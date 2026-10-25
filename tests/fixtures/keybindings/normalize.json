@@ -1,0 +1,15 @@
+[
+  {"input":" shift+super+b ","output":"SUPER + SHIFT + B"},
+  {"input":"alt + ctrl+ SUPER +ctrl+ comma","output":"SUPER + CTRL + ALT + comma"},
+  {"input":"b","output":"B"},
+  {"input":"SHIFT + code:10","output":"SHIFT + code:10"},
+  {"input":"SUPER + mouse:272","output":"SUPER + mouse:272"},
+  {"input":"XF86AudioMute","output":"XF86AudioMute"},
+  {"input":"F12","output":"F12"},
+  {"input":"SUPER","output":""},
+  {"input":"SUPER +","output":""},
+  {"input":"SUPER + B + C","output":""},
+  {"input":"HYPER + B","output":""},
+  {"input":"SUPER + B\nexec bad","output":""},
+  {"input":"","output":""}
+]
