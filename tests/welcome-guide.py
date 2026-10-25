@@ -99,6 +99,8 @@ TEST_IPC = '''
             return JSON.stringify({picker: picker !== null, tab: picker ? picker.tab : "",
                 selected: picker && picker.selected ? picker.selected.fileName || "" : "",
                 wall: Settings.wall, current: Wallpaper.current, peeking: view ? view.peeking : false,
+                shortHeight: view ? view.shortHeight : null, footer: Theme.scaled(76), margins: [Theme.scaled(16), Theme.scaled(28)], step: Theme.scaled(520),
+                railShown: view ? view.railShown : null,
                 search: search ? search.text : null, searchFocus: search ? search.activeFocus : false,
                 keysLoaded: Keybindings.loaded, watchers: SystemSettings.keybindings.watchers, keys: keys,
                 requests: OnlineWallpapers.requestTimes.length});
@@ -164,6 +166,7 @@ class Session:
             self.env.pop(key, None)
         self.processes = []
         self.shell = None
+        self.shell_log = None
         self.logs = []
 
     def copy_source(self):
@@ -231,6 +234,7 @@ class Session:
         if os.environ.get('CYBEXOS_DBUS_SESSION_CONFIG'):
             dbus += ['--config-file', os.environ['CYBEXOS_DBUS_SESSION_CONFIG']]
         self.shell = self.start([*dbus, '--', 'qs', '--no-color', '-p', str(self.source / 'desktop/quickshell')], name)
+        self.shell_log = self.base / name
         self.wait(lambda: self.state(), 'welcome IPC')
 
     def call(self, target, *args):
@@ -307,6 +311,10 @@ class Session:
     @property
     def state_path(self):
         return self.home / '.local/state/cybexos/welcome.json'
+
+    def binding_loops(self):
+        """Binding-loop warnings in the running shell's log so far."""
+        return [line for line in self.shell_log.read_text(errors='replace').splitlines() if 'Binding loop' in line]
 
     def check_logs(self):
         failures = []
@@ -494,6 +502,21 @@ def main():
             session.sway(f'[title="{TITLE}"] resize set 640 480')
             session.wait(lambda: (r := session.guide_rect()) and (r['width'], r['height']) == (640, 480), 'minimum size')
             session.capture(shots, 'welcome-wallpaper-minimum-en.png')
+            # The short layout starts when the 520 px step area no longer fits
+            # under the 28 px top margin and above the 76 px footer (all
+            # scaled). With the 16 px short margin, a window height up to
+            # 12 px lower than that used to flip the condition back and forth
+            # through the margin it changes: a binding loop. Sweep through the
+            # band, up and down, and require a settled layout and a clean log.
+            assert not session.binding_loops(), session.binding_loops()
+            limits = session.probe()
+            threshold = limits['footer'] + limits['margins'][1] + limits['step']
+            band = range(threshold - limits['margins'][1] + limits['margins'][0] - 8, threshold + 8)
+            for sweep in list(band) + list(reversed(band)):
+                session.sway(f'[title="{TITLE}"] resize set 1080 {sweep}')
+                session.wait(lambda: (r := session.guide_rect()) and r['height'] == sweep, f'{sweep} px guide')
+                session.wait(lambda: session.probe().get('shortHeight') == (sweep < threshold), f'short layout at {sweep} px')
+            assert not session.binding_loops(), session.binding_loops()
             session.sway(f'[title="{TITLE}"] resize set 1080 800')
 
             session.key('-M', 'ctrl', '-k', 'Next', '-m', 'ctrl')

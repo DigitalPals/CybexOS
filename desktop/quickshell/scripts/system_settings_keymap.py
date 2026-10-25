@@ -21,6 +21,8 @@ CACHE_MEMO = 8
 ARGUMENT = re.compile(r'(?!-)[A-Za-z0-9_,:.()+-]{0,256}')
 KEYSYM = re.compile(r'[A-Za-z0-9_]{1,64}')
 KEYCODE = re.compile(r'[0-9]{1,5}')
+# Names for "no key": a bind cannot be written against either of them.
+NO_KEYSYMS = ('NoSymbol', 'VoidSymbol')
 _memo = {}
 
 
@@ -53,7 +55,7 @@ def first_level(levels):
     first = (split_top(levels.strip()[1:-1]) or [''])[0].strip()
     if first.startswith('{'):
         first = (split_top(first[1:-1]) or [''])[0].strip()
-    return first if KEYSYM.fullmatch(first) and first != 'NoSymbol' else ''
+    return first if KEYSYM.fullmatch(first) and first not in NO_KEYSYMS else ''
 
 
 def parse(text):

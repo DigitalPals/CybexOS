@@ -14,7 +14,10 @@ Rectangle {
     // the space. Nothing is clipped: a step taller than its viewport scrolls.
     readonly property bool railShown: width - Theme.scaled(176) - Theme.scaled(64) >= Theme.scaled(560)
         && rail.stepsHeight <= rail.height
-    readonly property bool shortHeight: main.height < Theme.scaled(520)
+    // Measured from the window, never from `main`: main's top margin follows
+    // this flag, so main.height would flip it back and forth near the limit.
+    // The step area as it is when tall (28 px top margin) is under 520 px.
+    readonly property bool shortHeight: root.height - footer.height - Theme.scaled(28) < Theme.scaled(520)
     readonly property int stepIndex: Helpers.STEPS.indexOf(Welcome.step)
     readonly property var titles: [I18n.format("Welcome, %1", [Welcome.firstName]), I18n.tr("Find your view."),
         I18n.tr("Make it feel like home."), I18n.tr("A little practice goes a long way."),

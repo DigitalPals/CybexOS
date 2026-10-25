@@ -75,6 +75,10 @@ keys:
   with **Replace**.
 - A combination that `user.lua` binds cannot be taken here: `user.lua` loads
   after these settings and wins. Change it in that file.
+- A hardware key (volume, brightness, media) that already uses the keys
+  cannot be taken either; the recorder names it ("Used by a hardware key
+  (Hardware keys: Mute audio). Choose another key.") and offers only
+  **Record again**.
 - Any other shortcut using the keys is named, and **Replace** takes the keys
   from it.
 - When your keyboard layout cannot be read, a `Shift` combination is stored
@@ -248,7 +252,8 @@ AZERTY). If the layout cannot be read it stores the key's code instead and
 warns that it may overlap other Shift shortcuts.
 
 If `keybindings.json` cannot be loaded, the vendor shortcuts stay active. The
-page and the welcome guide's Shortcuts step show the reason in a banner and
+page and the welcome guide's Shortcuts step say so in a banner (the parser's
+own message, such as the byte position, follows in smaller type) and
 change nothing, and **Reset all** is the way out.
 Applying it replaces the file only after copying the old bytes to
 `keybindings.json.invalid-<timestamp>` in the same directory; that copy is

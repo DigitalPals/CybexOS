@@ -214,6 +214,8 @@ function strength(test, keys) {
 }
 function conflicts(model, key, exceptId) {
     var result = [], current = view(model), test = matcher(model, key);
+    // `editable` is false for a hidden hardware key or a mouse drag: those
+    // can hold a key but an edit cannot take it away.
     function add(entry, level) {
         if (!level) return;
         if (level === 2) entry.uncertain = true;
@@ -222,18 +224,21 @@ function conflicts(model, key, exceptId) {
     function listed(id) { return result.some(function(other) { return other.id === id; }); }
     current.actions.forEach(function(row) {
         if (row.id !== exceptId)
-            add({ id: row.id, group: row.group, label: row.label, protected: row.protected, source: row.source },
+            add({ id: row.id, group: row.group, label: row.label, protected: row.protected, source: row.source,
+                editable: row.editable !== false, hidden: !!row.hidden },
                 strength(test, row.protected ? row.keys.concat(row.defaultKeys) : row.keys));
     });
     // user.lua runs after the next apply too. A draft remap must not hide
     // a live personal key that will still be present after the reload.
     merge(model.state, model.binds).actions.forEach(function(row) {
         if (row.source === "user" && row.id !== exceptId && !listed(row.id))
-            add({ id: row.id, group: row.group, label: row.label, protected: row.protected, source: "user" },
+            add({ id: row.id, group: row.group, label: row.label, protected: row.protected, source: "user",
+                editable: row.editable !== false, hidden: !!row.hidden },
                 strength(test, row.keys));
     });
     current.userBinds.forEach(function(row, index) {
-        add({ id: "user." + index, group: row.group, label: row.label, protected: false, source: "user" },
+        add({ id: "user." + index, group: row.group, label: row.label, protected: false, source: "user",
+            editable: false, hidden: false },
             strength(test, row.keys));
     });
     // Competing claims can be dropped by resolution; keep them visible while
@@ -245,7 +250,8 @@ function conflicts(model, key, exceptId) {
     claimed.forEach(function(row) {
         if (row && row.id !== exceptId && !listed(row.id))
             add({ id: row.id, group: row.group, label: row.label, protected: !!row.protected,
-                source: row.custom || row.id.indexOf("custom.") === 0 ? "custom" : "changed" },
+                source: row.custom || row.id.indexOf("custom.") === 0 ? "custom" : "changed",
+                editable: row.editable !== false, hidden: !!row.hidden },
                 strength(test, row.keys));
     });
     return result;
@@ -279,6 +285,18 @@ function setKeys(model, id, keys) {
         if (equal(keys.map(identity), row.defaultKeys.map(identity))) delete model.draft.actions[id];
         else model.draft.actions[id] = Object.assign({}, model.draft.actions[id] || {}, {keys: keys});
         if (!Object.keys(model.draft.actions).length) delete model.draft.actions;
+    }
+}
+// Several key changes as one edit, as the recorder's Replace needs: if any of
+// them is refused the draft is exactly what it was before the first.
+function setManyKeys(model, changes) {
+    var draft = copy(model.draft), recover = model.recover;
+    try {
+        changes.forEach(function(change) { setKeys(model, change.id, change.keys); });
+    } catch (problem) {
+        model.draft = draft;
+        model.recover = recover;
+        throw problem;
     }
 }
 function reset(model, id) {
@@ -356,7 +374,7 @@ function applied(model, result) {
     // Edits made while the request was running remain a dirty draft.
 }
 var exported = { create: create, ingest: ingest, broken: broken, problem: problem, view: view, resolve: resolve, merge: merge, dirty: dirty,
-    action: action, keysFor: keysFor, conflicts: conflicts, setKeys: setKeys, reset: reset, resetAll: resetAll,
+    action: action, keysFor: keysFor, conflicts: conflicts, setKeys: setKeys, setManyKeys: setManyKeys, reset: reset, resetAll: resetAll,
     addCustom: addCustom, updateCustom: updateCustom, removeCustom: removeCustom, discard: discard,
     request: request, applied: applied, checkedKeys: checkedKeys };
 if (typeof module !== "undefined" && module.exports) module.exports = exported;

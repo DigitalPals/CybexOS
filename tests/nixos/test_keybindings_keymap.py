@@ -54,6 +54,8 @@ xkb_keycodes "x" {
 	<LFSH> = 50;
 	<MENU> = 135;
 	<AB01> = 52;
+	<AB02> = 53;
+	<AB03> = 54;
 	alias <ZALIAS> = <AB01>;
 };
 xkb_symbols "s" {
@@ -78,6 +80,8 @@ xkb_symbols "s" {
 	key <MENU> { symbols[2]= [ Menu ] };
 	key <UNKNOWN> { [ x ] };
 	key <ZALIAS> { [ z, Z ] };
+	key <AB02> { [ VoidSymbol, X ] };
+	key <AB03> { symbols[Group1]= [ { VoidSymbol, x }, C ] };
 };
 };
 """
@@ -94,6 +98,9 @@ xkb_symbols "s" {
         self.assertEqual(two['135'], 'Menu')
         self.assertEqual(one['52'], 'z')
         self.assertNotIn('999', one)
+        # VoidSymbol names no key either: SUPER + SHIFT + VoidSymbol is no bind.
+        self.assertNotIn('53', one)
+        self.assertNotIn('54', one)
 
     def test_garbage_and_oversized_input_is_rejected(self):
         for text in ('', 'nothing here', 'xkb_keymap {\n};', None, 'x' * (keymap.MAX_KEYMAP + 1)):

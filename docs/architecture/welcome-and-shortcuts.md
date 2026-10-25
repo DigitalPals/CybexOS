@@ -213,8 +213,9 @@ readonly property bool dirty                 // draft differs from the saved fil
 function refresh()
 function keysFor(id) -> [keyString]          // effective keys, including the draft; [] if unbound or unknown
 function action(id) -> row | null
-function conflicts(keyString, exceptId) -> [{ id, group, label, protected, source, uncertain? }]
+function conflicts(keyString, exceptId) -> [{ id, group, label, protected, source, editable, hidden, uncertain? }]
 function setKeys(id, keys) / disable(id) / reset(id) / resetAll()
+function setManyKeys([{ id, keys }])          // one edit: all changes or, if one is refused, none
 function addCustom({ group, label, keys, run }) -> id
 function updateCustom(id, patch) / removeCustom(id)
 function apply()                             // saves the draft through the backend
@@ -278,10 +279,19 @@ As built:
   feeds `KeybindEditor.fromKeyEvent`; Escape cancels, a bare Backspace/Delete
   clears. A reserved combination keeps listening and shows its reason. A
   complete one is checked with `Keybindings.conflicts(keys, actionId)`:
-  reserved protected defaults and `user.lua` holders block, because
-  `user.lua` loads last; other holders are offered as Replace, which removes
-  that key from them in the draft before the host applies the new keys.
-  Uncertain holders only warn (see §6). The `ShortcutInhibitor` is enabled only while
+  reserved protected defaults, `user.lua` holders and non-editable holders (a
+  hidden hardware key) block, because `user.lua` loads last and an edit cannot
+  unbind a hardware key; other holders are offered as Replace, which removes
+  that key from all of them in one `setManyKeys` edit (a refused step leaves
+  the draft as it was and the card open) before the host applies the new keys.
+  Uncertain holders only warn (see §6). When the card closes, on cancel or
+  accept, focus returns to the item that had it when `start()` ran (an Edit
+  button, a map key, or the window's focus holder) and otherwise to the
+  host's `fallbackFocus` (the welcome step, whose key commands bubble up to
+  the guide); without that, hiding the card leaves the window with no focus
+  item and the guide's Return, Escape and Ctrl+PageUp/PageDown do nothing.
+  A host that sets focus itself (the Settings page's rows) does so afterwards.
+  The `ShortcutInhibitor` is enabled only while
   listening and is released when a combination completes, on cancel and
   accept, when the window deactivates (recording pauses), when the
   compositor cancels it, when the card hides and on destruction.
@@ -419,7 +429,8 @@ Integration notes (as implemented):
   catalog.
 - **Small windows.** At the 640 × 480 minimum, or with large text, the step
   rail hides (its optional section hides first when only height is short),
-  a short window drops the lead line, and the practice task list stacks
+  a short window drops the lead line (the window height decides, never the
+  step area whose margin the choice changes: that was a binding loop), and the practice task list stacks
   under its card. The wallpaper step fills the viewport, with a
   `Theme.scaled(240)` floor; below it the step scrolls rather than clipping.
 
@@ -561,8 +572,13 @@ always read from Lua's state, and only an unsaved draft is resolved in JS.
 A `keybindings.json` that the loader rejects does not stop the page. The
 snapshot still returns Lua's `state` and the live `binds`, with `preferences`
 `{v: 1}`, the exact bytes' hash as `version`, and `preferencesError` (a string,
-`""` when the file is fine). `Keybindings` exposes `preferencesError`, preferring
-Lua's published reason, and `readOnly`, true while either side rejects the file.
+`""` when the file is fine). `Keybindings` exposes `preferencesError`, a
+translated sentence ("Your keybindings.json could not be used, so your changes
+are paused. Reset all to start again; the broken file is kept.") when Lua
+rejects the file, otherwise the backend's own sentence; `preferencesDetail`,
+Lua's technical reason without its `file.lua:line:` prefix (a parser position
+such as "expected ',' or '}' at byte 61", English, `""` when there is none);
+and `readOnly`, true while either side rejects the file.
 While `readOnly`, every edit except `resetAll()` is refused with a failure.
 `resetAll()` marks the draft dirty even though it looks unchanged; the next
 `apply()` sends `replaceInvalid: true`. Only then does the backend replace the
@@ -605,7 +621,9 @@ moves, run-target validation with the backend's limits, and the sheet marks.
 maybe}`. `kind` is one of:
 
 - `reserved`, with reason `modifier`, `mouse`, `power`, `system` or `invalid`;
-- `blocked`, with reason `protected` or `user`;
+- `blocked`, with reason `protected`, `user`, `hardware` (a hidden,
+  non-editable holder) or `fixed` (any other non-editable holder). A holder
+  with `editable: false` always blocks, since `setKeys` would refuse it;
 - `replace`;
 - `maybe`, when only `uncertain` holders remain;
 - `free`.
@@ -627,7 +645,9 @@ offers "Add as another key" only when extras exist. Every recorder passes
 `Keybindings.keymap` to `fromKeyEvent`.
 
 While `Keybindings.readOnly`, the page and the welcome step show
-`preferencesError` in a banner (the page's error line no longer repeats it).
+`preferencesError` in a banner, with `preferencesDetail` after it in smaller,
+quieter type (`SettingsHint.detail`; the page's error line no longer repeats
+it).
 Record, Disable, Reset, Add and the map's edit and add requests are refused.
 Reset all stays enabled and explains `keybindings.json.invalid-<time>`, and
 the Apply bar says the file will be replaced. `ShortcutsPage.handleEscape()`

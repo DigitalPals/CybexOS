@@ -81,6 +81,10 @@ with a test-only IPC target. Shortcut state is served by a fake `hyprctl`
 - Space typing in Wallhaven search without a request;
 - the Space peek, by comparing a frame taken while Space is held (past the
   key-repeat delay) with a desktop-only frame;
+- the guide's own keys (Ctrl+PageUp / Ctrl+PageDown, Escape) working at once
+  after the shortcut recorder closes by Escape or by accepting a key;
+- a resize sweep through the height at which the guide switches to its short
+  layout, in both directions, with no binding-loop warning in the log;
 - the minimum size at text/density extremes, Escape from inside the picker,
   and the claim release;
 - a tour of every step in English and Dutch at the default and minimum

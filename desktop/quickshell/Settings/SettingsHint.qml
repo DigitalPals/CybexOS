@@ -11,6 +11,9 @@ Item {
     id: root
 
     property string text: ""
+    // A technical reason after the sentence (a parser's message): smaller,
+    // plain and untranslated, so the sentence stays the message.
+    property string detail: ""
     // info | active | warning | error
     property string tone: "info"
     // Rows and groups align copy with their labels; a hint placed inside an
@@ -27,10 +30,10 @@ Item {
         : root.flagged ? glyph.width + Theme.iconTextSpacing : 0
 
     visible: text !== ""
-    implicitHeight: visible ? body.implicitHeight : 0
+    implicitHeight: visible ? body.implicitHeight + (detail !== "" ? Theme.iconTextSpacing + detailText.implicitHeight : 0) : 0
     height: implicitHeight
     Accessible.role: flagged ? Accessible.AlertMessage : Accessible.StaticText
-    Accessible.name: text
+    Accessible.name: detail !== "" ? text + " " + detail : text
 
     Sym {
         id: glyph
@@ -55,6 +58,22 @@ Item {
         color: root.ink
         wrapMode: Text.Wrap
         maximumLineCount: root.maximumLines
+        elide: Text.ElideRight
+    }
+
+    Text {
+        id: detailText
+        visible: root.detail !== ""
+        x: root.textX
+        y: body.implicitHeight + Theme.iconTextSpacing
+        width: Math.max(0, root.width - x)
+        text: root.detail
+        textFormat: Text.PlainText
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.typography.metadata
+        color: Theme.textFaint
+        wrapMode: Text.Wrap
+        maximumLineCount: 3
         elide: Text.ElideRight
     }
 }

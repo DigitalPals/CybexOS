@@ -96,10 +96,12 @@ TEST_IPC = '''
                     reserved: recorder.reserved, kind: recorder.verdict.kind, reason: recorder.verdict.reason,
                     inhibiting: recorder.inhibiting, inhibitorEnabled: recorder.inhibitorEnabled,
                     windowActive: recorder.Window.active, status: recorder.status,
-                    lockedKeys: recorder.lockedKeys, allowAdd: recorder.allowAdd, maybe: recorder.verdict.maybe.length } : null,
+                    lockedKeys: recorder.lockedKeys, allowAdd: recorder.allowAdd, maybe: recorder.verdict.maybe.length,
+                    replace: recorder.verdict.replace.length, blockers: recorder.verdict.blockers.map(row => row.id) } : null,
                 browser: row("apps.browser"), slack: row("webapps.slack"), lock: row("shell.lock"),
                 terminal: row("apps.terminal"), move1: row("workspaces.move.1"),
                 readOnly: Keybindings.readOnly, preferencesError: Keybindings.preferencesError,
+                preferencesDetail: Keybindings.preferencesDetail,
                 keymapSize: Object.keys(Keybindings.keymap).length,
                 formOpen: page ? shell.findNamed(page, "shortcutForm").opened : false,
                 banner: page ? shell.findNamed(page, "shortcutsReadOnly").visible : false,
@@ -434,7 +436,43 @@ def main():
             keyboard = start(['wtype', '-s', '400', '-k', 'Escape', '-s', '200'], 'welcome-escape.log')
             wait(lambda: welcome().get('shown') is False, 'Escape cancels the welcome recorder')
             keyboard.wait(timeout=5)
-            assert json.loads(ipc('welcome', 'status')).get('open') is True, 'Escape in the recorder must not dismiss the guide'
+            guide = lambda: json.loads(ipc('welcome', 'status'))
+            assert guide().get('open') is True, 'Escape in the recorder must not dismiss the guide'
+
+            def guide_keys(*keys, log):
+                # A fresh virtual keyboard can move Sway's seat focus.
+                subprocess.run(['swaymsg', '[title="Welcome to Cybex OS"]', 'focus'], env=env, check=True, capture_output=True)
+                process = start(['wtype', '-s', '400', *keys, '-s', '200'], log)
+                process.wait(timeout=10)
+
+            # Focus returns to where it was, so the guide's own keys work again
+            # at once: Ctrl+PageDown changes step after a cancel and after Replace.
+            assert guide().get('step') == 'shortcuts', guide()
+            guide_keys('-M', 'ctrl', '-k', 'Next', '-m', 'ctrl', log='welcome-after-cancel.log')
+            wait(lambda: guide().get('step') == 'finish', 'Ctrl+PageDown after cancelling the recorder')
+            assert ipc('welcome', 'open', 'shortcuts') == 'ok'
+            wait(lambda: guide().get('step') == 'shortcuts', 'shortcuts step again')
+            ipc('shortcut-test', 'welcomeEdit', 'apps.terminal')
+            subprocess.run(['swaymsg', '[title="Welcome to Cybex OS"]', 'focus'], env=env, check=True, capture_output=True)
+            wait(lambda: welcome().get('inhibiting'), 'welcome recorder listens again')
+            keyboard = start(['wtype', '-s', '500', '-k', 'F9', '-s', '600', '-k', 'Return', '-s', '300'], 'welcome-accept.log')
+            keyboard.wait(timeout=10)
+            wait(lambda: welcome().get('shown') is False and state().get('dirty'), 'F9 accepted in the welcome recorder')
+            assert state()['terminal']['keys'] == ['F9'], state()['terminal']
+            guide_keys('-M', 'ctrl', '-k', 'Prior', '-m', 'ctrl', log='welcome-after-accept.log')
+            wait(lambda: guide().get('step') == 'keys', 'Ctrl+PageUp after accepting in the recorder')
+            assert ipc('shortcut-test', 'discard') == 'true'
+            wait(lambda: not state().get('dirty'), 'welcome draft discarded')
+            assert ipc('welcome', 'open', 'shortcuts') == 'ok'
+            wait(lambda: guide().get('step') == 'shortcuts', 'shortcuts step for the last Escape')
+            ipc('shortcut-test', 'welcomeEdit', 'apps.terminal')
+            subprocess.run(['swaymsg', '[title="Welcome to Cybex OS"]', 'focus'], env=env, check=True, capture_output=True)
+            wait(lambda: welcome().get('inhibiting'), 'welcome recorder listens a third time')
+            guide_keys('-k', 'Escape', log='welcome-escape-1.log')
+            wait(lambda: welcome().get('shown') is False, 'Escape closes the recorder')
+            assert guide().get('open') is True
+            guide_keys('-k', 'Escape', log='welcome-escape-2.log')
+            wait(lambda: guide().get('open') is False, 'a second Escape dismisses the guide')
             ipc('welcome', 'close')
 
             # Without a layout map a Shift combination is recorded as code:N and
@@ -480,6 +518,22 @@ def main():
             wait(lambda: recorder().get('shown') is False, 'cancel the keysym recording')
             keyboard.wait(timeout=5)
             assert not state()['dirty']
+
+            # A hardware key (a hidden, non-editable row) cannot be taken away,
+            # so the card blocks it instead of offering a Replace that fails.
+            ipc('shortcut-test', 'edit', 'apps.terminal')
+            focus_settings()
+            wait(lambda: recorder().get('inhibiting'), 'recording a hardware key')
+            keyboard = start(['wtype', '-s', '500', '-k', 'XF86AudioMute', '-s', '300'], 'hardware.log')
+            hardware = wait(lambda: (r := recorder()).get('kind') == 'blocked' and r, 'hardware key blocked', 10)
+            keyboard.wait(timeout=5)
+            assert hardware['combo'] == 'XF86AudioMute' and hardware['reason'] == 'hardware', hardware
+            assert hardware['replace'] == 0 and hardware['blockers'] == ['hardware.mute-audio'], hardware
+            assert hardware['status'].startswith(('Used by a hardware key', 'Gebruikt door een hardwaretoets')), hardware['status']
+            assert not state()['dirty'], 'a blocked key must leave the draft alone'
+            keyboard = start(['wtype', '-s', '300', '-k', 'Escape', '-s', '200'], 'hardware-escape.log')
+            wait(lambda: recorder().get('shown') is False, 'cancel the hardware recording')
+            keyboard.wait(timeout=5)
 
             # A protected action keeps its default: Replace edits only the
             # keys added beside it, and the file stores only those.
@@ -541,6 +595,11 @@ def main():
             ipc('shortcut-test', 'refresh')
             frozen = wait(lambda: (s := state()).get('readOnly') and s.get('banner') and s, 'read-only page', 30)
             assert frozen['preferencesError'], frozen
+            # A sentence in the session's language first; the parser's own
+            # position text (always English) follows as a separate detail.
+            assert frozen['preferencesError'].startswith(('Your keybindings.json could not be used', 'Je keybindings.json kon niet')), frozen['preferencesError']
+            assert 'byte' in frozen['preferencesDetail'] and 'byte' not in frozen['preferencesError'], frozen
+            assert frozen['error'] == frozen['preferencesError'], 'the page must not repeat the banner as a second error'
             assert frozen['browser']['keys'] == ['SUPER + B'], 'the defaults are in effect'
             ipc('shortcut-test', 'scroll', '0')
             screenshot('shortcuts-read-only.png')

@@ -16,10 +16,15 @@ import "../Common/ShortcutEditor.js" as Helpers
 //
 // The host calls start(); `accepted(combo, mode)` follows once a
 // combination is chosen. Conflicts are checked against Keybindings: a
-// protected action's reserved default or user.lua blocks the key, any other
-// holder is offered as "Replace", which unbinds that key from it in the draft
-// first. A holder that only might share the physical key (`uncertain`) is a
+// protected action's reserved default, user.lua or a non-editable holder (a
+// hidden hardware key) blocks the key, any other holder is offered as
+// "Replace", which unbinds that key from it in the draft first. A holder that only might share the physical key (`uncertain`) is a
 // warning: "Use anyway" keeps it bound.
+//
+// Closing the card returns focus to the item that had it when start() ran (the
+// Edit button, the map key, or the window's own focus holder), or to
+// `fallbackFocus` when that item is gone or hidden. A host that moves focus
+// itself does so afterwards and wins.
 //
 // A protected action's reserved defaults (`lockedKeys`) always stay bound.
 // They show as locked caps, and "Replace" replaces only the keys beyond them.
@@ -34,6 +39,9 @@ FocusScope {
     property bool allowAdd: true
     property string mode: "replace"
     property bool shown: false
+    // Where focus goes when the card closes. `opener` is set by start().
+    property Item opener: null
+    property Item fallbackFocus: null
     property bool listening: false
     property bool paused: false
     property string combo: ""
@@ -46,6 +54,10 @@ FocusScope {
     signal canceled()
 
     function start(id, label, keys, add, locked) {
+        if (!shown) {
+            const focused = root.Window.window ? root.Window.window.activeFocusItem : null;
+            opener = focused && !root.isAncestorOf(focused) ? focused : null;
+        }
         actionId = id || "";
         actionLabel = label || "";
         currentKeys = keys || [];
@@ -88,6 +100,27 @@ FocusScope {
         card.forceActiveFocus();
         listening = false;
         shown = false;
+        restoreFocus();
+    }
+    // Hiding the card leaves the window with no focus item, so Return, Escape
+    // and the guide's Ctrl+PageUp/PageDown would reach nothing.
+    function restoreFocus() {
+        const target = opener;
+        opener = null;
+        Qt.callLater(() => {
+            if (root.shown)
+                return;
+            const next = target && target.visible && target.enabled ? target : root.fallbackFocus;
+            if (next)
+                next.forceActiveFocus();
+        });
+    }
+    function isAncestorOf(item) {
+        for (let at = item; at; at = at.parent) {
+            if (at === root)
+                return true;
+        }
+        return false;
     }
     function cancel() {
         if (!shown)
@@ -114,22 +147,24 @@ FocusScope {
     function accept() {
         if (!complete || verdict.kind === "blocked" || verdict.kind === "")
             return;
-        for (const other of verdict.replace) {
-            if (other.id.indexOf("user.") === 0)
-                continue;
-            if (!Keybindings.setKeys(other.id, Helpers.withoutKey(Keybindings.keysFor(other.id), combo)))
-                return;
-        }
+        // All the holders lose the key, or none does: a refused step must not
+        // leave the draft half changed with the new key unassigned.
+        const changes = verdict.replace.filter(other => other.id.indexOf("user.") !== 0)
+            .map(other => ({ id: other.id, keys: Helpers.withoutKey(Keybindings.keysFor(other.id), combo) }));
+        if (changes.length && !Keybindings.setManyKeys(changes))
+            return;
         const chosen = combo;
         hide();
         accepted(chosen, allowAdd ? mode : "replace");
     }
     // Two names at most, then a count: a Shift guess can name ten holders.
-    function owners(list) {
-        const names = list.map(row => I18n.actionLabel(row.label));
+    function nameList(names) {
         return names.length > 3 ? I18n.format("%1 and %2 more", [names.slice(0, 2).join(", "), names.length - 2])
             : names.join(", ");
     }
+    function owners(list) { return nameList(list.map(row => I18n.actionLabel(row.label))); }
+    // "Group: Label" for hardware keys, whose label alone ("Volume up") says little.
+    function holders(list) { return nameList(list.map(row => I18n.tr(row.group) + ": " + I18n.actionLabel(row.label))); }
     readonly property string status: {
         if (paused)
             return I18n.tr("Recording paused because the window lost focus. Record again to continue.");
@@ -143,6 +178,10 @@ FocusScope {
             return I18n.tr("This combination is kept for system recovery.");
         if (verdict.kind === "blocked" && verdict.reason === "protected")
             return I18n.format("%1 needs this key and it cannot be taken.", [owners(verdict.blockers)]);
+        if (verdict.kind === "blocked" && verdict.reason === "hardware")
+            return I18n.format("Used by a hardware key (%1). Choose another key.", [holders(verdict.blockers)]);
+        if (verdict.kind === "blocked" && verdict.reason === "fixed")
+            return I18n.format("%1 cannot be changed. Choose another key.", [owners(verdict.blockers)]);
         if (verdict.kind === "blocked")
             return I18n.format("Your user.lua binds this key to %1. Change it there; user.lua loads last.", [owners(verdict.blockers)]);
         if (verdict.kind === "replace" && verdict.maybe.length)

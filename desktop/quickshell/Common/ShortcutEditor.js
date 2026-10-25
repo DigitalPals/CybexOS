@@ -177,8 +177,9 @@ function reservedReason(keys) {
 //   replace  — other actions hold it; Replace unbinds them in the draft;
 //   maybe    — only `uncertain` holders (a Shift combination the layout map
 //              could not name): a warning, "Use anyway", nothing is unbound;
-//   blocked  — a protected action's reserved default or user.lua holds it,
-//              which an edit here cannot take away (user.lua loads last).
+//   blocked  — a protected action's reserved default, user.lua or a
+//              non-editable action (a hardware key) holds it; an edit here
+//              cannot take it away (user.lua loads last).
 // `lookup(id)` returns a holder's row: a protected action's extra keys are
 // ordinary claims, so only its reserved defaults block.
 function decide(keys, conflicts, lookup) {
@@ -192,13 +193,16 @@ function decide(keys, conflicts, lookup) {
         return !action || (action.defaultKeys || []).some(function(key) { return Editor.same(key, keys); });
     }
     var certain = (conflicts || []).filter(function(row) { return !row.uncertain; });
-    var blockers = certain.filter(function(row) { return locked(row) || row.source === "user"; });
-    var replace = certain.filter(function(row) { return !locked(row) && row.source !== "user"; });
+    function fixed(row) { return row.editable === false; }
+    var blockers = certain.filter(function(row) { return locked(row) || row.source === "user" || fixed(row); });
+    var replace = certain.filter(function(row) { return !locked(row) && row.source !== "user" && !fixed(row); });
     var maybe = (conflicts || []).filter(function(row) { return !!row.uncertain; });
     return {
         kind: blockers.length ? "blocked" : replace.length ? "replace" : maybe.length ? "maybe" : "free",
         reason: blockers.some(function(row) { return row.protected; }) ? "protected"
-            : blockers.length ? "user" : "",
+            : blockers.some(function(row) { return row.source === "user"; }) ? "user"
+            : blockers.some(function(row) { return row.hidden; }) ? "hardware"
+            : blockers.length ? "fixed" : "",
         blockers: blockers,
         replace: replace,
         maybe: maybe

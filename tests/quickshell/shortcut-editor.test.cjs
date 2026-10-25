@@ -99,6 +99,43 @@ test('a decision follows the model conflicts, including protected defaults after
     assert.equal(S.decide('SUPER + J', M.conflicts(model, 'SUPER + J', 'apps.first')).kind, 'free');
 });
 
+test('a hidden hardware key blocks instead of offering a Replace that cannot work', () => {
+    const catalog = [
+        row('apps.terminal', 'Apps', 'Terminal', ['SUPER + Return']),
+        row('hardware.mute-audio', 'Hardware keys', 'Mute audio', ['XF86AudioMute'], {editable: false, hidden: true}),
+        row('hardware.volume-up', 'Hardware keys', 'Volume up', ['XF86AudioRaiseVolume', 'F10'], {editable: false, hidden: true}),
+        row('windows.move', 'Windows', 'Move window', ['SUPER + mouse:272'], {editable: false}),
+        row('webapps.slack', 'Web apps', 'Slack', ['SUPER + M'])
+    ];
+    const model = M.create();
+    // The live binds of the catalog above, so no row looks like a user.lua remap.
+    const binds = [['Return', 'Apps: Terminal', 64], ['XF86AudioMute', 'Hardware keys: Mute audio', 0],
+        ['XF86AudioRaiseVolume', 'Hardware keys: Volume up', 0], ['F10', 'Hardware keys: Volume up', 0],
+        ['mouse:272', 'Windows: Move window', 64], ['M', 'Web apps: Slack', 64]]
+        .map(([key, description, modmask]) => ({modmask, key, description}));
+    M.ingest(model, {state: M.resolve(catalog, {v: 1}), preferences: {v: 1}, version: 'a', binds});
+    const conflicts = M.conflicts(model, 'XF86AudioMute', 'apps.terminal');
+    assert.deepEqual(plain(conflicts).map(entry => [entry.id, entry.editable, entry.hidden]), [['hardware.mute-audio', false, true]]);
+    const verdict = plain(S.decide('XF86AudioMute', conflicts, id => M.action(model, id)));
+    assert.equal(verdict.kind, 'blocked');
+    assert.equal(verdict.reason, 'hardware');
+    assert.deepEqual(verdict.blockers.map(entry => entry.id), ['hardware.mute-audio']);
+    assert.deepEqual(verdict.replace, [], 'nothing is offered to Replace');
+    // The edit really is refused, so Replace could never have worked.
+    assert.throws(() => M.setKeys(model, 'hardware.mute-audio', []), /cannot be edited/);
+    // Editable holders keep their flags and stay replaceable.
+    const editable = plain(M.conflicts(model, 'SUPER + M', 'apps.terminal'));
+    assert.deepEqual(editable.map(entry => [entry.id, entry.editable, entry.hidden]), [['webapps.slack', true, false]]);
+    assert.equal(S.decide('SUPER + M', editable).kind, 'replace');
+    // A hardware holder next to a replaceable one still blocks, and a user.lua holder wins the reason.
+    const mixed = plain(S.decide('F10', [...plain(M.conflicts(model, 'F10', 'apps.terminal')), editable[0]]));
+    assert.equal(mixed.kind, 'blocked');
+    assert.deepEqual(mixed.replace.map(entry => entry.id), ['webapps.slack']);
+    assert.equal(S.decide('F10', [...conflicts, {id: 'user.0', source: 'user', editable: false}]).reason, 'user');
+    // A read-only holder that is not hidden has its own reason.
+    assert.equal(S.decide('SUPER + P', [{id: 'windows.move', source: 'default', protected: false, editable: false, hidden: false}]).reason, 'fixed');
+});
+
 test('uncertain holders warn without blocking or being unbound', () => {
     const slack = {id: 'webapps.slack', group: 'Web apps', label: 'Slack', protected: false, source: 'default'};
     const move = {id: 'workspaces.move.1', group: 'Workspaces', label: 'Move window to workspace 1', protected: false,
@@ -371,9 +408,18 @@ test('the editor UI is wired to the shared contract', () => {
     assert.match(recorder, /Helpers\.decide\([^\n]*Keybindings\.action\(id\)\)/);
     assert.match(recorder, /verdict\.kind === "maybe" \? I18n\.tr\("Use anyway"\)/);
     assert.match(page, /readOnly[\s\S]*?Keybindings\.preferencesError/);
+    assert.match(page, /detail: Keybindings\.preferencesDetail/, 'the parser detail follows the sentence');
+    assert.match(read('Common/Keybindings.qml'), /preferencesDetail: \{[\s\S]*?luaReason\(problem\.lua\)/);
+    assert.doesNotMatch(read('Common/Keybindings.qml'), /preferencesError: \{[\s\S]*?luaReason[\s\S]*?readonly property string preferencesDetail/,
+        'the sentence no longer carries the parser text');
     assert.match(page, /function handleEscape\(\): bool \{[\s\S]*?form\.opened[\s\S]*?form\.close\(\)/);
     assert.match(read('Settings/SettingsView.qml'), /pageLoader\.item as ShortcutsPage;[\s\S]*?shortcuts\.handleEscape\(\)/);
     assert.match(recorder, /Keybindings\.conflicts\(/);
+    assert.match(recorder, /shown = false;\s*restoreFocus\(\);/, 'closing the card returns focus to its opener');
+    assert.match(read('Welcome/ShortcutsStep.qml'), /fallbackFocus: root/);
+    assert.match(recorder, /Keybindings\.setManyKeys\(changes\)/, 'Replace unbinds every holder in one edit');
+    assert.doesNotMatch(recorder, /for \(const other of verdict\.replace\)/);
+    assert.match(read('Common/Keybindings.qml'), /function setManyKeys\(changes\) \{ return edit\(\(\) => Model\.setManyKeys\(root\.model, changes\)\); \}/);
     assert.match(recorder, /onActiveChanged[\s\S]*?Window\.window\.active[\s\S]*?root\.listening = false/, 'focus loss ends recording');
     assert.match(recorder, /Component\.onDestruction/);
     assert.match(map, /signal editRequested/);
@@ -388,6 +434,7 @@ test('the editor UI is wired to the shared contract', () => {
     assert.match(step, /ShortcutKeyboardMap \{/);
     assert.match(step, /Keybindings\.keysFor\(/);
     assert.match(step, /Keybindings\.preferencesError/);
+    assert.match(step, /Keybindings\.preferencesDetail/);
     assert.match(step, /Keybindings\.resetAll\(\)/);
     for (const host of [page, step])
         assert.match(host, /Helpers\.nextKeys\(Helpers\.editableKeys\(/, 'protected defaults stay locked when recording');
