@@ -134,3 +134,14 @@ test('desktop launch IPC validates filenames and uses the Apps tab execute path'
     assert.equal(calls.length,3);
     assert.equal(invoke('missing.desktop',entries,launcher),'unknown');
 });
+test('a protected remap keeps its reserved defaults and stores only the extra keys', () => {
+    const data = model();
+    M.setKeys(data,'shell.lock',['SUPER + T']);
+    assert.deepEqual(plain(M.keysFor(data,'shell.lock')),['SUPER + T','SUPER + L']);
+    assert.deepEqual(plain(data.draft.actions['shell.lock'].keys),['SUPER + T']);
+    M.setKeys(data,'shell.lock',['SUPER + L','SUPER + T']);
+    assert.deepEqual(plain(data.draft.actions['shell.lock'].keys),['SUPER + T']);
+    M.setKeys(data,'shell.lock',['SUPER + L']);
+    assert.equal(M.dirty(data),false);
+    assert.throws(()=>M.setKeys(data,'shell.lock',[]),/at least one/);
+});

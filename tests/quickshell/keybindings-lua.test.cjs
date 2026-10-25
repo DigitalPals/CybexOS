@@ -107,3 +107,38 @@ test('required public IDs exist and mouse/hardware actions are not editable', ()
     for (const row of state.actions.filter(row => row.hidden || row.keys.some(key => key.includes('mouse:')))) assert.equal(row.editable, false);
     for (const id of ['shell.lock','shell.exit','shell.settings','shell.shortcuts']) assert.equal(state.actions.find(row => row.id === id).protected, true);
 });
+test('a protected remap to a keysym that does not exist still leaves the reserved keys bound', () => {
+    const {output, state} = run(`require('bindings'); require('keybinding_preferences'); print(json.encode(registered()))`, '',
+        {v:1, actions:{'shell.lock':{keys:['SUPER + Lcok']}, 'shell.exit':{keys:['SUPER + ALT + X']}}});
+    assert.equal(state.error, null);
+    const lock = state.actions.find(row => row.id === 'shell.lock');
+    assert.deepEqual(lock.keys, ['SUPER + Lcok', 'SUPER + L']);
+    assert.equal(lock.changed, true);
+    const bound = output[0].filter(row => row.options.description === 'Shell: Lock screen').map(row => row.keys);
+    assert.deepEqual(bound, ['SUPER + Lcok', 'SUPER + L']);
+    assert.ok(state.actions.find(row => row.id === 'shell.exit').keys.length === 2);
+});
+test('custom entries copy only schema fields; unknown nested data cannot change the state\'s shape', () => {
+    const raw = '{"v":1,"custom":[{"id":"custom.big","group":"Apps","label":"Big","keys":["SUPER + ALT + F1"],'
+        + '"run":{"type":"command","command":"true","extra":{"n":3}},"weight":1e308,"nested":{"n":3},"list":[1,2]}]}';
+    const {state, output} = run(`require('bindings'); require('keybinding_preferences'); print(json.encode(registered()))`, '', undefined, raw);
+    assert.equal(state.error, null);
+    assert.deepEqual(Object.keys(state.custom[0]).sort(), ['group', 'id', 'keys', 'label', 'run']);
+    assert.deepEqual(state.custom[0].run, {type:'command', command:'true'});
+    assert.ok(output[0].some(row => row.keys === 'SUPER + ALT + F1'));
+});
+test('numbers that overflow are rejected by the decoder, so the state file stays valid and defaults apply', () => {
+    for (const number of ['1e999', '-1e999']) {
+        const raw = `{"v":1,"custom":[{"id":"custom.big","group":"Apps","label":"Big","keys":["SUPER + ALT + F1"],`
+            + `"run":{"type":"command","command":"true"},"weight":${number}}]}`;
+        const {state, output} = run(`require('bindings'); require('keybinding_preferences'); print(json.encode(registered()))`, '', undefined, raw);
+        assert.match(state.error, /invalid number/);
+        assert.deepEqual(state.custom, []);
+        assert.ok(output[0].some(row => row.keys === 'SUPER + B'));
+    }
+});
+test('the state encoder writes non-finite numbers as null instead of invalid JSON', () => {
+    const {output} = run(`local encoder=require('keybinding_json')
+print(encoder.encode({a=math.huge,b=-math.huge,c=0/0,d=1.5}))`);
+    assert.deepEqual(output[0], {a:null, b:null, c:null, d:1.5});
+});

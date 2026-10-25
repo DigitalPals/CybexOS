@@ -49,8 +49,11 @@ function resolve(catalog, document) {
             }
         });
         row.keys = accepted;
-        if (row.protected && !row.keys.length)
-            row.keys = row.defaultKeys.slice();
+        // Protected actions always keep their reserved defaults, as in Lua.
+        if (row.protected)
+            row.defaultKeys.forEach(function(key) {
+                if (!row.keys.some(function(other) { return Editor.same(other, key); })) row.keys.push(key);
+            });
     }
     rows.forEach(function(row) { if (overridden[row.id]) claim(row); });
     var custom = (document.custom || []).map(function(entry) {
@@ -219,6 +222,14 @@ function setKeys(model, id, keys) {
     if (!row || !row.editable) throw new Error("This shortcut cannot be edited");
     keys = checkedKeys(keys);
     if (row.protected && !keys.length) throw new Error("This shortcut must keep at least one key");
+    // The reserved defaults stay bound whatever is stored, so only extra keys
+    // are kept in the file; nothing extra means the plain default.
+    if (row.protected) {
+        keys = keys.filter(function(key) {
+            return !row.defaultKeys.some(function(other) { return Editor.same(key, other); });
+        });
+        if (!keys.length) keys = row.defaultKeys.slice();
+    }
     if (row.custom) {
         model.draft.custom.find(function(entry) { return entry.id === id; }).keys = keys;
     } else {

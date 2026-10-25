@@ -140,6 +140,9 @@ the vendor defaults apply and the reason is published.
 1. Start from the catalog defaults.
 2. Apply overrides to editable actions.
    - An override of a protected action to `[]` is ignored.
+   - A protected action always keeps its reserved default keys, in addition to
+     any remap, so a typo such as `SUPER + Lcok` cannot leave it unbound.
+     Its published `keys` are the accepted remap keys followed by the defaults.
    - Overrides for unknown or non-editable actions are ignored.
 3. Overrides and custom entries claim their key combinations.
    - A default binding that uses a claimed combination loses that key. This
@@ -431,8 +434,13 @@ The recorder reserves unmodified keys except F-keys/XF86 keys; modifier-only,
 mouse, SysRq, power/sleep keys, Ctrl+Alt+F1–F12, Ctrl+Alt+Delete and
 Ctrl+Alt+Backspace are also reserved. The Lua resolver independently reserves
 the protected actions' default combinations, even when those actions have
-been remapped. A protected remap whose claims are all dropped falls back to
-its reserved defaults. Settings may show that fallback in the preview.
+been remapped. A protected action keeps those defaults bound in addition to any
+remap (see §1.3), and its published `keys` include them. The draft preview in
+`KeybindingsModel.js` does the same, and `setKeys` stores only the keys beyond
+the defaults, so a protected remap back to just its defaults removes the
+override. Only schema fields of a custom entry are copied into the state, and
+the state encoder writes non-finite numbers as `null`; the Lua JSON decoder
+already rejects overflowing numbers such as `1e999`.
 
 The Python request is `{action: "apply", version, preferences}`; snapshots
 return `{state, preferences, version, binds}`. The successful apply returns

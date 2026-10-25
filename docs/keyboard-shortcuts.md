@@ -149,7 +149,9 @@ error; repair it before applying more changes.
 Explicit overrides claim keys before custom entries, in catalog order; custom
 entries follow file order. The first claim wins and displaces a default on
 the same combination. Protected default combinations cannot be claimed by
-another action, even when remapped. Conflicts and displaced keys appear in
+another action, even when remapped. A protected action also keeps its
+default combinations in addition to any remap, so a mistyped key name cannot
+leave the lock screen, exit, Settings or the shortcut sheet unbound. Conflicts and displaced keys appear in
 `$XDG_RUNTIME_DIR/cybexos/keybindings-state.json`, written atomically at every
 configuration load before `user.lua`. The shell reads that result and compares
 it with live Hyprland bindings to mark changes made in `user.lua`. Settings
