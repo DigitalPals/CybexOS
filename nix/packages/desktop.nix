@@ -82,6 +82,13 @@ in stdenv.mkDerivation {
   doInstallCheck = stdenv.buildPlatform.canExecute stdenv.hostPlatform;
   installCheckPhase = ''
     runHook preInstallCheck
+    for module in bindings keybinding_helpers keybinding_json keybinding_preferences; do
+      test -r "$out/share/cybexos/runtime/hypr/$module.lua"
+    done
+    for module in Keybindings.qml KeybindingsModel.js KeybindEditor.js; do
+      test -r "$out/share/cybexos/runtime/quickshell/Common/$module"
+    done
+    test -r "$out/share/cybexos/runtime/quickshell/scripts/system_settings_keybindings.py"
     env -i HOME="$TMPDIR" $out/libexec/cybexos-desktop-runtime-check
     runHook postInstallCheck
   '';

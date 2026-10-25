@@ -71,7 +71,9 @@ function entriesIn(dir) {
         if (trimmed === "" || trimmed.startsWith("#"))
             continue;
         const parts = trimmed.split(/\s+/);
-        const [type, file] = parts[0] === "singleton" ? [parts[1], parts[2]] : parts;
+        // JavaScript resources include a version between name and filename.
+        const type = parts[0] === "singleton" ? parts[1] : parts[0];
+        const file = parts[parts.length - 1];
         out.set(file, type);
     }
     return out;

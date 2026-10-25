@@ -27,6 +27,7 @@ Singleton {
     }
     readonly property SystemSettingsBackend sound: SystemSettingsBackend { domain: "sound" }
     readonly property SystemSettingsBackend network: SystemSettingsBackend { domain: "network" }
+    readonly property SystemSettingsBackend keybindings: SystemSettingsBackend { domain: "keybindings" }
     readonly property SystemSettingsBackend input: SystemSettingsBackend { domain: "input" }
     readonly property SystemSettingsBackend region: SystemSettingsBackend { domain: "region" }
     readonly property SystemSettingsBackend security: SystemSettingsBackend { domain: "security" }

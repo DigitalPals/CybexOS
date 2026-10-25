@@ -49,7 +49,7 @@ Item {
     }
     // Input is polled: no extra compositor socket reader lives beyond the page.
     // Security is polled too; fprintd and the key list change only on request.
-    readonly property bool hasMonitor: domain !== "input" && domain !== "region"
+    readonly property bool hasMonitor: domain !== "input" && domain !== "keybindings" && domain !== "region"
         && domain !== "security"
     onWatchersChanged: monitor.running = watchers > 0 && hasMonitor
     function run(value) {
@@ -122,6 +122,7 @@ Item {
                     if (result.success) {
                         if (JSON.stringify(root.snapshot) !== JSON.stringify(result))
                             root.snapshot = result;
+                        root.error = "";
                         root.loaded = true;
                     } else {
                         root.error = result.error || "Could not read system settings";

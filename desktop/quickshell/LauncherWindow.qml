@@ -112,6 +112,20 @@ PanelWindow {
             Launcher.openProvider(providerId);
         }
 
+        // Shortcut app launches use exactly the Apps tab's DesktopEntry path,
+        // including desktop-file field codes and terminal applications.
+        function launchDesktop(desktopId: string): string {
+            if (!/^[A-Za-z0-9_@.+-]+\.desktop$/.test(desktopId))
+                return "invalid";
+            // Quickshell IDs omit the filename suffix.
+            const app = DesktopEntries.byId(desktopId.slice(0, -8));
+            if (!app)
+                return "unknown";
+            Launcher.recordLaunch(app);
+            app.execute();
+            return "ok";
+        }
+
         function close(): void {
             Launcher.close();
         }

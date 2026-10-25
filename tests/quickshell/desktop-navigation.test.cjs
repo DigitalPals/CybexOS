@@ -41,7 +41,7 @@ function functionBody(source, name) {
 
 test("Super+Tab and the overview IPC target reach one overview", () => {
     assert.match(bindings,
-        /bind\(mainMod \.\. " \+ TAB", hl\.dsp\.global\("quickshell:overviewToggle"\), \{ description = "Windows: Overview" \}\)/);
+        /bind\(mainMod \.\. " \+ TAB", hl\.dsp\.global\("quickshell:overviewToggle"\), \{ description = "Windows: Overview" \}, "windows.overview"\)/);
     assert.match(shell, /GlobalShortcut \{\s*appid: "quickshell"\s*name: "overviewToggle"[\s\S]{0,120}?onPressed: Overview\.toggle\(\)/);
     assert.match(shell, /^\s*OverviewWindow \{\}$/m);
     assert.equal((shell.match(/target: "overview"/g) || []).length, 0,

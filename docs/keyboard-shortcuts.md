@@ -91,6 +91,70 @@ opened. Without a code, the text in the region is recognised and copied.
 The colour picker copies the colour's hex value, such as `#1E1E2E`, and shows
 it in a notification. `Escape` cancels.
 
+## Changes saved by Settings
+
+The shortcut backend stores Settings changes in
+`$XDG_CONFIG_HOME/cybexos/keybindings.json` (normally
+`~/.config/cybexos/keybindings.json`). A missing file means vendor defaults.
+The data is sparse: only changed actions and your custom shortcuts are saved.
+Action IDs stay stable even if a label changes. For example:
+
+```json
+{
+  "v": 1,
+  "actions": {
+    "apps.browser": { "keys": ["SUPER + ALT + B"] },
+    "webapps.slack": { "keys": [] }
+  },
+  "custom": [
+    { "id": "custom.notes", "group": "Apps", "label": "Notes",
+      "keys": ["SUPER + ALT + N"],
+      "run": { "type": "command", "command": "kitty -e nvim ~/notes.md" } }
+  ]
+}
+```
+
+Each entry has at most four keys. An empty list disables an action; lock,
+exit, Settings and the shortcut sheet must keep a key. Hardware and mouse-drag
+bindings cannot be edited. Workspace scroll actions can be remapped to keys. Custom IDs start with `custom.` followed by 1–40
+lowercase letters, digits or hyphens. Group and label are at most 64
+characters; the group has no colon. Neither accepts control characters.
+
+Keys use `SUPER`, `CTRL`, `ALT`, `SHIFT` in that order, followed by an xkb
+keysym such as `B`, `Return` or `comma`. `code:N` uses a layout-independent
+xkb keycode. On Wayland the recorder's Qt scan code already has the same
+value Hyprland expects: evdev + 8. Shifted digits and punctuation may be
+recorded this way to avoid guessing the base symbol on international layouts.
+Synthetic key events without a known keysym or scan code cannot be recorded.
+AltGr is a layout selector outside the four supported modifiers and cannot be
+recorded. The recorder keeps ordinary unmodified typing, VT recovery, secure attention,
+SysRq and power/sleep keys reserved. It never records a lone modifier.
+
+Custom launch types are `app` with `desktopId` (the same desktop-entry launch
+as the Apps tab), `webapp` with `id` (`cybexos-webapp launch ID`), `url` with
+an HTTP/HTTPS `url` (default browser), or `command` with a single-line
+`command` of at most 512 UTF-8 bytes. App/web-app/URL arguments are quoted;
+commands intentionally run as shell commands. App IDs are ASCII filenames
+ending in `.desktop`, without paths; web-app IDs contain lowercase letters,
+digits and hyphens. Website URLs are limited to 2048 bytes.
+
+Applying a draft checks that the saved file has not changed elsewhere,
+writes it atomically, reloads Hyprland and checks the contained loader error.
+If reload or validation fails, the backend restores the exact previous bytes
+(or removes the newly created file) and reloads again. Preferences must be a
+regular file, not a symlink, with no duplicate JSON keys and at most 64 KiB.
+An invalid file leaves the compositor on vendor defaults and publishes its
+error; repair it before applying more changes.
+
+Explicit overrides claim keys before custom entries, in catalog order; custom
+entries follow file order. The first claim wins and displaces a default on
+the same combination. Protected default combinations cannot be claimed by
+another action, even when remapped. Conflicts and displaced keys appear in
+`$XDG_RUNTIME_DIR/cybexos/keybindings-state.json`, written atomically at every
+configuration load before `user.lua`. The shell reads that result and compares
+it with live Hyprland bindings to mark changes made in `user.lua`. Settings
+never writes that Lua file: your personal layer below still loads last.
+
 ## Your own shortcuts
 
 Add personal bindings to `~/.config/cybexos/hypr/user.lua`. Cybex OS loads it

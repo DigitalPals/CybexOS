@@ -1,6 +1,35 @@
 // nl translations of the shell's English text, keyed by that text.
 // Maintained with scripts/i18n-catalog; see docs/shell-translations.md.
 var MESSAGES = {
+    // i18n-block: keybindings
+    "Choose at most four keys per shortcut": "Kies maximaal vier toetsen per sneltoets",
+    "Could not load keyboard shortcuts: %1": "Sneltoetsen konden niet worden geladen: %1",
+    "Duplicate shortcut preference key": "Dubbele sleutel in sneltoetsvoorkeuren",
+    "Hyprland could not apply the shortcuts. Previous preferences were restored.": "Hyprland kon de sneltoetsen niet toepassen. De vorige voorkeuren zijn hersteld.",
+    "Invalid custom shortcut change": "Ongeldige wijziging van eigen sneltoets",
+    "Invalid or duplicate custom shortcut ID": "Ongeldig of dubbel ID voor eigen sneltoets",
+    "Invalid or duplicate shortcut key": "Ongeldige of dubbele sneltoets",
+    "Invalid shortcut group or label": "Ongeldige sneltoetsgroep of naam",
+    "Invalid shortcut launch": "Ongeldige sneltoetsactie",
+    "Invalid shortcut override": "Ongeldige sneltoetsaanpassing",
+    "Invalid shortcut preferences": "Ongeldige sneltoetsvoorkeuren",
+    "Load keyboard shortcuts before editing": "Laad de sneltoetsen voordat je ze wijzigt",
+    "Shortcut preferences are invalid. Repair keybindings.json before applying changes.": "Sneltoetsvoorkeuren zijn ongeldig. Herstel keybindings.json voordat je wijzigingen toepast.",
+    "Shortcut preferences are too large": "Sneltoetsvoorkeuren zijn te groot",
+    "Shortcut preferences changed elsewhere. Discard the pending edits and refresh before applying.": "Sneltoetsvoorkeuren zijn elders gewijzigd. Verwerp de openstaande wijzigingen en vernieuw voordat je ze toepast.",
+    "Shortcut preferences could not be read; use a regular file.": "Sneltoetsvoorkeuren konden niet worden gelezen; gebruik een gewoon bestand.",
+    "Shortcut preferences must be a regular file": "Sneltoetsvoorkeuren moeten een gewoon bestand zijn",
+    "Shortcut recovery did not complete. Check keybindings.json and reload Hyprland.": "Herstel van sneltoetsen is niet voltooid. Controleer keybindings.json en herlaad Hyprland.",
+    "Shortcut state could not be read. Reload Hyprland and retry.": "Sneltoetsstatus kon niet worden gelezen. Herlaad Hyprland en probeer opnieuw.",
+    "Shortcut state is unavailable. Reload Hyprland and retry.": "Sneltoetsstatus is niet beschikbaar. Herlaad Hyprland en probeer opnieuw.",
+    "This shortcut cannot be edited": "Deze sneltoets kan niet worden gewijzigd",
+    "This shortcut must keep at least one key": "Deze sneltoets moet ten minste één toets behouden",
+    "Unknown custom shortcut": "Onbekende eigen sneltoets",
+    "Unknown shortcut operation": "Onbekende sneltoetsbewerking",
+    "Unsupported shortcut preferences version": "Niet-ondersteunde versie van sneltoetsvoorkeuren",
+    "Wait for the shortcut change to finish": "Wacht tot de sneltoetswijziging klaar is",
+    // i18n-end: keybindings
+
     " matching packages · showing up to 200": " overeenkomende pakketten · maximaal 200 zichtbaar",
     "%1 is not installed": "%1 is niet geïnstalleerd",
     "%1 · off until added": "%1 · uit tot je hem toevoegt",

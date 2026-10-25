@@ -1,0 +1,382 @@
+{
+  "catalog": [
+    {
+      "id": "apps.first",
+      "group": "Apps",
+      "label": "apps.first",
+      "keys": [
+        "SUPER + B"
+      ],
+      "defaultKeys": [
+        "SUPER + B"
+      ],
+      "editable": true,
+      "protected": false,
+      "hidden": false,
+      "custom": false
+    },
+    {
+      "id": "apps.second",
+      "group": "Apps",
+      "label": "apps.second",
+      "keys": [
+        "SUPER + M"
+      ],
+      "defaultKeys": [
+        "SUPER + M"
+      ],
+      "editable": true,
+      "protected": false,
+      "hidden": false,
+      "custom": false
+    },
+    {
+      "id": "shell.lock",
+      "group": "Shell",
+      "label": "shell.lock",
+      "keys": [
+        "SUPER + L"
+      ],
+      "defaultKeys": [
+        "SUPER + L"
+      ],
+      "editable": true,
+      "protected": true,
+      "hidden": false,
+      "custom": false
+    },
+    {
+      "id": "shell.settings",
+      "group": "Shell",
+      "label": "shell.settings",
+      "keys": [
+        "SUPER + comma"
+      ],
+      "defaultKeys": [
+        "SUPER + comma"
+      ],
+      "editable": true,
+      "protected": true,
+      "hidden": false,
+      "custom": false
+    },
+    {
+      "id": "hardware.mute",
+      "group": "Apps",
+      "label": "hardware.mute",
+      "keys": [
+        "XF86AudioMute"
+      ],
+      "defaultKeys": [
+        "XF86AudioMute"
+      ],
+      "editable": false,
+      "protected": false,
+      "hidden": false,
+      "custom": false
+    }
+  ],
+  "cases": [
+    {
+      "name": "defaults",
+      "preferences": {
+        "v": 1
+      },
+      "keys": [
+        [
+          "SUPER + B"
+        ],
+        [
+          "SUPER + M"
+        ],
+        [
+          "SUPER + L"
+        ],
+        [
+          "SUPER + comma"
+        ],
+        [
+          "XF86AudioMute"
+        ]
+      ],
+      "custom": [],
+      "diagnostics": []
+    },
+    {
+      "name": "claim-displaces-default",
+      "preferences": {
+        "v": 1,
+        "actions": {
+          "apps.first": {
+            "keys": [
+              "super + m"
+            ]
+          }
+        }
+      },
+      "keys": [
+        [
+          "SUPER + M"
+        ],
+        [],
+        [
+          "SUPER + L"
+        ],
+        [
+          "SUPER + comma"
+        ],
+        [
+          "XF86AudioMute"
+        ]
+      ],
+      "custom": [],
+      "diagnostics": [
+        {
+          "type": "displaced",
+          "id": "apps.second",
+          "keys": "SUPER + M",
+          "by": "apps.first"
+        }
+      ]
+    },
+    {
+      "name": "catalog-order-before-custom",
+      "preferences": {
+        "v": 1,
+        "actions": {
+          "apps.second": {
+            "keys": [
+              "SUPER + T"
+            ]
+          },
+          "apps.first": {
+            "keys": [
+              "SUPER + T"
+            ]
+          }
+        },
+        "custom": [
+          {
+            "id": "custom.first",
+            "group": "Apps",
+            "label": "first",
+            "keys": [
+              "SUPER + T",
+              "SUPER + B"
+            ],
+            "run": {
+              "type": "command",
+              "command": "true"
+            }
+          },
+          {
+            "id": "custom.second",
+            "group": "Apps",
+            "label": "second",
+            "keys": [
+              "SUPER + B"
+            ],
+            "run": {
+              "type": "command",
+              "command": "true"
+            }
+          }
+        ]
+      },
+      "keys": [
+        [
+          "SUPER + T"
+        ],
+        [],
+        [
+          "SUPER + L"
+        ],
+        [
+          "SUPER + comma"
+        ],
+        [
+          "XF86AudioMute"
+        ]
+      ],
+      "custom": [
+        [
+          "SUPER + B"
+        ],
+        []
+      ],
+      "diagnostics": [
+        {
+          "type": "conflict",
+          "id": "apps.second",
+          "keys": "SUPER + T",
+          "by": "apps.first"
+        },
+        {
+          "type": "conflict",
+          "id": "custom.first",
+          "keys": "SUPER + T",
+          "by": "apps.first"
+        },
+        {
+          "type": "conflict",
+          "id": "custom.second",
+          "keys": "SUPER + B",
+          "by": "custom.first"
+        }
+      ]
+    },
+    {
+      "name": "protected-reserved-even-remapped",
+      "preferences": {
+        "v": 1,
+        "actions": {
+          "shell.lock": {
+            "keys": [
+              "SUPER + T"
+            ]
+          },
+          "shell.settings": {
+            "keys": []
+          },
+          "hardware.mute": {
+            "keys": [
+              "SUPER + Z"
+            ]
+          },
+          "unknown": {
+            "keys": [
+              "SUPER + Q"
+            ]
+          }
+        },
+        "custom": [
+          {
+            "id": "custom.lock",
+            "group": "Apps",
+            "label": "lock",
+            "keys": [
+              "super + l"
+            ],
+            "run": {
+              "type": "command",
+              "command": "true"
+            }
+          }
+        ]
+      },
+      "keys": [
+        [
+          "SUPER + B"
+        ],
+        [
+          "SUPER + M"
+        ],
+        [
+          "SUPER + T"
+        ],
+        [
+          "SUPER + comma"
+        ],
+        [
+          "XF86AudioMute"
+        ]
+      ],
+      "custom": [
+        []
+      ],
+      "diagnostics": [
+        {
+          "type": "conflict",
+          "id": "custom.lock",
+          "keys": "SUPER + L",
+          "by": "shell.lock"
+        }
+      ]
+    },
+    {
+      "name": "protected-lost-remap-falls-back",
+      "preferences": {
+        "v": 1,
+        "actions": {
+          "apps.first": {
+            "keys": [
+              "SUPER + T"
+            ]
+          },
+          "shell.lock": {
+            "keys": [
+              "SUPER + T"
+            ]
+          }
+        }
+      },
+      "keys": [
+        [
+          "SUPER + T"
+        ],
+        [
+          "SUPER + M"
+        ],
+        [
+          "SUPER + L"
+        ],
+        [
+          "SUPER + comma"
+        ],
+        [
+          "XF86AudioMute"
+        ]
+      ],
+      "custom": [],
+      "diagnostics": [
+        {
+          "type": "conflict",
+          "id": "shell.lock",
+          "keys": "SUPER + T",
+          "by": "apps.first"
+        }
+      ]
+    },
+    {
+      "name": "disabled-and-protected-claim",
+      "preferences": {
+        "v": 1,
+        "actions": {
+          "apps.first": {
+            "keys": []
+          },
+          "apps.second": {
+            "keys": [
+              "SUPER + L",
+              "ALT + M"
+            ]
+          }
+        }
+      },
+      "keys": [
+        [],
+        [
+          "ALT + M"
+        ],
+        [
+          "SUPER + L"
+        ],
+        [
+          "SUPER + comma"
+        ],
+        [
+          "XF86AudioMute"
+        ]
+      ],
+      "custom": [],
+      "diagnostics": [
+        {
+          "type": "conflict",
+          "id": "apps.second",
+          "keys": "SUPER + L",
+          "by": "shell.lock"
+        }
+      ]
+    }
+  ]
+}
