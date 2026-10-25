@@ -74,9 +74,15 @@ Column {
             Row {
                 width: parent.width; spacing: Theme.controlSpacing
                 Sym { id: readOnlyIcon; name: root.recovering ? "warning" : "error"; size: Theme.iconMedium; color: root.recovering ? Theme.amber : Theme.redText }
-                GuideText {
+                Column {
                     width: parent.width - readOnlyIcon.width - parent.spacing
-                    text: Keybindings.preferencesError; font.weight: Theme.weightSemibold
+                    spacing: Theme.iconTextSpacing
+                    GuideText { width: parent.width; text: Keybindings.preferencesError; font.weight: Theme.weightSemibold }
+                    // The parser's own words, after the sentence.
+                    GuideText {
+                        width: parent.width; visible: text !== ""; tone: "muted"
+                        text: Keybindings.preferencesDetail; font.pixelSize: Theme.typography.metadata
+                    }
                 }
             }
             GuideText {

@@ -252,7 +252,8 @@ AZERTY). If the layout cannot be read it stores the key's code instead and
 warns that it may overlap other Shift shortcuts.
 
 If `keybindings.json` cannot be loaded, the vendor shortcuts stay active. The
-page and the welcome guide's Shortcuts step show the reason in a banner and
+page and the welcome guide's Shortcuts step say so in a banner (the parser's
+own message, such as the byte position, follows in smaller type) and
 change nothing, and **Reset all** is the way out.
 Applying it replaces the file only after copying the old bytes to
 `keybindings.json.invalid-<timestamp>` in the same directory; that copy is

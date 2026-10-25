@@ -12,16 +12,23 @@ Singleton {
     readonly property string error: {
         root.revision;
         return root.localError || (backend.error ? I18n.tr(backend.error)
-            : root.model.state.error ? I18n.format("Could not load keyboard shortcuts: %1", [root.luaReason(root.model.state.error)]) : "");
+            : root.model.state.error ? root.preferencesError : "");
     }
-    // Why keybindings.json is not in effect, "" when it is. Lua's published
-    // reason wins over the backend's. While set, only resetAll() is accepted;
-    // applying that reset replaces the file after a backup copy is kept.
+    // Why keybindings.json is not in effect, "" when it is: a sentence for
+    // people. Lua's technical reason (a parser position) is preferencesDetail,
+    // shown after it in a quieter style. Lua's rejection wins over the
+    // backend's. While set, only resetAll() is accepted; applying that reset
+    // replaces the file after a backup copy is kept.
     readonly property string preferencesError: {
         root.revision;
         const problem = Model.problem(root.model);
-        return problem.lua ? I18n.format("Could not load keyboard shortcuts: %1", [root.luaReason(problem.lua)])
+        return problem.lua ? I18n.tr("Your keybindings.json could not be used, so your changes are paused. Reset all to start again; the broken file is kept.")
             : problem.file ? I18n.tr(problem.file) : "";
+    }
+    readonly property string preferencesDetail: {
+        root.revision;
+        const problem = Model.problem(root.model);
+        return problem.lua ? root.luaReason(problem.lua) : "";
     }
     readonly property bool readOnly: { root.revision; return Model.broken(root.model); }
     // { "<xkb keycode>": "<level-1 keysym>" } for the active layout, {} when

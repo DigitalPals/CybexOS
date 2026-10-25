@@ -101,6 +101,7 @@ TEST_IPC = '''
                 browser: row("apps.browser"), slack: row("webapps.slack"), lock: row("shell.lock"),
                 terminal: row("apps.terminal"), move1: row("workspaces.move.1"),
                 readOnly: Keybindings.readOnly, preferencesError: Keybindings.preferencesError,
+                preferencesDetail: Keybindings.preferencesDetail,
                 keymapSize: Object.keys(Keybindings.keymap).length,
                 formOpen: page ? shell.findNamed(page, "shortcutForm").opened : false,
                 banner: page ? shell.findNamed(page, "shortcutsReadOnly").visible : false,
@@ -594,6 +595,11 @@ def main():
             ipc('shortcut-test', 'refresh')
             frozen = wait(lambda: (s := state()).get('readOnly') and s.get('banner') and s, 'read-only page', 30)
             assert frozen['preferencesError'], frozen
+            # A sentence in the session's language first; the parser's own
+            # position text (always English) follows as a separate detail.
+            assert frozen['preferencesError'].startswith(('Your keybindings.json could not be used', 'Je keybindings.json kon niet')), frozen['preferencesError']
+            assert 'byte' in frozen['preferencesDetail'] and 'byte' not in frozen['preferencesError'], frozen
+            assert frozen['error'] == frozen['preferencesError'], 'the page must not repeat the banner as a second error'
             assert frozen['browser']['keys'] == ['SUPER + B'], 'the defaults are in effect'
             ipc('shortcut-test', 'scroll', '0')
             screenshot('shortcuts-read-only.png')

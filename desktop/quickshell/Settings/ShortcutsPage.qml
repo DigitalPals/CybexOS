@@ -33,7 +33,8 @@ SettingsPage {
     readonly property bool readOnly: Keybindings.readOnly
     // The reset that replaces a rejected file is pending until applied.
     readonly property bool recovering: Keybindings.readOnly && Keybindings.dirty
-    // Lua's load error is also preferencesError; the read-only banner shows it.
+    // Lua's load error is also preferencesError; the read-only banner shows it
+    // (with the parser's detail beneath).
     readonly property string message: Keybindings.error !== "" && Keybindings.error !== Keybindings.preferencesError
         ? Keybindings.error : page.problem
     bottomInset: applyBar.reservedHeight
@@ -148,6 +149,7 @@ SettingsPage {
             width: parent.width
             visible: page.readOnly
             text: Keybindings.preferencesError
+            detail: Keybindings.preferencesDetail
             tone: "error"
         }
         SettingsHint {

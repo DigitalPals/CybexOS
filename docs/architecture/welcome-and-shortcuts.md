@@ -572,8 +572,13 @@ always read from Lua's state, and only an unsaved draft is resolved in JS.
 A `keybindings.json` that the loader rejects does not stop the page. The
 snapshot still returns Lua's `state` and the live `binds`, with `preferences`
 `{v: 1}`, the exact bytes' hash as `version`, and `preferencesError` (a string,
-`""` when the file is fine). `Keybindings` exposes `preferencesError`, preferring
-Lua's published reason, and `readOnly`, true while either side rejects the file.
+`""` when the file is fine). `Keybindings` exposes `preferencesError`, a
+translated sentence ("Your keybindings.json could not be used, so your changes
+are paused. Reset all to start again; the broken file is kept.") when Lua
+rejects the file, otherwise the backend's own sentence; `preferencesDetail`,
+Lua's technical reason without its `file.lua:line:` prefix (a parser position
+such as "expected ',' or '}' at byte 61", English, `""` when there is none);
+and `readOnly`, true while either side rejects the file.
 While `readOnly`, every edit except `resetAll()` is refused with a failure.
 `resetAll()` marks the draft dirty even though it looks unchanged; the next
 `apply()` sends `replaceInvalid: true`. Only then does the backend replace the
@@ -640,7 +645,9 @@ offers "Add as another key" only when extras exist. Every recorder passes
 `Keybindings.keymap` to `fromKeyEvent`.
 
 While `Keybindings.readOnly`, the page and the welcome step show
-`preferencesError` in a banner (the page's error line no longer repeats it).
+`preferencesError` in a banner, with `preferencesDetail` after it in smaller,
+quieter type (`SettingsHint.detail`; the page's error line no longer repeats
+it).
 Record, Disable, Reset, Add and the map's edit and add requests are refused.
 Reset all stays enabled and explains `keybindings.json.invalid-<time>`, and
 the Apply bar says the file will be replaced. `ShortcutsPage.handleEscape()`

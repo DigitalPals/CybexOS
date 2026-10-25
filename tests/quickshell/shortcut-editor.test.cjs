@@ -408,6 +408,10 @@ test('the editor UI is wired to the shared contract', () => {
     assert.match(recorder, /Helpers\.decide\([^\n]*Keybindings\.action\(id\)\)/);
     assert.match(recorder, /verdict\.kind === "maybe" \? I18n\.tr\("Use anyway"\)/);
     assert.match(page, /readOnly[\s\S]*?Keybindings\.preferencesError/);
+    assert.match(page, /detail: Keybindings\.preferencesDetail/, 'the parser detail follows the sentence');
+    assert.match(read('Common/Keybindings.qml'), /preferencesDetail: \{[\s\S]*?luaReason\(problem\.lua\)/);
+    assert.doesNotMatch(read('Common/Keybindings.qml'), /preferencesError: \{[\s\S]*?luaReason[\s\S]*?readonly property string preferencesDetail/,
+        'the sentence no longer carries the parser text');
     assert.match(page, /function handleEscape\(\): bool \{[\s\S]*?form\.opened[\s\S]*?form\.close\(\)/);
     assert.match(read('Settings/SettingsView.qml'), /pageLoader\.item as ShortcutsPage;[\s\S]*?shortcuts\.handleEscape\(\)/);
     assert.match(recorder, /Keybindings\.conflicts\(/);
@@ -430,6 +434,7 @@ test('the editor UI is wired to the shared contract', () => {
     assert.match(step, /ShortcutKeyboardMap \{/);
     assert.match(step, /Keybindings\.keysFor\(/);
     assert.match(step, /Keybindings\.preferencesError/);
+    assert.match(step, /Keybindings\.preferencesDetail/);
     assert.match(step, /Keybindings\.resetAll\(\)/);
     for (const host of [page, step])
         assert.match(host, /Helpers\.nextKeys\(Helpers\.editableKeys\(/, 'protected defaults stay locked when recording');
