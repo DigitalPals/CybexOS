@@ -4,7 +4,14 @@ The welcome guide opens on your focused display after your first desktop login.
 It shows your installed language, keyboard layout and time zone, then helps you
 choose a wallpaper, appearance and a few useful shortcuts. Changes apply to the
 real desktop immediately. Hold Space on the wallpaper step to peek behind the
-guide; release it to return.
+guide; release it to return. While you type in the Wallhaven search field,
+Space types a space instead.
+
+The wallpaper step is the same picker as **Settings → Wallpaper**: the Cybex OS
+collection, Wallhaven and your own pictures. Wallhaven lists wallpapers
+automatically only on a known unmetered connection; nothing is downloaded until
+you choose **Use this wallpaper**. A fresh installation shows the bundled
+*moon mountains* wallpaper until you pick another.
 
 Use Tab and Enter to operate controls, and Ctrl+PageUp / Ctrl+PageDown to move
 between steps. Every step is optional. Escape, the close button and **Skip for
@@ -16,8 +23,13 @@ again at Hello when opened manually.
 Practice ticks come from what the shell observes: opening the launcher, opening
 and closing a new window, switching away from your starting workspace and back,
 opening the overview, and opening the shortcut sheet. The guide follows you
-between workspaces during practice. On another compositor the live shortcuts
-may be unavailable; you can still continue.
+between workspaces during practice. Its keycaps show your actual shortcuts,
+including ones changed in Settings or `user.lua`; an action you disabled shows
+**Not bound**. The guide reads them only while it is open. On another
+compositor the live shortcuts may be unavailable; you can still continue.
+
+In a small window or with large text, the step list on the left is hidden.
+Back, Continue and Ctrl+PageUp / Ctrl+PageDown still move between steps.
 
 The optional checklist reads actual assistant sign-in, fingerprint, backup and
 online-account state. **Later** remembers an item for another time and never
@@ -43,6 +55,29 @@ cybexos-runtime ipc welcome reset           # delete only welcome.json
 ```
 
 For implementation and integration interfaces, see the
-[shared contract](architecture/welcome-and-shortcuts.md). The temporary wallpaper
-step uses the existing Settings gallery, and the shortcut step uses live
-shortcut rows until the reusable picker and keyboard map are integrated.
+[shared contract](architecture/welcome-and-shortcuts.md). The shortcut step uses
+live shortcut rows until the keyboard map is integrated.
+
+## Validation
+
+`tests/quickshell/welcome*.test.cjs` cover the pure state logic, the Keybindings
+keycap adapter, the claim wiring and every action ID the guide uses against the
+ungated Lua catalog. `tests/welcome-guide.py --screenshots DIR` runs the real
+shell under a private headless Sway from a private git copy of the checkout
+with a test-only IPC target. Shortcut state is served by a fake `hyprctl`
+(remapped launcher, disabled Close window). It needs `nix develop` plus
+`grim`, `wtype` and ImageMagick on PATH. It checks:
+
+- the fresh-install default wallpaper behind the first frame, against the
+  bundled image;
+- keyboard selection and apply in the embedded picker;
+- Space typing in Wallhaven search without a request;
+- the Space peek, by comparing a frame taken while Space is held (past the
+  key-repeat delay) with a desktop-only frame;
+- the minimum size at text/density extremes, Escape from inside the picker,
+  and the claim release.
+
+With wtype 0.5, `-P KEY` presses and `-p KEY` releases a key, and an unknown
+flag makes it exit before typing anything. Keep a press and its release in one
+wtype process, and check its exit status. This is not Hyprland runtime,
+installation or physical hardware qualification.
