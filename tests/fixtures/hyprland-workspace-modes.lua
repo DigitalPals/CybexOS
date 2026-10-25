@@ -286,8 +286,8 @@ local function excluded(value, expression)
   assert(expression:sub(1, 9) == "negative:", "unsupported fixture rule expression")
   -- Only the collector's simple class/title alternatives below are needed to
   -- replay the old opening rule; this is not a general RE2 implementation.
-  for pattern in expression:sub(10):gmatch("[^|]+") do
-    pattern = pattern:gsub("%(%?:", ""):gsub("[()]", ""):gsub("%-", "%%-")
+  for alternative in expression:sub(10):gmatch("[^|]+") do
+    local pattern = alternative:gsub("%(%?:", ""):gsub("[()]", ""):gsub("%-", "%%-")
     if (value or ""):match(pattern) then return true end
   end
   return false

@@ -6,9 +6,9 @@ local modifier = { SUPER = true, CTRL = true, ALT = true, SHIFT = true }
 function M.normalize(value)
   if type(value) ~= "string" or #value > 128 then return "" end
   local parts, seen = {}, {}
-  for part in (value .. "+"):gmatch("(.-)%+") do
-    part = part:match("^%s*(.-)%s*$")
-    parts[#parts + 1] = part
+  -- Hyprland 0.56 embeds Lua 5.5, whose loop variables are read-only.
+  for raw in (value .. "+"):gmatch("(.-)%+") do
+    parts[#parts + 1] = raw:match("^%s*(.-)%s*$")
   end
   local key = table.remove(parts)
   if not key or key == "" or modifier[key:upper()] then return "" end

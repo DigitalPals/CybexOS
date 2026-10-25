@@ -486,7 +486,11 @@ They are deleted. `browse`, `list`, `set` and `status` stay.
     wallpaper section of the relevant doc;
   - this contract: update it when something deviates.
 - **Tests:** Node tests in `tests/quickshell/` for pure logic. Lua tests must
-  actually run, not be skipped, for example with `nix shell nixpkgs#luajit`.
+  actually run, not be skipped, under Lua 5.5, the version Hyprland 0.56.2
+  embeds (the dev shell's `lua`). Lua 5.4 accepted an assignment to a `for`
+  loop variable that 5.5 rejects at compile time; only the installed
+  qualification caught it. `tests/quickshell/hyprland-lua.test.cjs` checks
+  the version and compiles every Hyprland and fixture Lua file.
   `tests/run` and the QML lint must pass. Real-engine checks run the actual
   shell under a private headless Sway, as `tests/assistant-overlay.py` does.
   `tests/welcome-guide.py`, `tests/wallpaper-picker.py` and
