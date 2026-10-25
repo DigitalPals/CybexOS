@@ -116,9 +116,10 @@ test("rows that cannot use settingKey still wire themselves completely", () => {
         // Their enable/remove controls preserve state, rather than inventing a reset.
         // System-owned values have no shell schema default. Their pages own
         // live writes or an explicit Apply/Cancel draft, never shell reset.
-        // Backups belong to the cybexos-backup helper in the same way.
+        // Backups belong to the cybexos-backup helper in the same way, and
+        // keyboard shortcuts to the Keybindings draft and its Apply bar.
         if (["ModulesPage", "PluginWidgetSettings", "SoundPage", "NetworkPage", "DisplaysPage", "AccountsPage", "IpSettings", "KeyboardPage", "TouchpadPage", "RegionPage", "BackupPage",
-            "SecurityPage", "ApplicationsPage", "StoragePage"]
+            "SecurityPage", "ApplicationsPage", "StoragePage", "ShortcutsPage", "ShortcutCustomForm"]
                 .some(name => block.at.startsWith(`Settings/${name}.qml:`))) {
             assert.match(text, /on(?:Toggled|Picked|Moved|Committed):/, `${block.at}: missing write handler`);
             continue;
