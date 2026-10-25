@@ -490,7 +490,10 @@ They are deleted. `browse`, `list`, `set` and `status` stay.
   embeds (the dev shell's `lua`). Lua 5.4 accepted an assignment to a `for`
   loop variable that 5.5 rejects at compile time; only the installed
   qualification caught it. `tests/quickshell/hyprland-lua.test.cjs` checks
-  the version and compiles every Hyprland and fixture Lua file.
+  the version and compiles every Hyprland and fixture Lua file. Hyprland
+  also reaps child processes before Lua collects their status, so
+  `os.execute` and `pclose` return ECHILD even on success; check a helper's
+  printed output instead, as the state writer and `workspace_state.lua` do.
   `tests/run` and the QML lint must pass. Real-engine checks run the actual
   shell under a private headless Sway, as `tests/assistant-overlay.py` does.
   `tests/welcome-guide.py`, `tests/wallpaper-picker.py` and

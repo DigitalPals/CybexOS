@@ -70,6 +70,24 @@ for _, v in ipairs(vectors.cases) do
   end
 end`);
 });
+test('the state is published although Hyprland reaps children before Lua collects their status', () => {
+    // Under Hyprland 0.56.2, os.execute and pclose return nil,"No child
+    // processes",ECHILD even when the command succeeded.
+    const {state, leftovers} = run(`local reaped = function() return nil, "No child processes", 10 end
+os.execute = reaped
+local popen = io.popen
+io.popen = function(...)
+  local pipe = popen(...)
+  return pipe and setmetatable({}, {__index = function(_, name)
+    if name == "close" then return function() pipe:close(); return reaped() end end
+    return function(_, ...) return pipe[name](pipe, ...) end
+  end})
+end
+require('bindings'); require('keybinding_preferences')`, '', {v: 1, actions: {'apps.browser': {keys: ['SUPER + ALT + B']}}});
+    assert.equal(state.error, null);
+    assert.deepEqual(state.actions.find(row => row.id === 'apps.browser').keys, ['SUPER + ALT + B']);
+    assert.deepEqual(leftovers, []);
+});
 test('invalid, duplicate-key and oversized data keep defaults and publish the reason', () => {
     for (const raw of ['{"v":1,"v":1}', '{"v":2}', '{"v":1,"custom":{}}', ' '.repeat(65537), Buffer.from([0xff]),
         '{"v":1,"actions":{"apps.browser":{"keys":["SUPER + B; os.execute(\'false\')"]}}}']) {

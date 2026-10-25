@@ -80,12 +80,16 @@ local function publish(state)
   encoder.array(state.actions); encoder.array(state.custom); encoder.array(state.diagnostics)
   local quote = function(value) return "'" .. value:gsub("'", "'\\''") .. "'" end
   local directory = runtime .. "/cybexos"
-  local created = os.execute("mkdir -p -m 700 -- " .. quote(directory))
-  assert(created == true or created == 0, "cannot create shortcut state directory")
-  local pipe = assert(io.popen("mktemp -- " .. quote(directory .. "/.keybindings-XXXXXX"), "r"))
+  -- Hyprland's SIGCHLD handler can reap a child before Lua collects its
+  -- status, so os.execute and pclose report nil,"No child processes",ECHILD
+  -- even on success (see workspace_state.lua). mktemp prints its path only
+  -- after mkdir succeeded; that path is the completion proof.
+  local prefix = directory .. "/.keybindings-"
+  local pipe = assert(io.popen("mkdir -p -m 700 -- " .. quote(directory) .. " && mktemp -- "
+    .. quote(prefix .. "XXXXXX"), "r"))
   local temporary = pipe:read("*l")
   pipe:close()
-  assert(temporary, "cannot create shortcut state file")
+  assert(temporary and temporary:sub(1, #prefix) == prefix, "cannot create shortcut state file")
   local ok, problem = pcall(function()
     local file = assert(io.open(temporary, "wb"))
     local written, reason = file:write(encoder.encode(state) .. "\n")
