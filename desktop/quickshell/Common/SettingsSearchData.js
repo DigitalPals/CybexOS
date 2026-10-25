@@ -10,6 +10,7 @@
 // against SettingsHelpers' schema under Node.
 
 var ROWS = [
+    { page: "about", pageLabel: "About", group: "Welcome guide", label: "Welcome guide", key: "", terms: "welcome setup tour getting started onboarding" },
     { page: "applications", pageLabel: "Applications", group: "Default applications", label: "Web browser", key: "", anchor: "applications-browser", terms: "default browser firefox brave links web http" },
     { page: "applications", pageLabel: "Applications", group: "Default applications", label: "Terminal", key: "", anchor: "applications-terminal", terms: "default terminal kitty ghostty foot alacritty" },
     { page: "applications", pageLabel: "Applications", group: "Default applications", label: "Text editor", key: "", anchor: "applications-editor", terms: "default editor text nvim code" },

@@ -298,7 +298,7 @@ hl.window_rule({ match = { title = [[^Cybex OS Settings$]] }, float = true, cent
 -- Keep the roomy welcome proportions, but cap them to the logical monitor
 -- work area so scaled or short displays can reach its scrolling content.
 -- Qt also bounds its initial request by QScreen.availableGeometry.
-hl.window_rule({ match = { class = [[^cybex$]], title = [[^Welcome to Cybex OS$]] }, float = true, center = true, size = "min(monitor_w-32,max(760,monitor_w*0.5)) min(monitor_h-64,max(660,monitor_h*0.48))" })
+hl.window_rule({ match = { title = [[^Welcome to Cybex OS$]] }, float = true, center = true, size = "min(monitor_w-32,max(1080,monitor_w*0.5)) min(monitor_h-64,max(800,monitor_h*0.48))" })
 hl.window_rule({ match = { class = [[xdg-desktop-portal-gtk]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Properties]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Open.*]] }, float = true })

@@ -13,7 +13,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
-const { allKeys, catalogBlocks } = require(path.join(root, "tests/quickshell/i18n-keys.cjs"));
+const { allKeys } = require(path.join(root, "tests/quickshell/i18n-keys.cjs"));
 const catalogDir = path.join(root, "desktop/quickshell/Common/i18n");
 
 function catalogPath(language) {
@@ -32,16 +32,7 @@ function readCatalog(language) {
 
 function writeCatalog(language, messages) {
     const keys = Object.keys(messages).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-    const file = catalogPath(language);
-    const blocks = fs.existsSync(file) ? catalogBlocks(fs.readFileSync(file, "utf8")) : [];
-    const grouped = new Set(blocks.flatMap(block => block.keys));
-    const entry = key => `    ${JSON.stringify(key)}: ${JSON.stringify(messages[key])}`;
-    const sections = blocks.map(block => {
-        const members = keys.filter(key => block.keys.includes(key));
-        return members.length ? `    // i18n-block: ${block.id}\n` + members.map(entry).join(",\n")
-            + `,\n    // i18n-end: ${block.id}\n` : "";
-    }).join("");
-    const body = sections + keys.filter(key => !grouped.has(key)).map(entry).join(",\n");
+    const body = keys.map(key => `    ${JSON.stringify(key)}: ${JSON.stringify(messages[key])}`).join(",\n");
     fs.writeFileSync(catalogPath(language),
         `// ${language} translations of the shell's English text, keyed by that text.\n`
         + "// Maintained with scripts/i18n-catalog; see docs/shell-translations.md.\n"

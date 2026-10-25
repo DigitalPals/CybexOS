@@ -100,13 +100,6 @@ function dataKeys() {
     return keys;
 }
 
-// Named blocks let parallel feature streams keep their translations together
-// without losing generated sorting or dropping them on the next merge.
-function catalogBlocks(source) {
-    return [...source.matchAll(/    \/\/ i18n-block: ([a-z0-9-]+)\n([\s\S]*?)    \/\/ i18n-end: \1/g)]
-        .map(match => ({ id: match[1], keys: [...match[2].matchAll(/^    ("(?:[^"\\]|\\.)*"): /gm)]
-            .map(entry => JSON.parse(entry[1])) }));
-}
 
 function allKeys() {
     const keys = new Set(literalKeys().keys());
@@ -115,7 +108,7 @@ function allKeys() {
     return keys;
 }
 
-module.exports = { qmlFiles, literalKeys, dataKeys, allKeys, catalogBlocks };
+module.exports = { qmlFiles, literalKeys, dataKeys, allKeys };
 
 if (require.main === module)
     process.stdout.write(JSON.stringify([...allKeys()].sort(), null, 1) + "\n");

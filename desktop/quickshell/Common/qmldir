@@ -118,3 +118,4 @@ singleton Software Software.qml
 singleton Maintenance Maintenance.qml
 singleton Keybindings Keybindings.qml
 KeybindEditor 1.0 KeybindEditor.js
+singleton Welcome Welcome.qml

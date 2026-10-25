@@ -382,6 +382,10 @@ test("no surface paints an accent field where a chip belongs", () => {
         "Popovers/UpdatesPopover.qml",
         // the current day, which is the calendar's workspace pill
         "Popovers/CalendarPopover.qml",
+        // The approved welcome rail and practice list identify the current
+        // step/task with an accent tint rather than a settings-value chip.
+        "Welcome/WelcomeView.qml",
+        "Welcome/KeysStep.qml",
         // T3 and GitHub carry their own reviewed treatment
         "Popovers/T3Composer.qml",
         "Popovers/T3ThreadPage.qml",

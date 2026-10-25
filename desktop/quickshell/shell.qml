@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
@@ -14,6 +15,15 @@ import "Common/DockHelpers.js" as DockHelpers
 
 ShellRoot {
     id: shell
+
+    WelcomeWindow {}
+    IpcHandler {
+        target: "welcome"
+        function open(step: string): string { return Welcome.show(step); }
+        function close(): void { Welcome.dismiss(); }
+        function status(): string { return Welcome.status(); }
+        function reset(): void { Welcome.reset(); }
+    }
 
     SettingsWindow {}
     SoftwareWindow {}
@@ -309,7 +319,17 @@ ShellRoot {
             WlrLayershell.layer: WlrLayer.Background
             WlrLayershell.namespace: "qs-wallpaper"
 
+            // The frame signal is emitted after rendering, including the
+            // solid fallback when a wallpaper is absent or cannot decode.
+            Connections {
+                target: wallpaperImage.Window.window
+                enabled: !Welcome.wallpaperDrawn
+                function onFrameSwapped() {
+                    if (wallpaperImage.status !== Image.Loading) Welcome.wallpaperReady();
+                }
+            }
             Image {
+                id: wallpaperImage
                 anchors.fill: parent
                 source: Wallpaper.current !== "" ? Wallpaper.url(Wallpaper.current) : ""
                 fillMode: Image.PreserveAspectCrop

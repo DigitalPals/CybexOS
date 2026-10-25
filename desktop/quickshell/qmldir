@@ -19,3 +19,4 @@ DockWindow DockWindow.qml
 WebcamOverlay WebcamOverlay.qml
 SoftwareWindow SoftwareWindow.qml
 AssistantWindow AssistantWindow.qml
+WelcomeWindow WelcomeWindow.qml
