@@ -17,8 +17,20 @@ FloatingWindow {
     // A crashed shell loses its window (and pin); a QML reload/new mapping is
     // reconciled too, including the saved step having moved away from practice.
     property bool pinned: false
+    property bool pinQueued: false
     function syncPin() {
-        if (Welcome.hasHyprland && !pinRequest.running) pinRequest.running = true;
+        if (!Welcome.hasHyprland) return;
+        // A read already in flight may predate this change; read again after it.
+        if (pinRequest.running) pinQueued = true;
+        else pinRequest.running = true;
+    }
+    // Hyprland announces the window mapping and every pin change, so the pin is
+    // reconciled from those events (and openChanged/practicingChanged) rather
+    // than by polling the client list.
+    function handleHyprlandEvent(event) {
+        if (!Welcome.open) return;
+        if (event.name === "pin" || (event.name === "openwindow" && String(event.data).indexOf(window.title) >= 0))
+            syncPin();
     }
     Connections {
         target: Welcome
@@ -37,10 +49,14 @@ FloatingWindow {
         }
         function onPracticingChanged() { window.syncPin(); }
     }
-    Timer { interval: 350; repeat: true; running: Welcome.open && Welcome.hasHyprland; onTriggered: window.syncPin() }
+    Connections {
+        target: Hyprland
+        function onRawEvent(event) { window.handleHyprlandEvent(event); }
+    }
     CommandRequest {
         id: pinRequest
         command: ["hyprctl", "clients", "-j"]
+        onAvailable: { if (window.pinQueued) { window.pinQueued = false; window.syncPin(); } }
         onCompleted: (code, body, error) => {
             if (code !== 0) return;
             try {
