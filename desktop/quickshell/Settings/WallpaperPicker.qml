@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "../Common"
+import "../Common/WallpaperNames.js" as WallpaperNames
 
 // Public embedding API is documented in docs/wallpapers.md. No SettingsPage
 // ancestor is needed; the parent supplies width and height and handles Escape.
@@ -23,7 +24,7 @@ Item {
 
     function localItems(paths, bundled) {
         return paths.map(path => ({ path: path, fileName: Wallpaper.basename(path),
-            label: Wallpaper.basename(path).replace(/\.[^.]+$/, "").replace(/-/g, " "),
+            label: WallpaperNames.label(Wallpaper.basename(path), bundled),
             width: bundled ? 2560 : 0, height: bundled ? 1440 : 0, size: 0, colors: [] }));
     }
     function chooseLocal(item) {

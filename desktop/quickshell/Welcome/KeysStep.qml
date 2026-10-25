@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
 import "../Common/WelcomeHelpers.js" as Helpers
-import "../Settings" as SettingsUi
 Column {
     id: root
     spacing: Theme.scaled(20)
@@ -85,22 +84,55 @@ Column {
                 }
             }
         }
+        // Rows like the guide's step rail: a numbered circle that becomes a
+        // tick once the shell saw the task done, the chosen task lit.
         Column {
             id: taskList
-            width: root.stacked ? parent.width : Theme.scaled(210); spacing: Theme.scaled(12)
+            width: root.stacked ? parent.width : Theme.scaled(220); spacing: Theme.scaled(6)
             Repeater {
                 model: root.tasks
-                delegate: SettingsUi.SettingsAction {
+                delegate: Rectangle {
                     id: task
                     required property var modelData
+                    required property int index
+                    readonly property bool current: root.current.id === modelData.id
+                    readonly property bool done: !!Welcome.practice[modelData.id]
                     width: taskList.width
-                    height: Theme.scaled(48)
-                    text: modelData.title
-                    glyph: Welcome.practice[modelData.id] ? "check" : "circle"
-                    color: root.current.id === modelData.id ? Theme.accentBg : "transparent"
-                    Accessible.name: I18n.format("%1: %2", [modelData.title,
-                        Welcome.practice[modelData.id] ? I18n.tr("Done") : I18n.tr("Not tried yet")])
-                    onTriggered: root.selected = modelData.id
+                    height: Math.max(Theme.scaled(44), taskTitle.implicitHeight + Theme.scaled(16))
+                    radius: Theme.chipRadius
+                    color: current ? Theme.accentBg : activeFocus || taskMouse.containsMouse ? Theme.hoverFill : "transparent"
+                    border.width: activeFocus ? 1 : 0; border.color: Theme.accentText
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.Button
+                    Accessible.name: I18n.format("%1: %2", [modelData.title, done ? I18n.tr("Done") : I18n.tr("Not tried yet")])
+                    Accessible.selected: current
+                    Accessible.onPressAction: root.selected = modelData.id
+                    Keys.onPressed: event => {
+                        if ([Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space].includes(event.key)) {
+                            root.selected = task.modelData.id; event.accepted = true;
+                        }
+                    }
+                    Rectangle {
+                        id: taskMark
+                        x: Theme.controlSpacing; anchors.verticalCenter: parent.verticalCenter
+                        width: Theme.scaled(24); height: width; radius: width / 2
+                        color: task.current && !task.done ? Theme.accent : "transparent"
+                        border.width: task.current || task.done ? 0 : 1; border.color: Theme.stroke
+                        GuideText {
+                            anchors.centerIn: parent; visible: !task.done; text: String(task.index + 1)
+                            font.pixelSize: Theme.typography.secondary; color: task.current ? Theme.textOnAccent : Theme.textMid
+                        }
+                        Sym { anchors.centerIn: parent; visible: task.done; name: "check"; size: Theme.iconMedium; color: Theme.connected }
+                    }
+                    GuideText {
+                        id: taskTitle
+                        anchors.left: taskMark.right; anchors.leftMargin: Theme.controlSpacing
+                        anchors.right: parent.right; anchors.rightMargin: Theme.controlSpacing
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: task.modelData.title; font.pixelSize: Theme.typography.secondary
+                        color: task.current ? Theme.accentText : Theme.textMid
+                    }
+                    MouseArea { id: taskMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.selected = task.modelData.id }
                 }
             }
         }

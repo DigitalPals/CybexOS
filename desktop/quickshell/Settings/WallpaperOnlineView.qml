@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
-import "../Common/WallhavenHelpers.js" as WallhavenHelpers
 
 // Filters and listing only; WallpaperPicker places the shared preview beside
 // this view. No timer, scrolling edge or text edit can start a search.
@@ -63,11 +62,23 @@ Item {
             padH: 8
             onPicked: value => { OnlineWallpapers.query = value; OnlineWallpapers.search(); }
         }
-        Row {
+        // Sort, category, size and colour: one row when there is room,
+        // two by two in a narrow picker (the welcome guide's minimum size).
+        Grid {
+            id: selects
             width: parent.width
+            // Four across only when every control shows its longest choice;
+            // the spare width is shared out. Otherwise two equal columns.
+            readonly property real natural: sortSelect.implicitWidth + categorySelect.implicitWidth
+                + sizeSelect.implicitWidth + colourFilter.implicitWidth + spacing * 3
+            readonly property real spare: Math.floor((width - natural) / 4)
+            columns: natural <= width ? 4 : 2
             spacing: 6
+            readonly property real cell: Math.floor((width - spacing) / 2)
+            function widthFor(item) { return columns === 4 ? item.implicitWidth + spare : cell; }
             SettingsSelect {
-                width: Math.floor((parent.width - 12) / 3)
+                id: sortSelect
+                width: selects.widthFor(sortSelect)
                 Accessible.name: I18n.tr("Sort wallpapers")
                 model: [
                     { value: "popular", label: I18n.tr("Popular") },
@@ -79,7 +90,8 @@ Item {
                 onPicked: value => { OnlineWallpapers.sort = value; root.runSearch(); }
             }
             SettingsSelect {
-                width: Math.floor((parent.width - 12) / 3)
+                id: categorySelect
+                width: selects.widthFor(categorySelect)
                 Accessible.name: I18n.tr("Wallpaper category")
                 model: [
                     { value: "general", label: I18n.tr("General") },
@@ -90,7 +102,8 @@ Item {
                 onPicked: value => { OnlineWallpapers.category = value; root.runSearch(); }
             }
             SettingsSelect {
-                width: Math.floor((parent.width - 12) / 3)
+                id: sizeSelect
+                width: selects.widthFor(sizeSelect)
                 Accessible.name: I18n.tr("Wallpaper size")
                 model: [
                     { value: "fit", label: I18n.tr("Fits my displays") },
@@ -99,46 +112,12 @@ Item {
                 current: OnlineWallpapers.size
                 onPicked: value => { OnlineWallpapers.size = value; root.runSearch(); }
             }
-        }
-        Flow {
-            width: parent.width
-            spacing: 4
-            SettingsAction {
-                compact: true
-                glyph: "close"
-                text: I18n.tr("Any colour")
-                onTriggered: { OnlineWallpapers.color = ""; root.runSearch(); }
-            }
-            Repeater {
-                model: WallhavenHelpers.COLORS
-                Rectangle {
-                    id: swatch
-                    required property string modelData
-                    width: 19; height: 19; radius: 5
-                    color: "#" + modelData
-                    border.width: activeFocus || OnlineWallpapers.color === modelData ? 2 : 1
-                    border.color: activeFocus ? Theme.accent : Theme.textMid
-                    activeFocusOnTab: true
-                    Accessible.role: Accessible.RadioButton
-                    Accessible.name: I18n.format("Filter by colour %1", [modelData])
-                    Accessible.checked: OnlineWallpapers.color === modelData
-                    function activate() { OnlineWallpapers.color = modelData; root.runSearch(); }
-                    Accessible.onPressAction: activate()
-                    Keys.onPressed: event => {
-                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
-                            activate(); event.accepted = true;
-                        } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down) {
-                            nextItemInFocusChain(true).forceActiveFocus(); event.accepted = true;
-                        } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Up) {
-                            nextItemInFocusChain(false).forceActiveFocus(); event.accepted = true;
-                        }
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: { swatch.forceActiveFocus(); swatch.activate(); }
-                    }
-                }
+            WallpaperColourFilter {
+                id: colourFilter
+                objectName: "wallhavenColour"
+                width: selects.widthFor(colourFilter)
+                current: OnlineWallpapers.color
+                onPicked: value => { OnlineWallpapers.color = value; root.runSearch(); }
             }
         }
     }

@@ -173,6 +173,8 @@ Item {
             }
         }
     }
+    // The full label, or "Apply" where a narrow panel, a long translation or
+    // large text would push it past the button's edges.
     SettingsAction {
         id: useButton
         anchors.left: parent.left
@@ -180,7 +182,16 @@ Item {
         anchors.bottom: parent.bottom
         primary: true
         enabled: root.item !== null && !root.busy
-        text: root.busy ? I18n.format("Downloading %1%", [root.progress]) : I18n.tr("Use this wallpaper")
+        text: root.busy ? I18n.format("Downloading %1%", [root.progress])
+            : useLabel.advanceWidth + 24 <= width ? useLabel.text : I18n.tr("Apply")
+        Accessible.name: root.busy ? text : useLabel.text
         onTriggered: root.useRequested()
+    }
+    TextMetrics {
+        id: useLabel
+        text: I18n.tr("Use this wallpaper")
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.typography.control
+        font.weight: Theme.weightSemibold
     }
 }

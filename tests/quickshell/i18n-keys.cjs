@@ -68,6 +68,11 @@ function dataKeys() {
     }
     add("Action");
     add("Custom");
+    // I18n.localeName() translates locale names and joins them itself.
+    const locales = load("LocaleNames.js");
+    for (const value of Object.values(locales.LANGUAGES).concat(Object.values(locales.TERRITORIES)))
+        add(value);
+    keys.add("%1 (%2)");
     const settings = fs.readFileSync(path.join(shellDir, "Common/Settings.qml"), "utf8");
     for (const match of settings.matchAll(/\{ id: "[a-z]+", group: "([^"]+)"/g))
         add(match[1]);

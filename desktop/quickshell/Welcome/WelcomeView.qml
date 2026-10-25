@@ -139,22 +139,61 @@ Rectangle {
                 // The same items stay on the finish step when the rail is short.
                 visible: rail.stepsHeight + railColumn.spacing + implicitHeight
                     + footnote.implicitHeight + Theme.scaled(16) <= rail.height
-                GuideText { width: parent.width; text: I18n.tr("Optional · any time").toUpperCase(); tone: "muted"; font.pixelSize: Theme.typography.metadata; font.letterSpacing: 0.8 }
+                GuideText { width: parent.width; leftPadding: Theme.controlSpacing; text: I18n.tr("Optional · any time").toUpperCase(); tone: "muted"; font.pixelSize: Theme.typography.metadata; font.letterSpacing: 0.8 }
+                // Rows like the steps above: the same inset and type, with
+                // the item's own glyph (a tick once its real state is done)
+                // in the step number's column.
                 Repeater {
                     model: Welcome.checklist
-                    delegate: SettingsUi.SettingsAction {
+                    delegate: Rectangle {
                         id: optional
                         required property var modelData
-                        text: root.optionalLabels[modelData.id] || modelData.id
-                        width: parent.width
-                        glyph: modelData.done === true ? "check" : ""
-                        onTriggered: {
+                        readonly property bool done: modelData.done === true
+                        readonly property string label: root.optionalLabels[modelData.id] || modelData.id
+                        // Denser than the steps: secondary, and the rail is short.
+                        width: parent.width; height: Math.max(Theme.settingsControlHeight, optionalText.implicitHeight + Theme.scaled(8))
+                        radius: Theme.chipRadius
+                        color: activeFocus || optionalMouse.containsMouse ? Theme.hoverFill : "transparent"
+                        border.width: activeFocus ? 1 : 0; border.color: Theme.accentText
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: optional.done ? I18n.format("%1: %2", [optional.label, I18n.tr("Done")]) : optional.label
+                        Accessible.onPressAction: optional.open()
+                        function open() {
                             Welcome.go("finish");
                             Qt.callLater(() => {
                                 const finish = content.item as FinishStep;
                                 if (finish) scroller.contentY = Math.max(0, Math.min(scroller.contentHeight - scroller.height, finish.itemY(optional.modelData.id)));
                             });
                         }
+                        Keys.onPressed: event => {
+                            if ([Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space].includes(event.key)) {
+                                optional.open(); event.accepted = true;
+                            }
+                        }
+                        Row {
+                            anchors.verticalCenter: parent.verticalCenter; x: Theme.controlSpacing; spacing: Theme.controlSpacing
+                            width: parent.width - x
+                            Item {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: Theme.scaled(24); height: Theme.iconSmall
+                                Sym {
+                                    anchors.centerIn: parent
+                                    name: optional.done ? "check" : ({webapps: "web", assistant: "assistant", fingerprint: "passkey",
+                                        security: "key", backup: "archive", accounts: "account_circle"})[optional.modelData.id] || "circle"
+                                    size: Theme.iconSmall
+                                    color: optional.done ? Theme.connected : Theme.textFaint
+                                }
+                            }
+                            GuideText {
+                                id: optionalText
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - Theme.scaled(24) - parent.spacing
+                                text: optional.label; font.pixelSize: Theme.typography.secondary; color: Theme.textMid
+                                maximumLineCount: 2; elide: Text.ElideRight
+                            }
+                        }
+                        MouseArea { id: optionalMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: optional.open() }
                     }
                 }
             }

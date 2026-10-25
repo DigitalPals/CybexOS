@@ -187,7 +187,16 @@ Column {
                             size: Theme.iconSmall
                             color: keyCap.modelData.free ? Theme.accentText : Theme.textFaint
                         }
+                        // Two lines at word boundaries; one elided line when a
+                        // word alone is wider than the key (a narrow map, a
+                        // long translation), so it never runs into the next.
+                        TextMetrics {
+                            id: longestWord
+                            font: keyLabel.font
+                            text: keyLabel.text.split(/\s+/).reduce((longest, word) => word.length > longest.length ? word : longest, "")
+                        }
                         Text {
+                            id: keyLabel
                             x: Theme.scaled(5)
                             anchors.bottom: parent.bottom
                             anchors.bottomMargin: Theme.scaled(3)
@@ -195,8 +204,8 @@ Column {
                             visible: !keyCap.modelData.free
                             text: keyCap.modelData.reservedBy ? I18n.tr(keyCap.modelData.reservedBy.label)
                                 : root.label(keyCap.modelData.owner)
-                            wrapMode: Text.WordWrap
-                            maximumLineCount: 2
+                            wrapMode: longestWord.advanceWidth <= width ? Text.WordWrap : Text.NoWrap
+                            maximumLineCount: wrapMode === Text.NoWrap ? 1 : 2
                             elide: Text.ElideRight
                             lineHeight: 0.9
                             font.family: Theme.fontMenu

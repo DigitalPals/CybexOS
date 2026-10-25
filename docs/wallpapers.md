@@ -6,6 +6,12 @@ Selecting a tile previews it. **Use this wallpaper** applies the selection.
 Arrow keys move around the grid, Enter selects, Tab reaches the filters and
 preview actions, and Escape returns to the containing window.
 
+Tiles show the image's size, or its name where the size is not known; a
+badge that does not fit a small tile is left out rather than cut short. The
+collection's images are named as titles (*Moon Mountains*); your own pictures
+are named after their files, with dashes and underscores read as spaces. File
+names never change.
+
 The collection contains seven original procedural landscapes under the
 repository's MIT licence; `assets/PROVENANCE.json` records their origin. A
 fresh desktop shows `moon-mountains.png` without saving a wallpaper preference
@@ -26,7 +32,10 @@ that folder; it does not scan unrelated picture directories.
 
 The picker always requests safe-for-work images and rejects results not
 marked SFW. It offers topic chips, sort/category/display-size filters, the
-29 search colours documented by Wallhaven, and **More like this**. The last
+29 search colours documented by Wallhaven, and **More like this**. The colours
+sit behind one compact **Any colour** control beside the other filters; it
+opens a grid of swatches (arrow keys move, Enter picks, Escape closes). The
+four filters share one row when their labels fit and form two rows otherwise. The last
 option searches similar tags with `like:ID`. SFW classification is provided
 by Wallhaven, rather than a guarantee about the image's content.
 
@@ -69,7 +78,8 @@ an explicit width and height (or `anchors.fill: parent`). It has no dependency
 on a `SettingsPage` ancestor. Its implicit size is **740 × 430** logical pixels;
 allow at least **600 × 400**, and preferably **740 × 430**, for the online
 filters and three-column gallery. Large text may wrap filters and metadata;
-the preview scrolls while the primary action remains visible.
+the preview scrolls while the primary action remains visible, and reads
+**Apply** when **Use this wallpaper** would not fit.
 
 ```qml
 import "../Settings" as SettingsUi

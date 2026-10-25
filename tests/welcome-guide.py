@@ -289,6 +289,14 @@ class Session:
         subprocess.run(['grim', str(path)], env=self.env, check=True, timeout=15)
         return path
 
+    def capture_guide(self, directory, name, settle=1.0):
+        """A screenshot cropped to the guide window, for reviewing its layout."""
+        from PIL import Image
+        path = self.capture(directory, name, settle)
+        rect = self.guide_rect()
+        Image.open(path).crop((rect['x'], rect['y'], rect['x'] + rect['width'], rect['y'] + rect['height'])).save(path)
+        return path
+
     @property
     def state_path(self):
         return self.home / '.local/state/cybexos/welcome.json'
@@ -512,12 +520,21 @@ def main():
             session.stop_process(session.shell)
             session.patch_settings(textScale='default', interfaceDensity='default')
 
-            session.env['CYBEXOS_LANG'] = 'nl'
-            session.start_shell('qs-dutch.log')
+            # The whole guide in English and Dutch, at the default and the
+            # minimum size, cropped to the window for layout review.
+            for language in ('en', 'nl'):
+                session.env['CYBEXOS_LANG'] = language
+                session.start_shell(f'qs-tour-{language}.log')
+                for size, (width, height) in (('normal', (1080, 800)), ('minimum', (640, 480))):
+                    for step in ('hello', 'wallpaper', 'style', 'keys', 'shortcuts', 'finish'):
+                        assert session.ipc('open', step) == 'ok'
+                        session.wait(lambda: session.state().get('step') == step and session.guide_rect(), step)
+                        session.sway(f'[title="{TITLE}"] resize set {width} {height}')
+                        session.wait(lambda: (r := session.guide_rect()) and (r['width'], r['height']) == (width, height),
+                                     f'{size} guide')
+                        session.capture_guide(shots, f'tour-{language}-{size}-{step}.png')
             session.ipc('open', 'hello')
             session.capture(shots, 'welcome-hello-nl.png')
-            session.ipc('open', 'keys')
-            session.capture(shots, 'welcome-keys-nl.png')
             session.ipc('close')
             session.wait(lambda: json.loads(session.state_path.read_text())['status'] == 'dismissed', 'saved Dutch dismissal')
             session.stop_process(session.shell)

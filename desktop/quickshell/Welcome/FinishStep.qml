@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
+import "../Common/WallpaperNames.js" as WallpaperNames
 import "../Settings" as SettingsUi
 Column {
     id: root
@@ -26,7 +27,7 @@ Column {
             accounts: I18n.tr("Connect your calendars and online accounts.")};
         return details[id] || "";
     }
-    Component.onCompleted: { Welcome.refreshWebapps(); Backup.refresh(); }
+    Component.onCompleted: { Welcome.refreshWebapps(); Backup.refresh(); if (!Themes.loaded) Themes.refresh(); }
     Claim { active: root.visible; onClaimed: SystemSettings.security.acquire(); onReleased: SystemSettings.security.release() }
     Claim { active: root.visible; onClaimed: SystemSettings.accounts.acquire(); onReleased: SystemSettings.accounts.release() }
     Rectangle {
@@ -34,13 +35,37 @@ Column {
         Column {
             id: summary; x: Theme.scaled(16); y: Theme.scaled(16); width: parent.width - x * 2; spacing: Theme.controlSpacing
             GuideText { text: I18n.tr("A space that feels like you."); font.pixelSize: Theme.typography.title; font.weight: Theme.weightSemibold }
-            GuideText {
-                width: parent.width; tone: "muted"
-                text: I18n.format("%1 mode · %2 accent · %3 text", [Settings.themeMode === "light" ? I18n.tr("Light") : I18n.tr("Dark"),
-                    Settings.paletteMode === "wallpaper" ? I18n.tr("Wallpaper") : Settings.accent,
-                    Settings.textScale === "default" ? I18n.tr("Default") : Settings.textScale === "large" ? I18n.tr("Large") : I18n.tr("Larger")])
+            // Mode · a swatch of the accent in use, named by where it comes
+            // from · text size. A Flow, so a narrow guide wraps between parts.
+            Flow {
+                id: styleSummary
+                width: parent.width; spacing: Theme.controlSpacing
+                readonly property string accentName: Settings.paletteMode === "wallpaper" ? I18n.tr("Accent from your wallpaper")
+                    : Themes.current.value !== "" && !Themes.current.modified ? I18n.format("%1 accent", [Themes.current.label])
+                    : I18n.tr("Your own accent")
+                readonly property var parts: [Settings.themeMode === "light" ? I18n.tr("Light mode") : I18n.tr("Dark mode"),
+                    accentName, Settings.textScale === "default" ? I18n.tr("Default text size")
+                        : Settings.textScale === "large" ? I18n.tr("Large text") : I18n.tr("Larger text")]
+                Accessible.role: Accessible.StaticText
+                Accessible.name: parts.join(", ")
+                GuideText { text: styleSummary.parts[0]; tone: "muted" }
+                GuideText { text: "·"; tone: "muted" } // i18n: untranslated (separator)
+                Row {
+                    spacing: Theme.iconTextSpacing
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Theme.scaled(14); height: width; radius: width / 2
+                        color: Theme.accent; border.width: 1; border.color: Theme.stroke
+                    }
+                    GuideText { text: styleSummary.parts[1]; tone: "muted" }
+                }
+                GuideText { text: "·"; tone: "muted" } // i18n: untranslated (separator)
+                GuideText { text: styleSummary.parts[2]; tone: "muted" }
             }
-            GuideText { width: parent.width; text: Settings.wall ? I18n.format("Wallpaper: %1", [Settings.wall]) : I18n.tr("Your wallpaper is ready to choose."); tone: "muted"; elide: Text.ElideMiddle; maximumLineCount: 1 }
+            GuideText {
+                width: parent.width; tone: "muted"; elide: Text.ElideRight; maximumLineCount: 1
+                text: Settings.wall ? I18n.format("Wallpaper: %1", [WallpaperNames.label(Settings.wall, false)]) : I18n.tr("Your wallpaper is ready to choose.")
+            }
         }
     }
     GuideText { width: parent.width; text: I18n.tr("A few more things, whenever you are ready"); font.weight: Theme.weightSemibold }
@@ -53,20 +78,37 @@ Column {
             objectName: modelData.id
             width: root.width; spacing: Theme.controlSpacing
             Rectangle { width: parent.width; height: 1; color: Theme.stroke }
-            Row {
-                width: parent.width; spacing: Theme.controlSpacing
-                Sym { name: item.modelData.done === true ? "check" : "circle"; size: Theme.iconMedium; color: item.modelData.done === true ? Theme.connected : Theme.textFaint; anchors.verticalCenter: parent.verticalCenter }
-                GuideText { text: root.label(item.modelData.id); font.weight: Theme.weightSemibold; anchors.verticalCenter: parent.verticalCenter }
-                GuideText { visible: item.modelData.later; text: I18n.tr("Later"); tone: "muted"; anchors.verticalCenter: parent.verticalCenter }
-                SettingsUi.SettingsAction {
-                    text: I18n.tr("Open")
-                    Accessible.name: I18n.format("Open %1 settings", [root.label(item.modelData.id)])
-                    onTriggered: Settings.showPanel(item.modelData.page)
+            // The item and its state on the left, its actions at the right
+            // edge, as the Hello step's summary rows place Change.
+            Item {
+                width: parent.width; height: Math.max(itemHead.implicitHeight, itemActions.implicitHeight)
+                Row {
+                    id: itemHead
+                    anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - itemActions.width - Theme.controlSpacing; spacing: Theme.controlSpacing
+                    Sym { id: itemMark; name: item.modelData.done === true ? "check" : "circle"; size: Theme.iconMedium; color: item.modelData.done === true ? Theme.connected : Theme.textFaint; anchors.verticalCenter: parent.verticalCenter }
+                    GuideText {
+                        id: itemName
+                        width: Math.min(implicitWidth, itemHead.width - itemMark.width - itemHead.spacing - (laterTag.visible ? laterTag.width + itemHead.spacing : 0))
+                        text: root.label(item.modelData.id); font.weight: Theme.weightSemibold; anchors.verticalCenter: parent.verticalCenter
+                        maximumLineCount: 1; elide: Text.ElideRight
+                    }
+                    GuideText { id: laterTag; visible: item.modelData.later; text: I18n.tr("Later"); tone: "muted"; anchors.verticalCenter: parent.verticalCenter }
                 }
-                SettingsUi.SettingsAction {
-                    text: item.modelData.later ? I18n.tr("Show again") : I18n.tr("Later")
-                    Accessible.name: I18n.format("%1: %2", [root.label(item.modelData.id), text])
-                    onTriggered: Welcome.later(item.modelData.id, !item.modelData.later)
+                Row {
+                    id: itemActions
+                    anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.controlSpacing
+                    SettingsUi.SettingsAction {
+                        text: I18n.tr("Open")
+                        Accessible.name: I18n.format("Open %1 settings", [root.label(item.modelData.id)])
+                        onTriggered: Settings.showPanel(item.modelData.page)
+                    }
+                    SettingsUi.SettingsAction {
+                        text: item.modelData.later ? I18n.tr("Show again") : I18n.tr("Later")
+                        Accessible.name: I18n.format("%1: %2", [root.label(item.modelData.id), text])
+                        onTriggered: Welcome.later(item.modelData.id, !item.modelData.later)
+                    }
                 }
             }
             GuideText { width: parent.width; text: root.detail(item.modelData.id); tone: "muted"; font.pixelSize: Theme.typography.secondary }
@@ -75,20 +117,29 @@ Column {
                 GuideText { width: parent.width; visible: Welcome.webappsError !== ""; text: Welcome.webappsError; tone: "muted" }
                 Repeater {
                     model: item.modelData.id === "webapps" ? Welcome.webapps.filter(app => app.default) : []
-                    delegate: Row {
+                    delegate: Item {
                         id: app
                         required property var modelData
-                        width: item.width; spacing: Theme.controlSpacing
-                        GuideText { width: Theme.scaled(160); text: app.modelData.name; anchors.verticalCenter: parent.verticalCenter }
-                        SettingsUi.SettingsAction {
-                            text: I18n.tr("Keep"); enabled: !Welcome.webappsBusy
-                            Accessible.name: I18n.format("Keep %1", [app.modelData.name])
-                            onTriggered: { Welcome.later("webapps", false); keepNote.text = I18n.format("%1 is installed and ready to use.", [app.modelData.name]); }
+                        width: item.width; height: appActions.implicitHeight
+                        GuideText {
+                            x: Theme.iconMedium + Theme.controlSpacing; anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - x - appActions.width - Theme.controlSpacing
+                            text: app.modelData.name; maximumLineCount: 1; elide: Text.ElideRight
                         }
-                        SettingsUi.SettingsAction {
-                            text: I18n.tr("Remove"); enabled: !Welcome.webappsBusy
-                            Accessible.name: I18n.format("Remove %1", [app.modelData.name])
-                            onTriggered: Welcome.removeWebapp(app.modelData.id)
+                        Row {
+                            id: appActions
+                            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                            spacing: Theme.controlSpacing
+                            SettingsUi.SettingsAction {
+                                text: I18n.tr("Keep"); enabled: !Welcome.webappsBusy
+                                Accessible.name: I18n.format("Keep %1", [app.modelData.name])
+                                onTriggered: { Welcome.later("webapps", false); keepNote.text = I18n.format("%1 is installed and ready to use.", [app.modelData.name]); }
+                            }
+                            SettingsUi.SettingsAction {
+                                text: I18n.tr("Remove"); enabled: !Welcome.webappsBusy
+                                Accessible.name: I18n.format("Remove %1", [app.modelData.name])
+                                onTriggered: Welcome.removeWebapp(app.modelData.id)
+                            }
                         }
                     }
                 }

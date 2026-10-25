@@ -3,6 +3,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import "I18nHelpers.js" as I18nHelpers
+import "LocaleNames.js" as LocaleNames
 import "i18n/nl.js" as Nl
 
 // The shell's own text in the session's language. Settings → Region sets
@@ -25,5 +26,16 @@ Singleton {
     // tr() with positional %1…%9 arguments filled in after translation.
     function format(text: string, args: var): string {
         return I18nHelpers.format(root.catalog, text, args);
+    }
+
+    // A POSIX locale value by name in the session's language: "en_US.UTF-8"
+    // is "English (United States)", "Engels (Verenigde Staten)" in Dutch.
+    // An unknown language keeps the raw value.
+    function localeName(value: string): string {
+        const found = LocaleNames.names(value);
+        if (!found)
+            return value;
+        return found.territory ? root.format("%1 (%2)", [root.tr(found.language), root.tr(found.territory)])
+            : root.tr(found.language);
     }
 }
