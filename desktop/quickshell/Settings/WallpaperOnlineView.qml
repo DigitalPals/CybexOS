@@ -9,10 +9,13 @@ Item {
     id: root
     property bool automatic: false
     signal selected(var item)
-    Component.onCompleted: {
-        OnlineWallpapers.refreshMetered();
-        OnlineWallpapers.ensureLoaded(automatic);
+    // The metering probe runs only while this view is on screen.
+    Claim {
+        active: root.visible
+        onClaimed: OnlineWallpapers.watchMetering()
+        onReleased: OnlineWallpapers.unwatchMetering()
     }
+    Component.onCompleted: OnlineWallpapers.ensureLoaded(automatic)
     function runSearch() {
         OnlineWallpapers.query = queryField.text.trim();
         OnlineWallpapers.search();

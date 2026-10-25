@@ -94,11 +94,38 @@ Singleton {
     property bool meteredKnown: false
     property bool metered: true
     function autoLoadAllowed() { return meteredKnown && !metered; }
+    // Metering only matters while an online view is on screen. Views hold a
+    // watch (WallpaperOnlineView, through a Claim); without one, NetworkManager
+    // events cost nothing here.
+    property int meteringWatchers: 0
+    function watchMetering() {
+        meteringWatchers++;
+        if (meteringWatchers === 1)
+            refreshMetered();
+    }
+    function unwatchMetering() {
+        meteringWatchers = Math.max(0, meteringWatchers - 1);
+        if (meteringWatchers === 0)
+            meteredThrottle.stop();
+    }
+    // The last answer stays in force while a new probe runs; only the probe's
+    // own result (or its failure) changes it.
     function refreshMetered() {
-        meteredKnown = false;
-        metered = true;
         if (!meteredProc.running)
             meteredProc.running = true;
+    }
+    // At most one probe per throttle interval, however many events arrive.
+    function meteringEvent() {
+        if (meteringWatchers > 0 && !meteredThrottle.running)
+            meteredThrottle.start();
+    }
+    function meteredTick() {
+        if (meteringWatchers === 0)
+            return;
+        if (meteredProc.running)
+            meteredThrottle.restart();
+        else
+            refreshMetered();
     }
 
     function reserveRequest() {
@@ -227,9 +254,15 @@ Singleton {
             }
         }
     }
+    Timer {
+        id: meteredThrottle
+        interval: 4000
+        onTriggered: root.meteredTick()
+    }
     Connections {
         target: NetworkStatus
-        function onMonitorEvent(line) { root.refreshMetered(); }
+        enabled: root.meteringWatchers > 0
+        function onMonitorEvent(line) { root.meteringEvent(); }
     }
 
     function search() {
