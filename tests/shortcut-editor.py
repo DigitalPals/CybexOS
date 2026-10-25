@@ -435,7 +435,43 @@ def main():
             keyboard = start(['wtype', '-s', '400', '-k', 'Escape', '-s', '200'], 'welcome-escape.log')
             wait(lambda: welcome().get('shown') is False, 'Escape cancels the welcome recorder')
             keyboard.wait(timeout=5)
-            assert json.loads(ipc('welcome', 'status')).get('open') is True, 'Escape in the recorder must not dismiss the guide'
+            guide = lambda: json.loads(ipc('welcome', 'status'))
+            assert guide().get('open') is True, 'Escape in the recorder must not dismiss the guide'
+
+            def guide_keys(*keys, log):
+                # A fresh virtual keyboard can move Sway's seat focus.
+                subprocess.run(['swaymsg', '[title="Welcome to Cybex OS"]', 'focus'], env=env, check=True, capture_output=True)
+                process = start(['wtype', '-s', '400', *keys, '-s', '200'], log)
+                process.wait(timeout=10)
+
+            # Focus returns to where it was, so the guide's own keys work again
+            # at once: Ctrl+PageDown changes step after a cancel and after Replace.
+            assert guide().get('step') == 'shortcuts', guide()
+            guide_keys('-M', 'ctrl', '-k', 'Next', '-m', 'ctrl', log='welcome-after-cancel.log')
+            wait(lambda: guide().get('step') == 'finish', 'Ctrl+PageDown after cancelling the recorder')
+            assert ipc('welcome', 'open', 'shortcuts') == 'ok'
+            wait(lambda: guide().get('step') == 'shortcuts', 'shortcuts step again')
+            ipc('shortcut-test', 'welcomeEdit', 'apps.terminal')
+            subprocess.run(['swaymsg', '[title="Welcome to Cybex OS"]', 'focus'], env=env, check=True, capture_output=True)
+            wait(lambda: welcome().get('inhibiting'), 'welcome recorder listens again')
+            keyboard = start(['wtype', '-s', '500', '-k', 'F9', '-s', '600', '-k', 'Return', '-s', '300'], 'welcome-accept.log')
+            keyboard.wait(timeout=10)
+            wait(lambda: welcome().get('shown') is False and state().get('dirty'), 'F9 accepted in the welcome recorder')
+            assert state()['terminal']['keys'] == ['F9'], state()['terminal']
+            guide_keys('-M', 'ctrl', '-k', 'Prior', '-m', 'ctrl', log='welcome-after-accept.log')
+            wait(lambda: guide().get('step') == 'keys', 'Ctrl+PageUp after accepting in the recorder')
+            assert ipc('shortcut-test', 'discard') == 'true'
+            wait(lambda: not state().get('dirty'), 'welcome draft discarded')
+            assert ipc('welcome', 'open', 'shortcuts') == 'ok'
+            wait(lambda: guide().get('step') == 'shortcuts', 'shortcuts step for the last Escape')
+            ipc('shortcut-test', 'welcomeEdit', 'apps.terminal')
+            subprocess.run(['swaymsg', '[title="Welcome to Cybex OS"]', 'focus'], env=env, check=True, capture_output=True)
+            wait(lambda: welcome().get('inhibiting'), 'welcome recorder listens a third time')
+            guide_keys('-k', 'Escape', log='welcome-escape-1.log')
+            wait(lambda: welcome().get('shown') is False, 'Escape closes the recorder')
+            assert guide().get('open') is True
+            guide_keys('-k', 'Escape', log='welcome-escape-2.log')
+            wait(lambda: guide().get('open') is False, 'a second Escape dismisses the guide')
             ipc('welcome', 'close')
 
             # Without a layout map a Shift combination is recorded as code:N and

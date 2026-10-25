@@ -411,6 +411,8 @@ test('the editor UI is wired to the shared contract', () => {
     assert.match(page, /function handleEscape\(\): bool \{[\s\S]*?form\.opened[\s\S]*?form\.close\(\)/);
     assert.match(read('Settings/SettingsView.qml'), /pageLoader\.item as ShortcutsPage;[\s\S]*?shortcuts\.handleEscape\(\)/);
     assert.match(recorder, /Keybindings\.conflicts\(/);
+    assert.match(recorder, /shown = false;\s*restoreFocus\(\);/, 'closing the card returns focus to its opener');
+    assert.match(read('Welcome/ShortcutsStep.qml'), /fallbackFocus: root/);
     assert.match(recorder, /Keybindings\.setManyKeys\(changes\)/, 'Replace unbinds every holder in one edit');
     assert.doesNotMatch(recorder, /for \(const other of verdict\.replace\)/);
     assert.match(read('Common/Keybindings.qml'), /function setManyKeys\(changes\) \{ return edit\(\(\) => Model\.setManyKeys\(root\.model, changes\)\); \}/);

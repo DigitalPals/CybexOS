@@ -284,7 +284,14 @@ As built:
   unbind a hardware key; other holders are offered as Replace, which removes
   that key from all of them in one `setManyKeys` edit (a refused step leaves
   the draft as it was and the card open) before the host applies the new keys.
-  Uncertain holders only warn (see §6). The `ShortcutInhibitor` is enabled only while
+  Uncertain holders only warn (see §6). When the card closes, on cancel or
+  accept, focus returns to the item that had it when `start()` ran (an Edit
+  button, a map key, or the window's focus holder) and otherwise to the
+  host's `fallbackFocus` (the welcome step, whose key commands bubble up to
+  the guide); without that, hiding the card leaves the window with no focus
+  item and the guide's Return, Escape and Ctrl+PageUp/PageDown do nothing.
+  A host that sets focus itself (the Settings page's rows) does so afterwards.
+  The `ShortcutInhibitor` is enabled only while
   listening and is released when a combination completes, on cancel and
   accept, when the window deactivates (recording pauses), when the
   compositor cancels it, when the card hides and on destruction.

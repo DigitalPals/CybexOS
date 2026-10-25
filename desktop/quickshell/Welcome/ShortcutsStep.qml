@@ -183,6 +183,8 @@ Column {
         id: recorderComponent
         SettingsUi.ShortcutRecorder {
             objectName: "welcomeShortcutRecorder"
+            // Key commands bubble from the step up to the guide.
+            fallbackFocus: root
             onAccepted: (combo, mode) => root.recorded(combo, mode)
         }
     }

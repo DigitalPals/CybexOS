@@ -21,6 +21,11 @@ import "../Common/ShortcutEditor.js" as Helpers
 // "Replace", which unbinds that key from it in the draft first. A holder that only might share the physical key (`uncertain`) is a
 // warning: "Use anyway" keeps it bound.
 //
+// Closing the card returns focus to the item that had it when start() ran (the
+// Edit button, the map key, or the window's own focus holder), or to
+// `fallbackFocus` when that item is gone or hidden. A host that moves focus
+// itself does so afterwards and wins.
+//
 // A protected action's reserved defaults (`lockedKeys`) always stay bound.
 // They show as locked caps, and "Replace" replaces only the keys beyond them.
 FocusScope {
@@ -34,6 +39,9 @@ FocusScope {
     property bool allowAdd: true
     property string mode: "replace"
     property bool shown: false
+    // Where focus goes when the card closes. `opener` is set by start().
+    property Item opener: null
+    property Item fallbackFocus: null
     property bool listening: false
     property bool paused: false
     property string combo: ""
@@ -46,6 +54,10 @@ FocusScope {
     signal canceled()
 
     function start(id, label, keys, add, locked) {
+        if (!shown) {
+            const focused = root.Window.window ? root.Window.window.activeFocusItem : null;
+            opener = focused && !root.isAncestorOf(focused) ? focused : null;
+        }
         actionId = id || "";
         actionLabel = label || "";
         currentKeys = keys || [];
@@ -88,6 +100,27 @@ FocusScope {
         card.forceActiveFocus();
         listening = false;
         shown = false;
+        restoreFocus();
+    }
+    // Hiding the card leaves the window with no focus item, so Return, Escape
+    // and the guide's Ctrl+PageUp/PageDown would reach nothing.
+    function restoreFocus() {
+        const target = opener;
+        opener = null;
+        Qt.callLater(() => {
+            if (root.shown)
+                return;
+            const next = target && target.visible && target.enabled ? target : root.fallbackFocus;
+            if (next)
+                next.forceActiveFocus();
+        });
+    }
+    function isAncestorOf(item) {
+        for (let at = item; at; at = at.parent) {
+            if (at === root)
+                return true;
+        }
+        return false;
     }
     function cancel() {
         if (!shown)
