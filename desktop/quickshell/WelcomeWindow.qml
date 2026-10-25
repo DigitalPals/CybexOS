@@ -37,6 +37,13 @@ FloatingWindow {
         }
         function onPracticingChanged() { window.syncPin(); }
     }
+    // Live keycaps: the backend's process and 15-second refresh run only
+    // while the guide is shown; closing or destroying the window releases it.
+    Claim {
+        active: window.visible
+        onClaimed: Keybindings.acquire()
+        onReleased: Keybindings.release()
+    }
     Timer { interval: 350; repeat: true; running: Welcome.open && Welcome.hasHyprland; onTriggered: window.syncPin() }
     CommandRequest {
         id: pinRequest

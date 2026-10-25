@@ -63,6 +63,17 @@ function reduce(practice, tracker, event) {
     }
     return {practice: done, tracker: next};
 }
+// Keybindings action IDs for the workspace exercise: leave for a nearby
+// workspace, then return to the observed start. Unknown or unbound starts
+// (null, special or beyond 10) keep the default 2 → 1 pair, or show only the
+// way out when the start has no numbered shortcut.
+function workspaceActions(start) {
+    if (start === null || start === undefined) return ["workspaces.switch.2", "workspaces.switch.1"];
+    const home = Number(start);
+    const valid = Number.isInteger(home) && home >= 1 && home <= 10;
+    const away = valid && home === 2 ? 1 : 2;
+    return valid ? ["workspaces.switch." + away, "workspaces.switch." + home] : ["workspaces.switch." + away];
+}
 function checklist(facts, later) {
     // Web apps are choices, not a task with a correct answer. The security
     // backend can read registrations, but cannot cheaply detect a FIDO reader.
@@ -80,4 +91,4 @@ function firstName(passwd, username) {
     return (name || String(username || "")).split(/\s+/)[0];
 }
 if (typeof module !== "undefined" && module.exports)
-    module.exports = {STEPS, TASKS, ITEMS, initial, validate, parse, serialize, visit, resume, sequence, reduce, checklist, firstName};
+    module.exports = {STEPS, TASKS, ITEMS, initial, validate, parse, serialize, visit, resume, sequence, reduce, workspaceActions, checklist, firstName};

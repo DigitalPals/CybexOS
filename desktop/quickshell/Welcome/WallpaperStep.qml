@@ -1,8 +1,16 @@
 import QtQuick
+import "../Common"
 import "../Settings" as SettingsUi
 Item {
-    // INTEGRATION: stream D replaces this container's WallpaperPage with
-    // WallpaperPicker. The existing page embeds WallpaperOnlineView and the
-    // library without duplicating their models or starting an online request.
-    SettingsUi.WallpaperPage { anchors.fill: parent }
+    // The guide sizes this step to its viewport. Below this floor (only at
+    // the minimum window size with large text) the step scrolls instead of
+    // squeezing the picker; its grid and preview already scroll inside.
+    implicitHeight: Theme.scaled(240)
+    // Applying needs no progress of its own: Finish reads Settings.wall.
+    SettingsUi.WallpaperPicker {
+        anchors.fill: parent
+        embedded: true
+        automaticOnlineLoad: true
+        onEscapeRequested: Welcome.dismiss()
+    }
 }
