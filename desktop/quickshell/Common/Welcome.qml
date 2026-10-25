@@ -4,7 +4,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
 import "WelcomeHelpers.js" as Helpers
-import "KeybindHelpers.js" as KeybindHelpers
+import "KeybindEditor.js" as KeybindEditor
 
 Singleton {
     id: root
@@ -37,7 +37,6 @@ Singleton {
     readonly property var workspace: Hyprland.focusedMonitor && Hyprland.focusedMonitor.activeWorkspace
         ? Hyprland.focusedMonitor.activeWorkspace.id : null
     property var tracker: Helpers.sequence(null, [])
-    property var liveBinds: []
     property string firstName: Quickshell.env("USER") || ""
     readonly property var checklist: Helpers.checklist({
         assistantAvailable: Assistant.available, assistant: Assistant.agentReady,
@@ -118,16 +117,12 @@ Singleton {
         if (JSON.stringify(practice) !== JSON.stringify(result.practice))
             changed(Object.assign({}, document, {practice: result.practice}));
     }
-    // INTEGRATION: replace this one live-description adapter with
-    // Keybindings.keysFor(id), rendering its canonical strings as keycaps.
+    // Effective keys from Keybindings (defaults, keybindings.json and live
+    // user.lua changes), as keycap labels: [["Super", "Space"], ...]. An
+    // empty list means the action is unbound, or not loaded yet. Data is
+    // read only while WelcomeWindow holds its Keybindings claim.
     function keysFor(id) {
-        const descriptions = {"shell.launcher": "Shell: Launcher", "apps.terminal": "Apps: Terminal",
-            "windows.close": "Windows: Close window", "workspaces.switch.2": "Workspaces: Switch to workspace 2",
-            "workspaces.switch.1": "Workspaces: Switch to workspace 1", "windows.overview": "Windows: Overview",
-            "shell.shortcuts": "Shell: Keyboard shortcuts", "apps.browser": "Apps: Browser",
-            "apps.files": "Apps: Files", "shell.settings": "Shell: Cybex OS Settings"};
-        return liveBinds.filter(bind => bind.description === descriptions[id]).map(bind =>
-            KeybindHelpers.modifierNames(bind.modmask).concat([KeybindHelpers.keyName(bind.key, bind.keycode)]));
+        return Keybindings.keysFor(id).map(keys => KeybindEditor.display(keys)).filter(caps => caps.length > 0);
     }
     function refreshWebapps() { if (!webappList.running) webappList.running = true; }
     function removeWebapp(id) {
@@ -178,14 +173,10 @@ Singleton {
         else if (success) saveTimer.restart();
     }
     onPracticingChanged: {
-        if (practicing) {
-            tracker = Helpers.sequence(workspace, windows);
-            if (hasHyprland) bindsRequest.running = true;
-        }
+        if (practicing) tracker = Helpers.sequence(workspace, windows);
     }
     onWindowsChanged: observe({type: "windows", ids: windows})
     onWorkspaceChanged: observe({type: "workspace", id: workspace})
-    onStepChanged: { if (open && hasHyprland && !bindsRequest.running) bindsRequest.running = true; }
     Connections { target: Backup; function onStatusChanged() { root.backupRead = true; } }
     Connections { target: Settings; function onLoadedChanged() { root.maybeOpen(); } }
     Connections { target: Launcher; function onOpenChanged() { root.observe({type: "launcher", open: Launcher.open}); } }
@@ -215,13 +206,6 @@ Singleton {
             root.protectedFile = false;
             root.error = root.persistedText = "";
             store.reload();
-        }
-    }
-    CommandRequest {
-        id: bindsRequest; command: ["hyprctl", "binds", "-j"]
-        onCompleted: (code, body, detail) => {
-            try { const binds = JSON.parse(body); root.liveBinds = code === 0 && Array.isArray(binds) ? binds : []; }
-            catch (_) { root.liveBinds = []; }
         }
     }
     CommandRequest {

@@ -336,12 +336,38 @@ checklist probes also remain unticked links rather than inferred successes.
 Every step can be skipped. Back and Continue are available (Back is disabled
 on Hello); Escape dismisses, preserving progress as specified above.
 
-During parallel implementation, stream C embeds the existing WallpaperPage
-(which already includes WallpaperOnlineView and the library) for stream D to
-replace with WallpaperPicker. Its shortcut page temporarily shows live keycap
-rows for stream B to replace with ShortcutKeyboardMap. A single marked
-`Welcome.keysFor(id)` adapter maps stable action IDs to live bind descriptions;
-the integrator swaps it for Keybindings.keysFor and keeps keycap rendering.
+During parallel implementation, the guide's shortcut page temporarily shows
+live keycap rows for stream B to replace with ShortcutKeyboardMap.
+
+Integration notes (as implemented):
+
+- **Wallpaper step.** `Welcome/WallpaperStep.qml` embeds
+  `WallpaperPicker { embedded: true; automaticOnlineLoad: true }` with its own
+  tab state; `escapeRequested` dismisses the guide like Escape elsewhere.
+  `applied` needs no handler: the guide stores no wallpaper progress, and
+  Finish reads `Settings.wall`. Holding Space peeks from anywhere on the step,
+  including a focused thumbnail or button (Enter activates those), except
+  while a `TextInput`/`TextEdit` such as Wallhaven search has focus, where
+  Space types. Qt Wayland repeats a held key as release/press pairs, so only
+  a non-repeat release ends the peek; losing window activation ends it too.
+- **Keycaps.** `Welcome.keysFor(id)` returns
+  `Keybindings.keysFor(id).map(KeybindEditor.display)`, the keycap-label
+  arrays `Welcome/Keycaps.qml` renders; it starts no process and `[]` means
+  unbound or not loaded. `WelcomeWindow` holds a Keybindings `Claim` while it
+  is visible (`acquire` on show, `release` on hide or destruction), so a
+  closed guide runs nothing. The practice step shows "Not bound" for a loaded
+  action without keys, names each shortcut of a two-shortcut task, and keeps
+  "No live binding is available" for an unavailable model. The workspace
+  pair follows the observed start: `WelcomeHelpers.workspaceActions(start)`
+  returns `["workspaces.switch.<away>", "workspaces.switch.<start>"]`
+  (2 → 1 when unknown; only the way out when the start has no number key).
+  A Node test checks every action ID in the guide against the ungated Lua
+  catalog.
+- **Small windows.** At the 640 × 480 minimum, or with large text, the step
+  rail hides (its optional section hides first when only height is short),
+  a short window drops the lead line, and the practice task list stacks
+  under its card. The wallpaper step fills the viewport, with a
+  `Theme.scaled(240)` floor; below it the step scrolls rather than clipping.
 
 ### 2.4 IPC target `welcome`
 

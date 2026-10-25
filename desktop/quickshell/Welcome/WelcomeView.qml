@@ -7,6 +7,14 @@ import "../Settings" as SettingsUi
 Rectangle {
     id: root
     property bool peeking: false
+    // Small windows and large text give the step rail's room to the step:
+    // the eyebrow still names the step, and Back/Continue and
+    // Ctrl+PageUp/PageDown still move between steps. A short window also
+    // drops the lead line and tightens the margins, so the step itself keeps
+    // the space. Nothing is clipped: a step taller than its viewport scrolls.
+    readonly property bool railShown: width - Theme.scaled(176) - Theme.scaled(64) >= Theme.scaled(560)
+        && rail.stepsHeight <= rail.height
+    readonly property bool shortHeight: main.height < Theme.scaled(520)
     readonly property int stepIndex: Helpers.STEPS.indexOf(Welcome.step)
     readonly property var titles: [I18n.format("Welcome, %1", [Welcome.firstName]), I18n.tr("Find your view."),
         I18n.tr("Make it feel like home."), I18n.tr("A little practice goes a long way."),
@@ -35,20 +43,29 @@ Rectangle {
             if (event.key === Qt.Key_PageDown || event.key === Qt.Key_PageUp) {
                 Welcome.move(event.key === Qt.Key_PageDown ? 1 : -1); event.accepted = true;
             }
-        } else if (event.key === Qt.Key_Space && Welcome.step === "wallpaper") {
-            peeking = true; event.accepted = true;
         } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
             if (Welcome.step === "finish") Welcome.finish(); else Welcome.move(1);
             event.accepted = true;
         }
     }
+    // Holding Space peeks from anywhere on the wallpaper step, also with a
+    // thumbnail or button focused (Enter activates those), except in a text
+    // field such as Wallhaven search, where Space types. Qt Wayland repeats a
+    // held key as release/press pairs: the non-repeating shortcut swallows
+    // the repeated presses, and only the physical release ends the peek.
+    readonly property Item focusedItem: root.Window.window ? root.Window.window.activeFocusItem : null
+    readonly property bool typing: focusedItem instanceof TextInput || focusedItem instanceof TextEdit
     Keys.onReleased: event => {
-        if (event.key === Qt.Key_Space) { peeking = false; event.accepted = true; }
+        if (event.key === Qt.Key_Space && !event.isAutoRepeat && peeking) { peeking = false; event.accepted = true; }
     }
     Shortcut {
         sequence: "Space"; context: Qt.WindowShortcut; autoRepeat: false
-        enabled: Welcome.open && Welcome.step === "wallpaper"
+        enabled: Welcome.open && Welcome.step === "wallpaper" && !root.typing
         onActivated: root.peeking = true
+    }
+    Connections {
+        target: root.Window.window
+        function onActiveChanged() { if (!root.Window.window.active) root.peeking = false; }
     }
     Connections {
         target: Welcome
@@ -66,14 +83,19 @@ Rectangle {
         anchors.margins: 1
         width: Theme.scaled(176); radius: Theme.panelRadius
         color: Theme.cardFill
+        visible: root.railShown
+        readonly property real stepsHeight: Theme.scaled(16) * 2 + brand.height + railColumn.spacing + stepList.height
         Column {
+            id: railColumn
             anchors.fill: parent; anchors.margins: Theme.scaled(16); spacing: Theme.scaled(22)
             Row {
+                id: brand
                 spacing: Theme.controlSpacing
                 Image { width: Theme.scaled(28); height: width; source: "../assets/cybexos.svg"; fillMode: Image.PreserveAspectFit }
                 GuideText { anchors.verticalCenter: parent.verticalCenter; text: "Cybex OS"; font.weight: Theme.weightSemibold } // i18n: untranslated (brand)
             }
             Column {
+                id: stepList
                 width: parent.width; spacing: Theme.controlSpacing
                 Repeater {
                     model: root.labels
@@ -112,7 +134,11 @@ Rectangle {
                 }
             }
             Column {
+                id: optionalList
                 width: parent.width; spacing: Theme.controlSpacing
+                // The same items stay on the finish step when the rail is short.
+                visible: rail.stepsHeight + railColumn.spacing + implicitHeight
+                    + footnote.implicitHeight + Theme.scaled(16) <= rail.height
                 GuideText { width: parent.width; text: I18n.tr("Optional · any time").toUpperCase(); tone: "muted"; font.pixelSize: Theme.typography.metadata; font.letterSpacing: 0.8 }
                 Repeater {
                     model: Welcome.checklist
@@ -134,25 +160,30 @@ Rectangle {
             }
         }
         GuideText {
+            id: footnote
             anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
             anchors.margins: Theme.scaled(16)
+            visible: railColumn.implicitHeight + implicitHeight + Theme.scaled(48) <= rail.height
             text: I18n.tr("About 3 minutes. Everything here is also in Settings.")
             tone: "muted"; font.pixelSize: Theme.typography.metadata
         }
     }
     Item {
         id: main
-        anchors.left: rail.right; anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: footer.top
-        anchors.leftMargin: Theme.scaled(32); anchors.rightMargin: Theme.scaled(32); anchors.topMargin: Theme.scaled(28)
+        anchors.left: root.railShown ? rail.right : parent.left; anchors.right: parent.right
+        anchors.top: parent.top; anchors.bottom: footer.top
+        anchors.leftMargin: Theme.scaled(root.railShown ? 32 : 24); anchors.rightMargin: Theme.scaled(root.railShown ? 32 : 24)
+        anchors.topMargin: Theme.scaled(root.shortHeight ? 16 : 28)
         Column {
             id: heading
             width: parent.width - closeAction.width; spacing: Theme.scaled(10)
             GuideText {
+                width: parent.width
                 text: root.stepIndex < 5 ? I18n.format("Step %1 of 5 · Make it yours", [root.stepIndex + 1]).toUpperCase() : I18n.tr("Ready when you are").toUpperCase()
                 tone: "accent"; font.pixelSize: Theme.typography.metadata; font.weight: Theme.weightSemibold; font.letterSpacing: 1
             }
             GuideText { width: parent.width; text: root.titles[root.stepIndex]; font.pixelSize: Theme.typography.display; font.weight: Theme.weightSemibold }
-            GuideText { width: parent.width; text: root.leads[root.stepIndex]; tone: "muted" }
+            GuideText { width: parent.width; text: root.leads[root.stepIndex]; tone: "muted"; visible: !root.shortHeight }
         }
         SettingsUi.SettingsAction {
             id: closeAction
@@ -162,16 +193,17 @@ Rectangle {
         }
         Flickable {
             id: scroller
-            anchors.top: heading.bottom; anchors.topMargin: Theme.scaled(24)
+            anchors.top: heading.bottom; anchors.topMargin: Theme.scaled(root.shortHeight ? 12 : 24)
             anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
-            anchors.bottomMargin: Theme.scaled(20)
+            anchors.bottomMargin: Theme.scaled(root.shortHeight ? 8 : 20)
             clip: true; contentHeight: content.height
             boundsBehavior: Flickable.StopAtBounds
             Loader {
                 id: content
                 width: scroller.width
                 readonly property Item stepItem: item as Item
-                height: Welcome.step === "wallpaper" ? scroller.height : stepItem ? stepItem.implicitHeight : 0
+                height: !stepItem ? 0 : Welcome.step === "wallpaper"
+                    ? Math.max(scroller.height, stepItem.implicitHeight) : stepItem.implicitHeight
                 source: ({hello: "HelloStep.qml", wallpaper: "WallpaperStep.qml", style: "StyleStep.qml",
                     keys: "KeysStep.qml", shortcuts: "ShortcutsStep.qml", finish: "FinishStep.qml"})[Welcome.step]
             }
@@ -202,10 +234,14 @@ Rectangle {
         anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
         height: Theme.scaled(76); color: "transparent"
         Rectangle { width: parent.width; height: 1; color: Theme.stroke }
-        SettingsUi.SettingsAction { x: Theme.scaled(24); anchors.verticalCenter: parent.verticalCenter; text: I18n.tr("Skip for now"); onTriggered: Welcome.dismiss() }
+        SettingsUi.SettingsAction { id: skip; x: Theme.scaled(24); anchors.verticalCenter: parent.verticalCenter; text: I18n.tr("Skip for now"); onTriggered: Welcome.dismiss() }
         GuideText {
-            anchors.left: parent.left; anchors.leftMargin: rail.width + Theme.scaled(32)
-            anchors.right: actions.left; anchors.rightMargin: Theme.scaled(12); anchors.verticalCenter: parent.verticalCenter
+            // Aligned with the step's column, never under Skip or the actions.
+            x: Math.max(skip.x + skip.width + Theme.scaled(16), root.railShown ? rail.width + Theme.scaled(32) : 0)
+            width: Math.max(0, actions.x - Theme.scaled(12) - x)
+            anchors.verticalCenter: parent.verticalCenter
+            visible: width >= Theme.scaled(64)
+            wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight
             text: Welcome.error !== "" ? Welcome.error : Welcome.step === "wallpaper" ? I18n.tr("Hold Space to peek") : ""
             tone: "muted"; font.pixelSize: Theme.typography.secondary
         }
