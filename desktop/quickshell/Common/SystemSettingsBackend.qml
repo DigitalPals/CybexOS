@@ -9,6 +9,10 @@ Item {
     property int watchers: 0
     property var snapshot: ({})
     property string error: ""
+    // The part of `error` that came from a failed snapshot read. A later good
+    // read clears that and nothing else: an action's error stays until it is
+    // dismissed or replaced, however many refreshes follow it.
+    property string snapshotError: ""
     property string message: ""
     property bool loaded: false
     property var request: ({})
@@ -40,6 +44,19 @@ Item {
         if (watchers && !busy)
             snapshotProc.running = true;
     }
+    function snapshotRead(result) {
+        if (result.success) {
+            if (JSON.stringify(snapshot) !== JSON.stringify(result))
+                snapshot = result;
+            if (snapshotError !== "" && error === snapshotError)
+                error = "";
+            snapshotError = "";
+            loaded = true;
+        } else {
+            snapshotError = result.error || "Could not read system settings";
+            error = snapshotError;
+        }
+    }
     function monitorEvent(line) {
         // Read-only pactl probes create/remove clients too. Refreshing for
         // those events makes every snapshot schedule its own successor.
@@ -62,6 +79,7 @@ Item {
         revision++;
         request = value;
         error = "";
+        snapshotError = "";
         message = "";
         actionProc.running = true;
         return true;
@@ -118,15 +136,7 @@ Item {
                 issuedRevision = root.revision;
             } else {
                 if (root.watchers && issuedRevision === root.revision) {
-                    const result = root.decode(body, code);
-                    if (result.success) {
-                        if (JSON.stringify(root.snapshot) !== JSON.stringify(result))
-                            root.snapshot = result;
-                        root.error = "";
-                        root.loaded = true;
-                    } else {
-                        root.error = result.error || "Could not read system settings";
-                    }
+                    root.snapshotRead(root.decode(body, code));
                 }
                 if (root.refreshQueued) {
                     root.refreshQueued = false;
@@ -152,6 +162,7 @@ Item {
             } else {
                 const result = root.decode(body, code);
                 root.error = result.success ? "" : result.error || "Could not apply settings";
+                root.snapshotError = "";
                 root.message = result.success ? result.message || "Updated" : "";
                 if (result.checkpoint)
                     root.preview = result;

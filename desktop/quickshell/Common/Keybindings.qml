@@ -102,6 +102,7 @@ Singleton {
             return reject("Wait for the shortcut change to finish");
         Model.discard(model);
         revision++;
+        backend.error = "";
         refresh();
         return true;
     }
@@ -137,10 +138,6 @@ Singleton {
                 Model.applied(root.model, result);
                 root.revision++;
                 root.applied();
-            } else {
-                // A successful follow-up snapshot may clear the transport
-                // error; keep the failed apply visible until the next edit.
-                root.localError = I18n.tr(root.backend.error);
             }
         }
         function onLoadingChanged() { Qt.callLater(root.releaseIdle); }

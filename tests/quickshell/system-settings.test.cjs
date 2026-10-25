@@ -21,11 +21,11 @@ function backend() {
     const context = vm.createContext({
         watchers: 0, preview: null, busy: false, loading: false, revision: 0,
         domain: "sound", debounce: { restart: () => calls.push(["refresh-event"]) },
-        refreshQueued: false, error: "", message: "",
+        refreshQueued: false, error: "", snapshotError: "", message: "", snapshot: {}, loaded: false,
         snapshotProc: { running: false, signal: value => calls.push(["stop-snapshot", value]) },
         actionProc: { running: false },
     });
-    for (const name of ["acquire", "release", "refresh", "run", "decode", "monitorEvent"]) {
+    for (const name of ["acquire", "release", "refresh", "run", "decode", "monitorEvent", "snapshotRead"]) {
         const match = source.match(new RegExp(`^    function ${name}\\([^]*?^    }`, "m"));
         assert.ok(match, name);
         vm.runInContext(match[0], context);
@@ -81,6 +81,61 @@ test("broken service output becomes a bounded error rather than a parser excepti
         assert.equal(c.decode(body, 0).success, false);
     assert.equal(c.decode('{"success":true}', 2).success, false);
     assert.equal(c.decode('{"success":true}', 0).success, true);
+});
+
+test("a good snapshot read clears a failed read but never an action's error", () => {
+    const { context: c } = backend();
+    const good = n => ({ success: true, items: [n] });
+    // An action fails; the refresh that follows every action succeeds.
+    c.error = "Could not change the password";
+    c.snapshotRead(good(1));
+    assert.equal(c.error, "Could not change the password", "the action error survives the follow-up read");
+    assert.equal(c.loaded, true);
+    assert.deepEqual(JSON.parse(JSON.stringify(c.snapshot)), good(1));
+    c.snapshotRead(good(2));
+    assert.equal(c.error, "Could not change the password", "and any number of later reads");
+    // A failed read is shown, and the next good read recovers it.
+    c.snapshotRead({ success: false, error: "The settings helper could not finish." });
+    assert.equal(c.error, "The settings helper could not finish.");
+    assert.equal(c.snapshotError, c.error);
+    c.snapshotRead(good(3));
+    assert.equal(c.error, "");
+    assert.equal(c.snapshotError, "");
+    c.snapshotRead({ success: false });
+    assert.equal(c.error, "Could not read system settings");
+    // The page dismisses an error by clearing it; a good read must not resurrect or disturb that.
+    c.error = "";
+    c.snapshotRead(good(4));
+    assert.equal(c.error, "");
+});
+
+test("a new action or its failure replaces a read failure, and the read failure's text no longer clears it", () => {
+    const { context: c } = backend();
+    c.watchers = 1;
+    c.snapshotRead({ success: false, error: "The settings helper could not finish." });
+    assert.equal(c.run({ action: "apply" }), true);
+    assert.equal(c.error, "");
+    assert.equal(c.snapshotError, "");
+    // The action fails with the very same text a failed read would use.
+    c.error = "The settings helper could not finish.";
+    c.snapshotRead({ success: true });
+    assert.equal(c.error, "The settings helper could not finish.");
+    // A read failure arriving after an action failure takes the banner, then recovers it.
+    c.error = "Could not change the password";
+    c.snapshotRead({ success: false, error: "Could not read system settings" });
+    assert.equal(c.error, "Could not read system settings");
+    c.snapshotRead({ success: true });
+    assert.equal(c.error, "");
+});
+
+test("the backend routes every snapshot through snapshotRead and every action completion clears the read failure", () => {
+    const source = read("Common/SystemSettingsBackend.qml");
+    assert.match(source, /root\.snapshotRead\(root\.decode\(body, code\)\)/);
+    assert.doesNotMatch(source.match(/id: snapshotProc[^]*?id: actionProc/)[0], /root\.error = ""/,
+        "a snapshot read must not touch action errors");
+    assert.match(source, /root\.error = result\.success \? "" : result\.error \|\| "Could not apply settings";\s+root\.snapshotError = "";/);
+    // The shortcut model no longer copies the apply error aside to outlive the refresh.
+    assert.doesNotMatch(read("Common/Keybindings.qml"), /localError = I18n\.tr\(root\.backend\.error\)/);
 });
 
 const read = file => untranslated(fs.readFileSync(path.join(shellDir, file), "utf8"));
