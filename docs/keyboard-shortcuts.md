@@ -30,6 +30,81 @@ groups in reading order: down the first column, then the next. The split puts
 whole groups in each column so the columns end at about the same height. A row
 whose keys do not fit beside its label puts them on the lines below it.
 
+**Edit shortcuts** in the sheet's header closes it and opens **Settings →
+Keyboard shortcuts**. A small filled dot after a label marks a shortcut you
+changed in Settings or added there; a ring marks one that
+`~/.config/cybexos/hypr/user.lua` sets or changes.
+
+## Changing shortcuts in Settings
+
+**Settings → Keyboard shortcuts**, beside Keyboard, lists every Cybex OS
+shortcut in the sheet's group order. Search by name (in English or the
+interface language) or by keys, such as `super+b` or `Super Enter`. **Show**
+narrows the list to **Changed** shortcuts, **Conflicts** (two shortcuts on the
+same keys, or a key Hyprland dropped when it loaded your changes) or **From
+user.lua**. **View → Keyboard map** draws the `Super`+letter and
+`Super`+digit keys with what each one does.
+
+Each row shows its keys and three actions:
+
+- **Change** (the pencil, or `Enter` on a focused row) records new keys. Press
+  the combination you want; it appears as you press it. `Escape` cancels and
+  `Backspace` or `Delete` clears what you pressed. A row with keys offers
+  **Replace current keys** or **Add as another key** (up to four).
+- **Reset** is the row's undo arrow, shown while you point at a changed row
+  or move to it with `Tab`.
+- **Disable** (or `Delete` on a focused row) removes all of the action's keys.
+
+While the recorder listens it asks Hyprland to pass every key through,
+including ones that would normally lock the screen or switch workspaces. That
+pause ends as soon as a combination is complete, when you cancel, and when the
+window loses focus, in which case **Record again** continues.
+
+The recorder refuses a key on its own (except `F1`–`F24` and the media and
+hardware keys), because you could no longer type it; mouse buttons; power and
+sleep keys; and `Ctrl+Alt+F1`–`F12`, `Ctrl+Alt+Delete`, `Ctrl+Alt+Backspace`
+and `SysRq`, which stay with the system. It then checks what else uses the
+keys:
+
+- **Protected shortcuts** — lock screen, exit, Settings and the shortcut sheet
+  — can move to other keys but always keep one, and nothing else can take
+  their default keys, even after you move them. A lock marks them in the list
+  and on the map.
+- A combination that `user.lua` binds cannot be taken here: `user.lua` loads
+  after these settings and wins. Change it in that file.
+- Any other shortcut using the keys is named, and **Replace** takes the keys
+  from it.
+
+Personal bindings that only `user.lua` defines, mouse drags and hardware keys
+are read-only. A Cybex OS shortcut that `user.lua` changed can still be edited
+here, and says that `user.lua` wins wherever both set the same keys.
+
+**Add shortcut**, or a free (lit) key on the keyboard map, adds your own
+shortcut. Choose what it opens: **An app** from your installed applications,
+**A website** (opened in your default browser), **A web app** (Slack,
+WhatsApp, YouTube, Google Photos, X and any others you installed), or **A
+command**, which runs as one line through Hyprland. Give it a name and group
+for the sheet and record its keys. Your own shortcuts can be edited and
+removed from their rows.
+
+Changes collect until you choose **Apply** in the bar at the foot of the page,
+or **Discard**. Applying reloads Hyprland; if the reload fails the previous
+file is restored and the error appears on the page. **Reset all…** asks before
+it returns every shortcut to its default and removes your own; that too waits
+for Apply. Nothing in Settings writes `user.lua`.
+
+The welcome guide's **Shortcuts** step shows the same keyboard map and the
+main shortcuts with **Edit**, with its own Apply bar, and links here.
+
+### Files involved
+
+| File | Owner | Purpose |
+| --- | --- | --- |
+| `desktop/hypr/bindings.lua` (vendor, read-only) | Cybex OS | The actions, their stable IDs and default keys |
+| `~/.config/cybexos/keybindings.json` | Settings | Your changed keys and custom shortcuts |
+| `$XDG_RUNTIME_DIR/cybexos/keybindings-state.json` | Hyprland's config load | The resolved keys, conflicts and displaced keys, read by the shell |
+| `~/.config/cybexos/hypr/user.lua` | You | Personal Lua, loaded last; never written by Settings |
+
 ## Web apps
 
 The Web apps group opens the web apps Cybex OS installs for every account:

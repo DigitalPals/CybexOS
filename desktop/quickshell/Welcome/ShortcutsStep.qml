@@ -98,7 +98,7 @@ Column {
                     anchors.right: parent.right; anchors.rightMargin: Theme.scaled(6); anchors.verticalCenter: parent.verticalCenter
                     text: I18n.tr("Edit")
                     glyph: "edit"
-                    enabled: !!row.action && row.action.editable && row.action.source !== "user"
+                    enabled: !!row.action && row.action.editable
                     Accessible.name: I18n.format("Change %1", [row.action ? I18n.tr(row.action.label) : ""])
                     onTriggered: root.edit(row.modelData)
                 }
