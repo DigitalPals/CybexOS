@@ -93,6 +93,8 @@ Singleton {
     function action(id) { root.revision; return Model.action(model, id); }
     function conflicts(keyString, exceptId) { root.revision; return Model.conflicts(model, keyString, exceptId); }
     function setKeys(id, keys) { return edit(() => Model.setKeys(root.model, id, keys)); }
+    // [{ id, keys }] applied all or not at all.
+    function setManyKeys(changes) { return edit(() => Model.setManyKeys(root.model, changes)); }
     function disable(id) { return setKeys(id, []); }
     function reset(id) { return edit(() => Model.reset(root.model, id)); }
     function resetAll() { return edit(() => Model.resetAll(root.model)); }

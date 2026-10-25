@@ -79,6 +79,28 @@ test('draft remaps retain conflict warnings for keys user.lua will bind again', 
     assert.deepEqual(plain(M.conflicts(data,'SUPER + N','apps.second')),
         [{id:'apps.first',group:'Apps',label:'apps.first',protected:false,source:'user',editable:true,hidden:false}]);
 });
+test('setManyKeys changes several rows at once or none, keeping earlier draft edits', () => {
+    const data = model();
+    M.setKeys(data,'shell.settings',['SUPER + comma','SUPER + ALT + S']);
+    const before = plain(data.draft);
+    assert.throws(() => M.setManyKeys(data,[{id:'apps.first',keys:[]},{id:'apps.second',keys:['SUPER + Y']},
+        {id:'hardware.mute',keys:[]}]),/cannot be edited/);
+    assert.deepEqual(plain(data.draft),before,'a refused step restores the draft');
+    assert.deepEqual(plain(M.keysFor(data,'apps.first')),['SUPER + B']);
+    assert.deepEqual(plain(M.keysFor(data,'apps.second')),['SUPER + M']);
+    assert.throws(() => M.setManyKeys(data,[{id:'apps.first',keys:[]},{id:'shell.lock',keys:[]}]),/at least one/);
+    assert.deepEqual(plain(data.draft),before,'every validation error rolls back');
+    M.setManyKeys(data,[{id:'apps.first',keys:[]},{id:'apps.second',keys:['SUPER + Y']}]);
+    assert.deepEqual(plain(M.keysFor(data,'apps.first')),[]);
+    assert.deepEqual(plain(M.keysFor(data,'apps.second')),['SUPER + Y']);
+    assert.deepEqual(plain(M.keysFor(data,'shell.settings')),['SUPER + ALT + S','SUPER + comma']);
+    // A rejected file stays refused, and a failed batch keeps the pending reset.
+    const broken = model();
+    broken.problem = 'bad';
+    broken.recover = true;
+    assert.throws(() => M.setManyKeys(broken,[{id:'apps.first',keys:[]}]),/Reset all/);
+    assert.equal(broken.recover,true);
+});
 test('custom CRUD preserves sparse preferences, validates, resets and checks conflicts', () => {
     const data = model();
     const id = M.addCustom(data,{group:'Apps',label:'Notes',keys:['SUPER + N'],run:{type:'command',command:'notes'}});

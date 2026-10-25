@@ -215,6 +215,7 @@ function keysFor(id) -> [keyString]          // effective keys, including the dr
 function action(id) -> row | null
 function conflicts(keyString, exceptId) -> [{ id, group, label, protected, source, editable, hidden, uncertain? }]
 function setKeys(id, keys) / disable(id) / reset(id) / resetAll()
+function setManyKeys([{ id, keys }])          // one edit: all changes or, if one is refused, none
 function addCustom({ group, label, keys, run }) -> id
 function updateCustom(id, patch) / removeCustom(id)
 function apply()                             // saves the draft through the backend
@@ -281,7 +282,8 @@ As built:
   reserved protected defaults, `user.lua` holders and non-editable holders (a
   hidden hardware key) block, because `user.lua` loads last and an edit cannot
   unbind a hardware key; other holders are offered as Replace, which removes
-  that key from them in the draft before the host applies the new keys.
+  that key from all of them in one `setManyKeys` edit (a refused step leaves
+  the draft as it was and the card open) before the host applies the new keys.
   Uncertain holders only warn (see §6). The `ShortcutInhibitor` is enabled only while
   listening and is released when a combination completes, on cancel and
   accept, when the window deactivates (recording pauses), when the

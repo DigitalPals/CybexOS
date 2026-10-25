@@ -114,12 +114,12 @@ FocusScope {
     function accept() {
         if (!complete || verdict.kind === "blocked" || verdict.kind === "")
             return;
-        for (const other of verdict.replace) {
-            if (other.id.indexOf("user.") === 0)
-                continue;
-            if (!Keybindings.setKeys(other.id, Helpers.withoutKey(Keybindings.keysFor(other.id), combo)))
-                return;
-        }
+        // All the holders lose the key, or none does: a refused step must not
+        // leave the draft half changed with the new key unassigned.
+        const changes = verdict.replace.filter(other => other.id.indexOf("user.") !== 0)
+            .map(other => ({ id: other.id, keys: Helpers.withoutKey(Keybindings.keysFor(other.id), combo) }));
+        if (changes.length && !Keybindings.setManyKeys(changes))
+            return;
         const chosen = combo;
         hide();
         accepted(chosen, allowAdd ? mode : "replace");

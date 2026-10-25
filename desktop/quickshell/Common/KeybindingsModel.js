@@ -287,6 +287,18 @@ function setKeys(model, id, keys) {
         if (!Object.keys(model.draft.actions).length) delete model.draft.actions;
     }
 }
+// Several key changes as one edit, as the recorder's Replace needs: if any of
+// them is refused the draft is exactly what it was before the first.
+function setManyKeys(model, changes) {
+    var draft = copy(model.draft), recover = model.recover;
+    try {
+        changes.forEach(function(change) { setKeys(model, change.id, change.keys); });
+    } catch (problem) {
+        model.draft = draft;
+        model.recover = recover;
+        throw problem;
+    }
+}
 function reset(model, id) {
     guardBroken(model);
     if (id.indexOf("custom.") === 0) {
@@ -362,7 +374,7 @@ function applied(model, result) {
     // Edits made while the request was running remain a dirty draft.
 }
 var exported = { create: create, ingest: ingest, broken: broken, problem: problem, view: view, resolve: resolve, merge: merge, dirty: dirty,
-    action: action, keysFor: keysFor, conflicts: conflicts, setKeys: setKeys, reset: reset, resetAll: resetAll,
+    action: action, keysFor: keysFor, conflicts: conflicts, setKeys: setKeys, setManyKeys: setManyKeys, reset: reset, resetAll: resetAll,
     addCustom: addCustom, updateCustom: updateCustom, removeCustom: removeCustom, discard: discard,
     request: request, applied: applied, checkedKeys: checkedKeys };
 if (typeof module !== "undefined" && module.exports) module.exports = exported;
