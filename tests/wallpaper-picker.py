@@ -7,6 +7,7 @@ and removed in finally. Two live API requests (listing/details) are allowed.
 """
 from __future__ import annotations
 import importlib.util
+import atexit
 import json
 import os
 from pathlib import Path
@@ -20,7 +21,12 @@ import time
 import shell_fonts
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = Path(os.environ.get('CYBEXOS_WALLPAPER_SCREENSHOTS', '/data/tmp/cybexos-onboarding-wallpaper'))
+# Screenshots are kept only in a requested directory; otherwise the run
+# uses a short private directory under the system temp dir and removes it.
+KEEP = os.environ.get('CYBEXOS_WALLPAPER_SCREENSHOTS')
+OUTPUT = Path(KEEP) if KEEP else Path(tempfile.mkdtemp(prefix='cybexos-wallpaper-'))
+if not KEEP:
+    atexit.register(shutil.rmtree, OUTPUT, True)
 QML_ERRORS = re.compile(r'TypeError|ReferenceError|Binding loop|is not a type|Type \w+ unavailable'
                         r'|Cannot assign|Unable to assign|Illegal method name|Failed to load configuration')
 

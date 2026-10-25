@@ -9,10 +9,11 @@ A fake `hyprctl` resolves keybindings.json with the real bindings.lua and
 keybinding_preferences.lua (through the Lua stub the Node tests use), so the
 written file and the resolved state are the actual Lua contract. It also
 reports one described binding as if user.lua had added it. Only the PNG
-screenshots survive in OUTPUT; every process, HOME and runtime is private and
-removed in finally.
+screenshots survive, and only in CYBEXOS_SHORTCUT_SCREENSHOTS when it is set;
+every process, HOME and runtime is private and removed in finally.
 """
 from __future__ import annotations
+import atexit
 import json
 import os
 from pathlib import Path
@@ -26,7 +27,12 @@ import time
 import shell_fonts
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = Path(os.environ.get('CYBEXOS_SHORTCUT_SCREENSHOTS', '/data/tmp/cybexos-onboarding-B'))
+# Screenshots are kept only in a requested directory; otherwise the run
+# uses a short private directory under the system temp dir and removes it.
+KEEP = os.environ.get('CYBEXOS_SHORTCUT_SCREENSHOTS')
+OUTPUT = Path(KEEP) if KEEP else Path(tempfile.mkdtemp(prefix='cybexos-shortcuts-'))
+if not KEEP:
+    atexit.register(shutil.rmtree, OUTPUT, True)
 QML_ERRORS = re.compile(r'TypeError|ReferenceError|Binding loop|is not a type|Type \w+ unavailable'
                         r'|Cannot assign|Unable to assign|Illegal method name|Failed to load configuration'
                         r'|Cannot anchor|Cannot specify anchors')

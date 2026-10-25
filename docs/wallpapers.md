@@ -132,8 +132,9 @@ wallpaper IPC remains `browse`, `list`, `set` and `status`.
 Node fixtures exercise URL/id/colour validation, details sanitization and
 rate windows. Python tests cover bundled import collisions and metering.
 `tests/wallpaper-picker.py` runs the actual shell under private headless Sway,
-with isolated HOME/XDG directories, and captures all three Settings tabs in
-`/data/tmp/cybexos-onboarding-wallpaper/`. It exercises the read-only default,
+with isolated HOME/XDG directories, and captures all three Settings tabs. Set
+`CYBEXOS_WALLPAPER_SCREENSHOTS=DIR` to keep the captures; otherwise they are
+removed with the run's private directory. It exercises the read-only default,
 bundled apply into a previously missing folder, cached online details, arrow/Enter selection, Tab/Enter apply, Escape,
 metered gating and selection without downloading. It needs the Nix dev shell with `grim`, `wtype` and ImageMagick on PATH; it
 builds the native notification-image QML module in its private workspace. It makes one live listing
