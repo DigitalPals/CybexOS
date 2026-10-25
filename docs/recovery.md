@@ -30,14 +30,25 @@ restored, and its transaction retains both the original activation error and
 the restoration error. These steps preserve personal configuration and state;
 they do not promise application-data rollback.
 
-The previous generation stays the persistent systemd-boot default. The candidate
-is a one-shot trial, selected once. A failed boot requires a user-selected reset
-or reboot; the next boot returns to the previous default. There is no unattended
+The previous generation stays the persistent boot default. The candidate is a
+one-shot trial, selected once. A failed boot requires a user-selected reset or
+reboot; the next boot returns to the previous default. There is no unattended
 reboot or hardware watchdog reset. A successful fresh boot and authenticated
 Hyprland/Quickshell login must pass `cybex update confirm` before the candidate
 becomes the persistent default. Failed systems are quarantined against normal
 reapplication. `cybex update history` and `cybex update rollback [ID]` expose the
 retained identities and restore coherent system/updater configuration.
+
+Installed machines boot GRUB with the installation medium's theme. Each time the
+boot loader is installed, `cybexos-boot-menu` labels every entry in
+**Cybex OS - All configurations** with an identifier derived from its exact
+system. `cybexos-boot-trial` keeps the persistent selection in GRUB's
+environment block (`/boot/grub/grubenv`) as `saved_entry` and arms the trial
+as `next_entry`, which GRUB clears as it boots that entry. The top-level
+**Cybex OS** entry always follows the newest generation, so it is never pinned.
+It is highlighted when it is the selected system. Selecting another entry by
+hand boots it once and leaves the default unchanged. With Secure Boot, signed
+Lanzaboote UKIs are selected through systemd-boot's `bootctl` interface instead.
 
 System health requires the boot target, NetworkManager and login manager to be
 active. When Libreswan is enabled, its managed `ipsec.service` must also be
@@ -56,8 +67,9 @@ image quality or suspend/resume; those still require physical qualification.
 From live media, unlock/mount the target filesystem and ESP, inspect
 `/var/lib/cybexos/transactions` and its deployment records, and select the
 retained previous system using its `switch-to-configuration boot` inside
-`nixos-enter`. Restore `/etc/nixos` to that record's retained configuration as
-well. This is an offline repair requiring explicit administrator intent, not a
+`nixos-enter`, followed by `cybexos-boot-trial --restore SYSTEM` so the boot
+selection pins it. Restore `/etc/nixos` to that record's retained configuration
+as well. This is an offline repair requiring explicit administrator intent, not a
 routine update shortcut. Keep backups of ESP contents and enrolled Secure Boot
 public certificates.
 

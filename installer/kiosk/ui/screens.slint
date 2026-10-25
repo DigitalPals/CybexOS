@@ -1173,7 +1173,7 @@ export component DoneScreen inherits Rectangle {
         y: 210px;
         width: parent.width;
         horizontal-alignment: center;
-        text: "Welcome home, " + Store.done-user + ".";
+        text: "Welcome home, " + Store.done-name + ".";
     }
     Lead {
         x: 0;
@@ -1199,8 +1199,8 @@ export component DoneScreen inherits Rectangle {
         }
         NextCard {
             number: "03";
-            title: "Sign in as " + Store.done-user;
-            body: "The first login always asks for your password.";
+            title: Store.done-encrypted ? "Your desktop opens" : "Sign in as " + Store.done-user;
+            body: Store.done-encrypted ? "Unlocking the disk signs you in as " + Store.done-user + "." : "Use the password you just chose.";
         }
     }
     HorizontalLayout {

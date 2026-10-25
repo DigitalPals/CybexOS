@@ -3,6 +3,43 @@ let
   inherit (lib) mkOption mkEnableOption types mkIf mkDefault;
   cfg = config.cybexos;
   source = ../..;
+  # GRUB's installation paths for the ESP mounted at /boot. The firmware boot
+  # entry and its EFI directory carry this name.
+  esp = config.boot.loader.efi.efiSysMountPoint;
+  grubDirectory = "/boot/grub";
+  efiArch = pkgs.stdenv.hostPlatform.efiArch;
+  bootloaderId = "CybexOS";
+  grubLoader = "${esp}/EFI/${bootloaderId}/grub${efiArch}.efi";
+  # The same closing entries as the installation medium's menu.
+  closingEntries = pkgs.writeText "cybexos-boot-closing-entries.cfg" ''
+    menuentry 'Firmware Setup' --class settings {
+      fwsetup
+      clear
+      echo ""
+      echo "If you see this message, your EFI system doesn't support this feature."
+      echo ""
+    }
+    menuentry 'Shutdown' --class shutdown {
+      halt
+    }
+  '';
+  bootMenu = pkgs.writeShellScript "cybexos-boot-menu-install" ''
+    set -eu
+    PATH=${lib.makeBinPath [ pkgs.coreutils pkgs.diffutils ]}
+    # Brand the generated menu and identify each exact system for the updater.
+    ${cfg.updaterPackage}/bin/cybexos-boot-menu --distro ${lib.escapeShellArg config.system.nixos.distroName} \
+      --append ${closingEntries} --check ${pkgs.grub2_efi}/bin/grub-script-check ${grubDirectory}/grub.cfg
+    # Firmware that loses its boot entry still finds the removable fallback
+    # path, as with systemd-boot's installation.
+    fallback=${esp}/EFI/BOOT/BOOT${lib.toUpper efiArch}.EFI
+    if ! cmp -s ${grubLoader} "$fallback"; then
+      mkdir -p ${esp}/EFI/BOOT
+      cp ${grubLoader} "$fallback.tmp"
+      sync "$fallback.tmp"
+      mv -f "$fallback.tmp" "$fallback"
+      sync ${esp}/EFI/BOOT
+    fi
+  '';
 in {
   imports = [ ./desktop.nix ./security.nix ./hardware.nix ./networking.nix ./lifecycle.nix ./applications.nix ./software.nix ./maintenance.nix ];
   options.cybexos = {
@@ -47,6 +84,13 @@ in {
       # (Codex; Claude Code also needs proprietary). Independent of developer.
       assistant = mkOption { type = types.bool; default = true; };
       localNetworkServices = mkOption { type = types.bool; default = true; };
+    };
+    bootTheme = mkOption {
+      type = types.package;
+      internal = true;
+      readOnly = true;
+      description = "GRUB menu theme shared by the installation ISO and installed systems";
+      default = pkgs.callPackage ../packages/boot-theme.nix { inherit source; };
     };
     desktopPackage = mkOption { type = types.package; default = pkgs.callPackage ../packages/desktop.nix { inherit source; }; };
     updaterPackage = mkOption { type = types.package; default = pkgs.callPackage ../packages/updater.nix { inherit source; }; };
@@ -114,9 +158,37 @@ in {
       shell = lib.mkOverride 900 pkgs.fish;
       extraGroups = mkDefault [ "wheel" "networkmanager" "video" ];
     };
-    boot.loader.systemd-boot.enable = mkDefault (!cfg.secureBoot);
-    boot.loader.efi.canTouchEfiVariables = mkDefault true;
+    # The boot menu has the installation medium's GRUB theme. Updates pin exact
+    # systems through GRUB's environment block (lifecycle/cybexos/boot.py), so
+    # the menu's own default and last-booted memory stay unused. Secure Boot
+    # keeps Lanzaboote's signed systemd-boot UKIs.
+    boot.loader.grub = {
+      enable = mkDefault (!cfg.secureBoot);
+      efiSupport = true;
+      device = "nodev";
+      # Replaces the entry NixOS derives from device, named after its distroName.
+      mirroredBoots = lib.mkForce [ { path = "/boot"; devices = [ "nodev" ]; efiSysMountPoint = esp; efiBootloaderId = bootloaderId; } ];
+      configurationLimit = mkDefault 10;
+      theme = mkDefault cfg.bootTheme;
+      splashImage = lib.mkOverride 900 null;
+      # The medium's mode list; "auto" alone can choose the smallest mode.
+      gfxmodeEfi = mkDefault "1920x1200,1920x1080,1366x768,1280x800,1280x720,1200x1920,1024x768,800x1280,800x600,auto";
+      default = "\"\${saved_entry}\"";
+      extraConfig = "background_color '${cfg.bootTheme.background}'";
+      extraInstallCommands = "${bootMenu}\n";
+    };
     boot.loader.systemd-boot.configurationLimit = mkDefault 10;
+    boot.loader.efi.canTouchEfiVariables = mkDefault true;
+    environment.etc."cybexos/boot.json".text = builtins.toJSON (
+      if config.boot.loader.grub.enable
+      then { loader = "grub"; menu = "${grubDirectory}/grub.cfg"; environment = "${grubDirectory}/grubenv"; }
+      else { loader = "systemd-boot"; });
+    # Plymouth covers boot. Keep routine kernel, udev and systemd status text off
+    # the screen; critical errors still print and the journal keeps everything.
+    # "quiet" precedes NixOS's loglevel= parameter, which then takes effect.
+    boot.kernelParams = lib.mkBefore [ "quiet" "udev.log_level=3" ];
+    boot.consoleLogLevel = mkDefault 3;
+    boot.initrd.verbose = mkDefault false;
     boot.initrd.systemd.enable = true;
     boot.lanzaboote = mkIf cfg.secureBoot { enable = true; pkiBundle = "/var/lib/cybexos/secrets/secureboot"; };
   }) ];

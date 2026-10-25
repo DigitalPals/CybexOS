@@ -102,6 +102,16 @@ pub fn suggest(full_name: &str) -> String {
     }
 }
 
+/// A personal greeting, falling back to the login name when no name was entered.
+pub fn given_name(full_name: &str, username: &str) -> String {
+    let name = full_name.split_whitespace().next().unwrap_or(username);
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
 pub fn hostname_for(username: &str) -> String {
     const SUFFIX: &str = "-cybexos";
     if username.is_empty() {

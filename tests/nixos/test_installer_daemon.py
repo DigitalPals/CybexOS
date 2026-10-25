@@ -327,10 +327,12 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(plan['hostname'], 'ada-cybexos')
         self.assertEqual((plan['keyboard'], plan['desktopKeyboard']), ('uk', 'gb'))
         self.assertEqual(plan['timezone'], 'Europe/Amsterdam')
-        self.assertFalse(plan['autoLogin'])
+        # Unlocking an encrypted disk signs the owner in.
+        self.assertTrue(plan['autoLogin'])
         self.assertTrue(plan['encrypted'])
         self.assertEqual(set(plan['features']), {key for key, _, _ in daemon.APPLICATIONS})
         self.assertEqual(review['review']['serial'], 'QA-DISK')
+        self.assertIs(review['review']['autoLogin'], True)
 
         # Customizing on the review page re-reviews with the held password.
         await self.send(action='draft', values={'timezone': 'Europe/Kiev'})
@@ -338,13 +340,19 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
         reviews = [r for r in self.requests() if r['action'] == 'review']
         self.assertEqual(len(reviews), 2)
         self.assertEqual(reviews[-1]['plan']['timezone'], 'Europe/Kyiv')
+        # A plain disk keeps password login; encrypting it again restores autologin.
+        for encrypted in (False, True):
+            await self.send(action='draft', values={'encrypted': encrypted})
+            await self.until(lambda m: m['type'] == 'state' and m['phase'] == 'review'
+                             and m['draft']['encrypted'] is encrypted and not m['reviewPending'])
+            self.assertIs(self.requests()[-1]['plan']['autoLogin'], encrypted)
 
         await self.send(action='install')
         done = await self.until(lambda m: m['type'] == 'state' and m['phase'] == 'complete')
         self.assertEqual(done['result'], {'username': 'ada', 'hostname': 'ada-cybexos', 'encrypted': True})
         self.assertTrue(done['diskTouched'])
         install = self.requests()[-1]
-        self.assertEqual(install, {'action': 'install', 'token': 'token-2', 'confirmed': True, 'secrets': {'password': PASSWORD}})
+        self.assertEqual(install, {'action': 'install', 'token': 'token-4', 'confirmed': True, 'secrets': {'password': PASSWORD}})
         # The password reaches only the worker: never a snapshot or the saved draft.
         self.assertFalse(any(PASSWORD in line for line in self.received))
         self.assertNotIn(PASSWORD, (self.root / 'run/draft.json').read_text())

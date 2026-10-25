@@ -308,7 +308,7 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(read(self.engine.status_path)['state'], 'rolled-back')
         self.assertFalse(self.engine.pending_path.exists())
         self.assertIn((OLD_SYSTEM + '/sw/bin/cybexos-health', 'system'), original.calls)
-        disarm = original.calls.index(('bootctl', 'set-oneshot', ''))
+        disarm = original.calls.index(('cybexos-boot-trial', '--disarm'))
         install = original.calls.index((OLD_SYSTEM + '/bin/switch-to-configuration', 'boot'))
         self.assertLess(disarm, install)
         self.assertLess(install, original.calls.index(('cybexos-boot-trial', '--restore', OLD_SYSTEM)))
@@ -401,7 +401,7 @@ class EngineTests(unittest.TestCase):
             if args == (OLD_SYSTEM + '/bin/switch-to-configuration', 'boot'):
                 entry_exists = True
             if args == ('cybexos-boot-trial', '--restore', OLD_SYSTEM) and not entry_exists:
-                raise Failure('No bootable systemd-boot entry')
+                raise Failure('No bootable GRUB entry')
             return original(*args, **kwargs)
         run.log = None
         self.engine.run = run
@@ -409,7 +409,7 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(entry_exists)
         self.assertEqual(read(self.engine.status_path)['state'], 'rolled-back')
         self.assertFalse(self.engine.pending_path.exists())
-        self.assertLess(original.calls.index(('bootctl', 'set-oneshot', '')),
+        self.assertLess(original.calls.index(('cybexos-boot-trial', '--disarm')),
                         original.calls.index((OLD_SYSTEM + '/bin/switch-to-configuration', 'boot')))
 
     def test_rollback_disarms_before_personal_backup_can_fail(self):
@@ -417,7 +417,7 @@ class EngineTests(unittest.TestCase):
         (self.config / 'result').symlink_to(NEW_SYSTEM)
         with self.assertRaisesRegex(Failure, 'link or special file'):
             self.engine.rollback(record['id'])
-        self.assertIn(('bootctl', 'set-oneshot', ''), self.runner.calls)
+        self.assertIn(('cybexos-boot-trial', '--disarm'), self.runner.calls)
         self.assertNotIn((OLD_SYSTEM + '/bin/switch-to-configuration', 'boot'), self.runner.calls)
         self.assertEqual(read(self.engine.status_path)['state'], 'recovery-failed')
         (self.config / 'result').unlink()

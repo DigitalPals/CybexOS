@@ -12,7 +12,10 @@ boot menu offers:
 
 Every entry starts the same fresh installer; none starts a disk operation by
 itself. The upstream **Options** submenu, firmware setup and shutdown entries
-remain. PXE uses the same ISO. iVentoy's NixOS hook needs the upstream scripted
+remain. The installed system's boot menu uses the same theme, with **Cybex OS**,
+its previous generations, firmware setup and shutdown; the firmware lists it as
+**CybexOS**. Installed systems boot
+quietly behind the Plymouth splash. PXE uses the same ISO. iVentoy's NixOS hook needs the upstream scripted
 live initrd; installed machines use systemd stage one. A successful virtual-CD
 boot does not establish a successful iVentoy boot.
 
@@ -91,8 +94,11 @@ One password of at least eight characters, without character-class rules, sets
 both the login and the LUKS2 key, so it is typed twice. It is held only in the
 screen and service memory until the final click, then passed to the worker over
 its private stdin; it never appears in a snapshot, the draft, a log or an
-argument. First desktop login requires the password; automatic login is a
-later, explicit machine choice and requires verified encryption.
+argument. On an encrypted disk, unlocking it at startup signs you in: SDDM
+logs in automatically once per boot after verifying the encryption, and the
+disk passphrase, cached for 2.5 minutes, unlocks GNOME Keyring. Logging out,
+restarting the login manager or a failed check returns to password login.
+Without encryption every desktop login asks for the password.
 
 Changing the keyboard writes `/run/cybexos-installer/keyboard.env` and loads the
 matching console keymap; the screen restarts with the new layout, because

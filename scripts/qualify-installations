@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shlex
 import shutil
@@ -52,6 +53,8 @@ class VM:
         self.process = None
         self.control_directory = None
         self.command_ready = False
+        # Encrypted installations sign the owner in once the disk unlocks.
+        self.autologin = False
         self.firmware = Path(os.environ['CYBEXOS_OVMF'])
         self.vars = directory / 'vars.fd'
         if not self.vars.exists():
@@ -190,6 +193,9 @@ QA_DIAGNOSTIC'''
         self.login(encrypted=encrypted, password=password)
 
     def login_desktop(self, password=PASSWORD):
+        if self.autologin:
+            self.automatic_desktop()
+            return
         # SDDM has one normal account; its password field has initial focus.
         qmp = socket.socket(socket.AF_UNIX)
         qmp.connect(str(self.qmp))
@@ -209,6 +215,22 @@ QA_DIAGNOSTIC'''
         call('human-monitor-command',{'command-line':'sendkey ret'})
         stream.close();qmp.close()
         self.command('for n in $(seq 1 90); do cybexos-health desktop-required && exit 0; sleep 2; done; exit 1',timeout=240)
+
+    def automatic_desktop(self):
+        """Require the desktop SDDM started itself, with the login keyring unlocked.
+
+        No greeter accepts input, so no password is typed: keystrokes would
+        reach the running desktop. The disk passphrase cached at unlock reaches
+        GNOME Keyring through pam_systemd_loadkey.
+        """
+        self.command('''for n in $(seq 1 90); do cybexos-health desktop-required && break; sleep 2; done
+cybexos-health desktop-required
+for session in $(loginctl list-sessions --no-legend | awk '$3 == "cybexqa" {print $1}'); do
+  loginctl show-session "$session" -p Service --value
+done | grep -qx sddm-autologin
+test -d /run/cybexos-autologin-used
+test "$(runuser -u cybexqa -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \\
+  busctl --user get-property org.freedesktop.secrets /org/freedesktop/secrets/collection/login org.freedesktop.Secret.Collection Locked)" = "b false"''', timeout=240)
 
     def check_desktop_defaults(self):
         self.command(r'''python3 - <<'QA_DEFAULTS'
@@ -260,7 +282,8 @@ QA_DEFAULTS''', timeout=60)
         self.command(prefix + 'secret-tool clear cybexos qualification')
         evidence.update(result='passed', checks=['real packaged worker and PAM',
             'old disk key rejected' if encrypted else 'no disk change',
-            'reboot and password desktop login', 'login keyring unlocked with changed password'])
+            'reboot and automatic desktop login after disk unlock' if self.autologin else 'reboot and password desktop login',
+            'login keyring unlocked with changed password'])
         return evidence
 
     def qmp_commands(self, *commands):
@@ -277,6 +300,30 @@ QA_DEFAULTS''', timeout=60)
                             raise RuntimeError(str(result['error']))
                         if 'return' in result:
                             break
+
+    def boot_screenshots(self, directory, count=25):
+        """Capture the boot menu and splash at one-second intervals."""
+        for index in range(count):
+            time.sleep(1)
+            self.screenshot(directory / f'{index:02d}.png')
+
+    def quiet_boot(self):
+        """Check the installed boot's serial console for kernel and EFI stub text.
+
+        The QA machine's kernel console includes ttyS0, so any kernel or EFI
+        stub message at the console level reaches this log. On a serial console
+        Plymouth always uses its text view and asks systemd to print unit
+        status there; those lines are counted but expected. Without a serial
+        console Plymouth keeps them in its boot log behind the splash.
+        """
+        self.log.flush()
+        text = (self.directory / 'serial.log').read_text(errors='replace')
+        boot = text.rsplit('BdsDxe: starting', 1)[-1].split('login:', 1)[0]
+        boot = re.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', boot)
+        found = {'kernel': len(re.findall(r'\[\s*\d+\.\d{6}\]', boot)), 'efiStub': boot.count('EFI stub:')}
+        return {'result': 'passed' if not any(found.values()) else 'failed', 'linesOnConsole': found,
+                'plymouthTextViewStatusLines': len(re.findall(r'\[\s*(?:OK|FAILED|DEPEND|TIME)\s*\]', boot)),
+                'scope': 'serial console of the installed boot until the login prompt'}
 
     def screenshot(self, path):
         """Capture the actual VM display, never a reconstructed installer screen."""
@@ -407,10 +454,10 @@ QA_DEFAULTS''', timeout=60)
         self.press('ret')
         state = self.wait_installer(lambda s: s.get('phase') == 'review' and not s.get('reviewPending'), 'the review')
         plan = state['review']
-        expected = {'username': 'cybexqa', 'fullName': 'Cybex QA', 'hostname': 'cybexqa-cybexos', 'encrypted': encrypted, 'disk': '/dev/vda'}
+        expected = {'username': 'cybexqa', 'fullName': 'Cybex QA', 'hostname': 'cybexqa-cybexos', 'encrypted': encrypted, 'autoLogin': encrypted, 'disk': '/dev/vda'}
         if {key: plan.get(key) for key in expected} != expected:
             raise RuntimeError('Reviewed plan differs from the screen input: ' + json.dumps(plan))
-        evidence['reviewedPlan'] = {key: plan.get(key) for key in ('username', 'fullName', 'hostname', 'timezone', 'keyboard', 'encrypted', 'features')}
+        evidence['reviewedPlan'] = {key: plan.get(key) for key in ('username', 'fullName', 'hostname', 'timezone', 'keyboard', 'encrypted', 'autoLogin', 'features')}
         shot('review.png')
         self.click(1024, 755, size)
         self.wait_installer(lambda s: s.get('phase') in ('installing', 'complete'), 'the erase confirmation', timeout=120)
@@ -466,14 +513,39 @@ def stage(vm, scope='local'):
     return json.loads(base64.b64decode(payload))
 
 
+def boot_selection(vm):
+    """GRUB's persistent and one-shot selections, read from the installed ESP."""
+    return json.loads(vm.command('''python3 - <<'QA'
+import json
+from pathlib import Path
+lines = Path('/boot/grub/grubenv').read_text().splitlines()[1:]
+print(json.dumps(dict(line.split('=', 1) for line in lines if line and not line.startswith('#'))))
+QA''').strip())
+
+
+def grub_selection(system):
+    return 'cybexos-generations>cybexos-system-' + system[len('/nix/store/'):][:32]
+
+
 def apply(vm, status):
     vm.command('cybex update apply ' + shlex.quote(status['transaction']) + ' ' + shlex.quote(status['reviewToken']))
     wait_state(vm, ('awaiting-boot',), timeout=300)
+    pending = json.loads(vm.command('cat /var/lib/cybexos/pending.json').strip())
+    selection = boot_selection(vm)
+    if selection.get('saved_entry') != grub_selection(pending['previousSystem']) or selection.get('next_entry') != grub_selection(pending['system']):
+        raise RuntimeError('Trial boot selection differs from the pending deployment: ' + json.dumps(selection))
+
+
+def trial_boot(vm, encrypted):
+    vm.reboot(encrypted)
+    wait_state(vm, ('awaiting-login',), timeout=180)
+    # GRUB consumes the one-shot selection while booting it.
+    if boot_selection(vm).get('next_entry'):
+        raise RuntimeError('GRUB kept the one-shot trial selection after booting it')
 
 
 def authenticated_boot(vm, encrypted):
-    vm.reboot(encrypted)
-    wait_state(vm, ('awaiting-login',), timeout=180)
+    trial_boot(vm, encrypted)
     vm.login_desktop()
     vm.command('cybexos-health desktop-required', timeout=180)
 
@@ -482,6 +554,9 @@ def confirm(vm):
     vm.command('cybex update confirm')
     wait_state(vm, ('done',), timeout=180)
     vm.command('test ! -e /var/lib/cybexos/pending.json')
+    current = vm.command('readlink -f /run/current-system').strip()
+    if boot_selection(vm).get('saved_entry') != grub_selection(current):
+        raise RuntimeError('Confirmation did not make the trial generation the boot default')
 
 
 PERSONAL_MODULE = '''{ pkgs, ... }: {
@@ -634,6 +709,21 @@ cybexos-health desktop-required
     vm.command(preserve)
     checks['interruptedStageRecovery'] = {'result': 'passed'}
 
+    # An unconfirmed trial boots once; the next boot returns to the previous
+    # generation and recovery restores it. This candidate is then quarantined.
+    edit_import(vm, 'qualification-unconfirmed.nix', '{ ... }: { environment.etc."cybexos-qualification-unconfirmed".text = "unconfirmed"; }')
+    unconfirmed = stage(vm)
+    apply(vm, unconfirmed)
+    trial_boot(vm, encrypted)
+    vm.command('test "$(cat /etc/cybexos-qualification-unconfirmed)" = unconfirmed')
+    vm.reboot(encrypted)
+    wait_state(vm, ('rolled-back',), timeout=180)
+    vm.command('test ! -e /etc/cybexos-qualification-unconfirmed\ntest ! -e /var/lib/cybexos/pending.json\n'
+               'test ! -e /etc/nixos/local/qualification-unconfirmed.nix')
+    vm.login_desktop()
+    vm.command(preserve)
+    checks['unconfirmedTrialFallback'] = {'result': 'passed', 'transaction': unconfirmed['transaction']}
+
     edit_import(vm, 'qualification-candidate.nix', '{ ... }: { environment.etc."cybexos-qualification-candidate".text = "candidate"; }')
     candidate = stage(vm)
     apply(vm, candidate)
@@ -660,7 +750,7 @@ def qualify(iso, encrypted, base, lifecycle=True, evidence=None, *, interactive=
     disk=case/'disk.qcow2'
     subprocess.run(['qemu-img','create','-f','qcow2',str(disk),'80G'],check=True,capture_output=True)
     plan={'disk':'/dev/vda','serial':'CYBEXOS-QA-DISK','hostname':'cybexos-qa','username':'cybexqa',
-          'timezone':'UTC','locale':'en_US.UTF-8','keyboard':'us','encrypted':encrypted,'autoLogin':False,
+          'timezone':'UTC','locale':'en_US.UTF-8','keyboard':'us','encrypted':encrypted,'autoLogin':encrypted,
           'secureBoot':False,'nvidiaOpen':True,'serialConsole':True,
           'features':{'developer':False,'proprietary':False,'steam':False,'docker':False,'connectedWidgets':False}}
     if applications == 'standard':
@@ -669,6 +759,7 @@ def qualify(iso, encrypted, base, lifecycle=True, evidence=None, *, interactive=
     plan64=base64.b64encode(json.dumps(plan).encode()).decode()
     secrets=json.dumps({'password':PASSWORD})
     vm=VM(case,disk,iso)
+    vm.autologin = encrypted
     try:
         vm.start();vm.login(live=True)
         identity=json.loads(vm.command('cat /etc/cybexos/release.json').strip())
@@ -690,8 +781,23 @@ def qualify(iso, encrypted, base, lifecycle=True, evidence=None, *, interactive=
             raise RuntimeError(str(error) + '\nInstaller diagnostics (disposable QA guest):\n' + diagnostics) from error
         milestones['installerCompleted'] = {'result': 'passed', 'interface': 'tty1 Slint screen with real QMP keyboard and pointer input' if interactive else 'JSON plan', 'applications': applications}
         vm.process.sendline('systemctl poweroff');vm.process.expect(pexpect.EOF,timeout=90);vm.stop()
-        vm.iso=None;vm.start();vm.login(encrypted=encrypted)
+        vm.iso=None;vm.start()
+        if screenshots:
+            vm.boot_screenshots(screenshots / 'installed-boot')
+        vm.login(encrypted=encrypted)
         milestones['installedBootAndSerialPasswordLogin'] = {'result': 'passed'}
+        milestones['quietBoot'] = vm.quiet_boot()
+        vm.command('''grep -q 'submenu "Cybex OS - All configurations" --class submenu --id cybexos-generations {' /boot/grub/grub.cfg
+grep -q '^ *set theme=.*/theme/theme.txt$' /boot/grub/grub.cfg
+grep -q 'text = "Cybex OS"' /boot/theme/theme.txt && test -s /boot/theme/logo.png && test -s /boot/theme/unicode.pf2
+! grep -E '^ *(menuentry|submenu) "NixOS' /boot/grub/grub.cfg
+cmp /boot/EFI/CybexOS/grubx64.efi /boot/EFI/BOOT/BOOTX64.EFI
+efibootmgr | grep -q "^Boot$(efibootmgr | sed -n 's/^BootCurrent: //p')\\* CybexOS"
+! efibootmgr | grep -qi nixos
+grep -qw quiet /proc/cmdline && test "$(cut -f1 /proc/sys/kernel/printk)" = 3''')
+        milestones['installedBootMenu'] = {'result': 'passed', 'checks': [
+            'GRUB with the installer theme', 'labelled exact-system generations', 'removable fallback loader',
+            'firmware boot entry', 'quiet kernel command line']}
         vm.command('test -L /etc/nixos && test -e /etc/cybexos/runtime/quickshell/shell.qml')
         installed_identity=json.loads(vm.command('cat /etc/cybexos/release.json').strip())
         installed_source=json.loads(vm.command('''python3 - <<'QA_SOURCE'
@@ -710,13 +816,15 @@ QA_SOURCE''').strip())
         vm.check_desktop_defaults()
         if screenshots:
             vm.screenshot(screenshots / 'installed-desktop.png')
-        milestones['authenticatedDesktopHealth'] = {'result': 'passed', 'login': 'SDDM password login after disk unlock' if encrypted else 'SDDM password login'}
+        milestones['authenticatedDesktopHealth'] = {'result': 'passed', 'login': 'SDDM automatic login after disk unlock, keyring unlocked' if encrypted else 'SDDM password login'}
         vm.password_change(encrypted, milestones.setdefault('sharedPasswordChanges', {}))
+        if milestones['quietBoot']['result'] != 'passed':
+            raise RuntimeError('The installed boot printed console text: ' + json.dumps(milestones['quietBoot']))
         if not lifecycle:
             evidence.update(result='passed', scope='actual ISO install, installed boot/login, encryption; no update application')
         else:
             qualify_lifecycle(vm, encrypted, evidence.setdefault('lifecycle', {}))
-            evidence.update(result='passed', scope='actual ISO installation, boot/login, local updater failure/interruption, staged application, trial boot/confirmation and rollback; no signed channel or physical qualification')
+            evidence.update(result='passed', scope='actual ISO installation, boot/login, local updater failure/interruption, staged application, GRUB trial boot, unconfirmed-trial fallback, confirmation and rollback; no signed channel or physical qualification')
         return evidence
     except Exception:
         evidence['failureDiagnostics'] = vm.failure_diagnostics()

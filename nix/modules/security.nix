@@ -43,9 +43,13 @@ in {
       polkit-1 = auth;
       # Login always asks for the password to unlock the keyring.
       sddm = { fprintAuth = false; u2f.enable = false; enableGnomeKeyring = true; };
+      # NixOS's autologin stack has no default rules, so enableGnomeKeyring has
+      # no effect here. Load the passphrase cached at disk unlock and hand it to
+      # GNOME Keyring explicitly; the session phase (from sddm) unlocks it.
       sddm-autologin = {
-        enableGnomeKeyring = true; fprintAuth = false; u2f.enable = false;
+        fprintAuth = false; u2f.enable = false;
         rules.auth.systemd-loadkey = { order = 100; control = "optional"; modulePath = "${pkgs.systemd}/lib/security/pam_systemd_loadkey.so"; };
+        rules.auth.gnome_keyring = { order = 110; control = "optional"; modulePath = "${pkgs.gnome-keyring}/lib/security/pam_gnome_keyring.so"; };
       };
       # shadow enables null-password login at ordinary priority. The product
       # requires a password even if an account accidentally has an empty hash.

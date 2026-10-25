@@ -71,7 +71,7 @@
           nativeBuildInputs = [
             (pkgs.python3.withPackages (p: [ p.websockets p.pygobject3 p.pillow p.dbus-python p.pexpect ]))
             pkgs.openssl pkgs.git pkgs.dbus pkgs.restic pkgs.quickshell pkgs.systemd
-            pkgs.xdg-terminal-exec pkgs.desktop-file-utils
+            pkgs.xdg-terminal-exec pkgs.desktop-file-utils pkgs.grub2_efi
           ];
           GI_TYPELIB_PATH = pkgs.lib.makeSearchPath "lib/girepository-1.0" [ pkgs.networkmanager pkgs.glib ];
           CYBEXOS_DBUS_SESSION_CONFIG = "${pkgs.dbus}/share/dbus-1/session.conf";
@@ -128,6 +128,7 @@
           inherit pkgs module inputSources;
           candidate = self.checks.${system}.system;
         };
+        boot = import ./nix/tests/boot.nix { inherit pkgs module; };
       });
       devShells = each (system: let pkgs = import nixpkgs { inherit system; overlays = [ compatibility ]; }; in {
         default = pkgs.mkShell {

@@ -1,0 +1,241 @@
+{
+  "kind": "encrypted-autologin-and-firmware-entry-audit",
+  "recordedAt": "2026-10-25T09:10:05.642485+00:00",
+  "result": "passed-for-exercised-scopes",
+  "identity": {
+    "version": "1.0.0-beta.2",
+    "nixos": "26.05",
+    "architecture": "x86_64-linux",
+    "baseCommit": "2baf92dcee4df6d00087be7ffa6e9d2fd6b670ba",
+    "revision": "uncommitted",
+    "sourceNarHash": "sha256-/SNyfcL/sDtTgEvh5Ad4xFHSh+Cqpy0L7CM7jJ9WaRA=",
+    "sourceFiles": 1280,
+    "iso": "/data/pxe/iso/cybexos-1.0.0-beta.2-20261025-autologin.iso",
+    "isoSha256": "23b749d2ec0680a8c7e3aa78589a95ba8c1a879c9fe48661e5c988ca37f79657",
+    "isoBytes": 7113609216
+  },
+  "sourceChecks": {
+    "lifecycleCheck": {
+      "sourceTests": 587,
+      "settingsTests": 21,
+      "result": "passed"
+    },
+    "installerScreen": {
+      "unit": 20,
+      "renderedInteraction": 8,
+      "presentation": 4,
+      "result": "passed"
+    },
+    "parityCheck": "passed",
+    "imageSourceParity": {
+      "result": "passed",
+      "checks": 40
+    }
+  },
+  "bootVmTest": {
+    "result": "passed",
+    "check": "checks.x86_64-linux.boot",
+    "secondsToMultiUserTarget": {
+      "grub": [
+        18.2,
+        20.4
+      ],
+      "systemd-boot": [
+        16.9,
+        18.4
+      ]
+    },
+    "firmwareEntry": "the booted firmware entry is CybexOS; no entry names NixOS"
+  },
+  "installationQualification": [
+    {
+      "case": "plain-install",
+      "result": "passed",
+      "scope": "actual ISO installation, boot/login, local updater failure/interruption, staged application, GRUB trial boot, unconfirmed-trial fallback, confirmation and rollback; no signed channel or physical qualification",
+      "milestones": {
+        "isoSourceIdentity": {
+          "result": "passed"
+        },
+        "installerCompleted": {
+          "result": "passed",
+          "interface": "JSON plan",
+          "applications": "minimal"
+        },
+        "installedBootAndSerialPasswordLogin": {
+          "result": "passed"
+        },
+        "quietBoot": {
+          "result": "passed",
+          "linesOnConsole": {
+            "kernel": 0,
+            "efiStub": 0
+          }
+        },
+        "installedBootMenu": {
+          "result": "passed",
+          "checks": [
+            "GRUB with the installer theme",
+            "labelled exact-system generations",
+            "removable fallback loader",
+            "firmware boot entry",
+            "quiet kernel command line"
+          ]
+        },
+        "installedSourceIdentity": {
+          "result": "passed"
+        },
+        "runtimeEncryption": {
+          "result": "passed",
+          "encrypted": false
+        },
+        "desktopConfigurationCheck": {
+          "result": "passed"
+        },
+        "authenticatedDesktopHealth": {
+          "result": "passed",
+          "login": "SDDM password login"
+        },
+        "sharedPasswordChanges": {
+          "result": "passed",
+          "encrypted": false,
+          "checks": [
+            "real packaged worker and PAM",
+            "no disk change",
+            "reboot and password desktop login",
+            "login keyring unlocked with changed password"
+          ]
+        }
+      },
+      "lifecycle": {
+        "upstreamWithUnavailableVendor": "passed",
+        "personalBaseline": "passed",
+        "evaluationFailure": "passed",
+        "buildFailure": "passed",
+        "interruptedStageRecovery": "passed",
+        "unconfirmedTrialFallback": "passed",
+        "localApplyBootConfirm": "passed",
+        "rollbackAndPersonalPersistence": "passed"
+      }
+    },
+    {
+      "case": "encrypted-install",
+      "result": "passed",
+      "scope": "actual ISO installation, boot/login, local updater failure/interruption, staged application, GRUB trial boot, unconfirmed-trial fallback, confirmation and rollback; no signed channel or physical qualification",
+      "milestones": {
+        "isoSourceIdentity": {
+          "result": "passed"
+        },
+        "nativeGuiAssertions": {
+          "result": "passed"
+        },
+        "installerCompleted": {
+          "result": "passed",
+          "interface": "tty1 Slint screen with real QMP keyboard and pointer input",
+          "applications": "minimal"
+        },
+        "installedBootAndSerialPasswordLogin": {
+          "result": "passed"
+        },
+        "quietBoot": {
+          "result": "passed",
+          "linesOnConsole": {
+            "kernel": 0,
+            "efiStub": 0
+          }
+        },
+        "installedBootMenu": {
+          "result": "passed",
+          "checks": [
+            "GRUB with the installer theme",
+            "labelled exact-system generations",
+            "removable fallback loader",
+            "firmware boot entry",
+            "quiet kernel command line"
+          ]
+        },
+        "installedSourceIdentity": {
+          "result": "passed"
+        },
+        "runtimeEncryption": {
+          "result": "passed",
+          "encrypted": true
+        },
+        "desktopConfigurationCheck": {
+          "result": "passed"
+        },
+        "authenticatedDesktopHealth": {
+          "result": "passed",
+          "login": "SDDM automatic login after disk unlock, keyring unlocked"
+        },
+        "sharedPasswordChanges": {
+          "result": "passed",
+          "encrypted": true,
+          "checks": [
+            "real packaged worker and PAM",
+            "old disk key rejected",
+            "reboot and automatic desktop login after disk unlock",
+            "login keyring unlocked with changed password"
+          ]
+        }
+      },
+      "lifecycle": {
+        "upstreamWithUnavailableVendor": "passed",
+        "personalBaseline": "passed",
+        "evaluationFailure": "passed",
+        "buildFailure": "passed",
+        "interruptedStageRecovery": "passed",
+        "unconfirmedTrialFallback": "passed",
+        "localApplyBootConfirm": "passed",
+        "rollbackAndPersonalPersistence": "passed"
+      },
+      "reviewedPlan": {
+        "username": "cybexqa",
+        "fullName": "Cybex QA",
+        "hostname": "cybexqa-cybexos",
+        "timezone": "Europe/Amsterdam",
+        "keyboard": "us",
+        "encrypted": true,
+        "autoLogin": true,
+        "features": {
+          "developer": false,
+          "proprietary": false,
+          "steam": false,
+          "docker": false,
+          "podman": true,
+          "tailscale": true,
+          "connectedWidgets": false,
+          "assistant": true,
+          "localNetworkServices": true
+        }
+      }
+    }
+  ],
+  "autologinChecksPerBoot": [
+    "desktop session opened by the sddm-autologin PAM service, no greeter input",
+    "/run/cybexos-autologin-used once-per-boot marker present",
+    "login keyring collection unlocked (Locked = false)"
+  ],
+  "pxe": {
+    "checksumVerified": true,
+    "refresh": {
+      "result": "success"
+    },
+    "status": {
+      "status": "running"
+    },
+    "service": "active",
+    "images": [
+      "cybexos-1.0.0-beta.2-20261024-2c0c4bcab02f.iso",
+      "cybexos-1.0.0-beta.2-20261024-wifi-audit-v4.iso",
+      "cybexos-1.0.0-beta.2-20261025-autologin.iso",
+      "cybexos-1.0.0-beta.2-20261025-grub-theme.iso"
+    ],
+    "previousImagesPreserved": true
+  },
+  "limits": [
+    "Virtual OVMF/QEMU only; physical firmware boot lists and keyring handoff on real hardware are not qualified",
+    "The 2.5-minute passphrase cache must not expire before SDDM starts; a slower boot leaves the keyring locked until unlocked by hand",
+    "SDDM-restart behaviour (once per boot) is configured and asserted, not exercised by restarting the display manager",
+    "Development source/ISO; no signed release or channel update"
+  ]
+}

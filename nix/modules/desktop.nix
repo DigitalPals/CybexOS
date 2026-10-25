@@ -24,6 +24,16 @@ in {
       modulePath = "${pkgs.pam}/lib/security/pam_exec.so";
       args = [ "quiet" "${cfg.updaterPackage}/bin/cybexos-verify-encryption" ];
     };
+    # One automatic login per boot: a restarted SDDM daemon would otherwise
+    # treat its first display as a fresh boot. The marker lives on tmpfs.
+    security.pam.services.sddm-autologin.rules.auth.cybexos-once = lib.mkIf cfg.autoLogin {
+      order = 10250; control = "requisite";
+      modulePath = "${pkgs.pam}/lib/security/pam_exec.so";
+      args = [ "quiet" "${pkgs.coreutils}/bin/mkdir" "/run/cybexos-autologin-used" ];
+    };
+    # pam_systemd_loadkey reads root's user keyring, which systemd-cryptsetup
+    # filled at unlock; SDDM's own session keyring must be linked to it.
+    systemd.services.display-manager.serviceConfig.KeyringMode = lib.mkIf cfg.autoLogin "shared";
     environment.etc."cybexos/runtime".source = "${cfg.desktopPackage}/share/cybexos/runtime";
     environment.etc."cybexos/titlebars.so".source = "${pkgs.callPackage ../packages/titlebars.nix { hyprland = config.programs.hyprland.package; }}/lib/omarchy-hyprland-titlebars/titlebars.so";
     environment.etc."cybexos/fingerprint-enabled" = lib.mkIf cfg.authentication.fingerprint { text = "enabled\n"; };

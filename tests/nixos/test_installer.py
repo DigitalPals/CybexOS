@@ -254,7 +254,8 @@ class GraphicalProtocolTests(unittest.TestCase):
         return [json.loads(line) for line in output.getvalue().splitlines()]
 
     def test_final_confirmation_binds_review_and_never_echoes_password(self):
-        candidate = plan(); candidate['autoLogin'] = False
+        # An encrypted plan signs in automatically after disk unlock.
+        candidate = plan()
         events = self.run_protocol([{'action': 'review', 'plan': candidate},
             {'action': 'install', 'confirmed': True, 'token': 'review-token', 'secrets': {'password': 'Cybexos8!'}}])
         self.assertEqual(events[-1]['event'], 'complete')
@@ -270,9 +271,9 @@ class GraphicalProtocolTests(unittest.TestCase):
                 self.run_protocol(requests)
             self.assertEqual(self.installs, [])
 
-    def test_changed_disk_rejects_review_and_keeps_first_login_password_only(self):
-        for key, value in (('serial', 'OTHER'), ('autoLogin', True)):
-            candidate = plan(); candidate.update(autoLogin=False); candidate[key] = value
+    def test_changed_disk_or_unencrypted_autologin_rejects_review(self):
+        for key, value in (('serial', 'OTHER'), ('encrypted', False)):
+            candidate = plan(); candidate[key] = value
             with self.subTest(key=key), self.assertRaises(installer.Cancelled):
                 self.run_protocol([{'action': 'review', 'plan': candidate}, {'action': 'cancel'}])
             self.assertIn('validation-error', self.output.getvalue())

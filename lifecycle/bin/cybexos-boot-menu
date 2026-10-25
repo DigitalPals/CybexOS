@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Label a generated GRUB menu so updates can select exact systems."""
+import sys
+from cybexos.boot import label_menu
+from cybexos.cli import entry
+
+entry(lambda: label_menu(sys.argv[1:]))

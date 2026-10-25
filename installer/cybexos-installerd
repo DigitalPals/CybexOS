@@ -414,7 +414,7 @@ class Daemon:
         if not isinstance(plan, dict):
             return None
         return {key: plan.get(key) for key in ('disk', 'serial', 'hostname', 'username', 'fullName', 'timezone',
-                                               'locale', 'keyboard', 'desktopKeyboard', 'encrypted', 'nvidiaOpen', 'features')}
+                                               'locale', 'keyboard', 'desktopKeyboard', 'encrypted', 'autoLogin', 'nvidiaOpen', 'features')}
 
     # ── plan ─────────────────────────────────────────────────────────────────
     def plan(self):
@@ -435,7 +435,7 @@ class Daemon:
         console = next(entry[2] for entry in LAYOUTS if entry[0] == draft['layout'])
         plan = {'disk': disk['path'], 'serial': disk['serial'], 'hostname': hostname, 'username': draft['username'],
                 'timezone': zone, 'locale': draft['locale'], 'keyboard': console, 'desktopKeyboard': draft['layout'],
-                'encrypted': bool(draft['encrypted']), 'autoLogin': False, 'secureBoot': False,
+                'encrypted': bool(draft['encrypted']), 'autoLogin': bool(draft['encrypted']), 'secureBoot': False,
                 'nvidiaOpen': bool(draft['nvidiaOpen']),
                 'features': {key: bool(draft['apps'].get(key, True)) for key, _, _ in APPLICATIONS}}
         if draft['fullName'].strip():

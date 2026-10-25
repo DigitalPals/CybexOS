@@ -2,6 +2,13 @@
 desktop-color: "#0d0d0d"
 title-text: ""
 terminal-font: "Unifont Regular 16"
+# GRUB clears this text window while an entry loads; covering only the menu
+# keeps the logo and label in place. The command line and editor use it too.
+terminal-left: "15%"
+terminal-top: "40%"
+terminal-width: "70%"
+terminal-height: "50%"
+terminal-border: "0"
 
 + image {
   left = 50%-180

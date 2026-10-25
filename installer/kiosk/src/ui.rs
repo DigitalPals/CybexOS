@@ -555,7 +555,15 @@ impl App {
         };
         let account = if draft.full_name.trim().is_empty() { draft.username.clone() } else { format!("{} · {}", draft.full_name.trim(), draft.username) };
         let mut left = vec![
-            row("Account", account, format!("password login · home /home/{}", draft.username), "account", "Change", false, false),
+            row(
+                "Account",
+                account,
+                format!("{} · home /home/{}", if draft.encrypted { "signs in after disk unlock" } else { "password login" }, draft.username),
+                "account",
+                "Change",
+                false,
+                false,
+            ),
             row("Time zone", format!("{zone_title} · {clock} now"), format!("{} · {offset}", draft.timezone), "timezone", "Change", false, false),
             row(
                 "Encryption",
@@ -638,6 +646,7 @@ impl App {
         self.elapsed_base = (state.elapsed, Instant::now());
         store.set_elapsed(s(format_elapsed(state.elapsed)));
         if let Some(result) = &state.result {
+            store.set_done_name(s(names::given_name(&state.draft.full_name, &result.username)));
             store.set_done_user(s(&result.username));
             store.set_done_host(s(&result.hostname));
             store.set_done_encrypted(result.encrypted);

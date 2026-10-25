@@ -236,12 +236,7 @@ in {
       makeUsbBootable = true;
       prependToMenuLabel = "Install ";
       appendToMenuLabel = "";
-      grubTheme = pkgs.runCommand "cybexos-iso-boot-theme" {} ''
-        mkdir -p $out
-        cp ${../../desktop/boot/theme.txt} $out/theme.txt
-        cp ${../../desktop/plymouth/logo.png} $out/logo.png
-        cp ${pkgs.grub2}/share/grub/unicode.pf2 $out/unicode.pf2
-      '';
+      grubTheme = config.cybexos.bootTheme;
       splashImage = ../../desktop/boot/splash.png;
       efiSplashImage = ../../desktop/boot/splash.png;
     };

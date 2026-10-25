@@ -438,9 +438,9 @@ class Engine:
             atomic(self.pending_path, record | {'phase': 'activation', 'bootId': self.boot_id()})
             self.status(state='activating', phase='Activating under supervision')
             try:
-                # Pin the safe persistent EFI default before the boot installer
-                # can write a candidate loader.conf. Power loss during profile()
-                # must not leave an unvalidated candidate as the default boot.
+                # Pin the safe persistent boot default before the boot installer
+                # can write a candidate menu. Power loss during profile() must
+                # not leave an unvalidated candidate as the default boot.
                 self.run('cybexos-boot-trial', '--restore', record['previousSystem'])
                 previously_failed = self.failed_units()
                 self.switch(record['system'], 'test')
@@ -477,10 +477,10 @@ class Engine:
         atomic(self.pending_path, record | {'phase': 'recovery', 'preserveWorking': preserve_working})
         self.status(state='recovering', phase='Restoring previous generation: ' + reason, error=activation_error)
         try:
-            # Clearing the one-shot requires no retained boot entry and must
+            # Disarming the one-shot requires no retained boot entry and must
             # precede even personal backup validation. profile() recreates a
             # pruned entry before --restore selects the known-good default.
-            self.run('bootctl', 'set-oneshot', '')
+            self.run('cybexos-boot-trial', '--disarm')
             if not (tx / 'personal-before-rollback').exists():
                 copy_config(self.working, tx / 'personal-before-rollback')
             self.profile(record['previousSystem'])

@@ -18,7 +18,12 @@ let
   kernel = "/boot${config.boot.kernelPackages.kernel}/${config.system.boot.loader.kernelFile}";
   initrd = "/boot${config.system.build.initialRamdisk}/${config.system.boot.loader.initrdFile}";
   init = "init=${config.system.build.toplevel}/init";
-  grubEntries = lib.concatMapStrings (entry: ''
+  # The theme's colour, not black, fills GRUB's text window while loading.
+  grubEntries = ''
+    if [ "$textmode" == "false" ]; then
+      background_color '${config.cybexos.bootTheme.background}'
+    fi
+  '' + lib.concatMapStrings (entry: ''
     menuentry '${entry.label}' --class installer {
       terminal_output gfxterm
       set gfxpayload=keep

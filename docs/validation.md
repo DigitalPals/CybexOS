@@ -54,9 +54,14 @@ tests and failures; inspect that evidence before using a particular image.
   Cisco IKEv1/IPsec uses the maintained Nixpkgs Libreswan plugin rather than the
   archived, vulnerable vpnc plugin. Real gateway authentication/routing/DNS and
   all declared product/hardware features still require qualification.
-- Type 1 systemd-boot entries and Type 2 UKI/Lanzaboote entries have native boot
-  selection support with source regression coverage. Actual UKI trial boots,
-  signing, failed-boot recovery and rollback remain unqualified.
+- GRUB boot selection pins exact systems through labelled menu identifiers and
+  GRUB's environment block. `nix/tests/boot.nix` boots real GRUB in OVMF from a
+  disk installed through `installBootLoader` with an installer-sized ESP. It
+  exercises the theme, quiet boot, persistent selection, a one-shot trial, its
+  fallback and commit. Physical firmware remains unqualified.
+- Type 2 UKI/Lanzaboote entries for Secure Boot keep systemd-boot selection
+  support with source regression coverage. Actual UKI trial boots, signing,
+  failed-boot recovery and rollback remain unqualified.
 - No application-data migration engine ships. Reviewed transaction-root pruning
   and weekly cleanup enabled by default are implemented; real bootloader
   interruption and timer qualification remain outstanding (see the

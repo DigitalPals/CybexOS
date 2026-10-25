@@ -459,7 +459,7 @@ def interactive(release):
         raise Failure('Installation medium is missing its shared application defaults. Nothing has been erased')
     hardware = detect()
     plan = {'hostname': 'cybexos', 'timezone': 'UTC', 'locale': 'en_US.UTF-8', 'keyboard': 'us',
-            'encrypted': True, 'autoLogin': False, 'secureBoot': False, 'nvidiaOpen': True, 'features': {}}
+            'encrypted': True, 'autoLogin': True, 'secureBoot': False, 'nvidiaOpen': True, 'features': {}}
     while True:
         print('\n1 of 5 · Choose a disk\n')
         available = [disk for disk in disks() if disk['type'] == 'disk' and re.fullmatch(DISK_PATTERN, disk['path'])]
@@ -851,8 +851,6 @@ def graphical_session(args, runner):
         elif request.get('action') == 'review':
             try:
                 candidate = validate(request.get('plan'))
-                if candidate['autoLogin']:
-                    raise Failure('The first desktop login requires your password. Automatic login can be configured after installation')
                 disk_guard(candidate)
                 reviewed, token = candidate, random_secrets.token_urlsafe(24)
                 event('review', plan=reviewed, token=token)

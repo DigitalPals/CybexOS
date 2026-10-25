@@ -1,0 +1,271 @@
+{
+  "kind": "installed-boot-menu-and-quiet-boot-audit",
+  "recordedAt": "2026-10-25T08:35:49.345824+00:00",
+  "result": "passed-for-exercised-scopes",
+  "identity": {
+    "version": "1.0.0-beta.2",
+    "nixos": "26.05",
+    "architecture": "x86_64-linux",
+    "baseCommit": "2baf92dcee4df6d00087be7ffa6e9d2fd6b670ba",
+    "revision": "uncommitted",
+    "sourceNarHash": "sha256-dhF6bsluur7qo81lMrNSQY2hIvkLP/9LEdvHO5e4CXA=",
+    "sourceFiles": 1275,
+    "iso": "/data/pxe/iso/cybexos-1.0.0-beta.2-20261025-grub-theme.iso",
+    "isoSha256": "6b24af7f36fe8b1273dda242e116a0ca7d47b2d0141fac1aa054b8e27b4afb20",
+    "isoBytes": 7113609216
+  },
+  "sourceChecks": {
+    "lifecycleCheck": {
+      "sourceTests": 587,
+      "settingsTests": 21,
+      "result": "passed"
+    },
+    "parityCheck": "passed",
+    "imageSourceParity": {
+      "result": "passed",
+      "checks": 40
+    },
+    "isoMenuSyntax": "grub-script-check passed on the ISO EFI menu"
+  },
+  "bootVmTest": {
+    "result": "passed",
+    "check": "checks.x86_64-linux.boot",
+    "subtests": [
+      "menu has the installer theme and identifies exact systems",
+      "boot is quiet",
+      "a persistent selection outranks the newest generation",
+      "a trial boots once, then the previous default returns",
+      "commit makes the trial the default",
+      "loading time against systemd-boot"
+    ],
+    "secondsToMultiUserTarget": {
+      "grub": [
+        18.7,
+        21.3
+      ],
+      "systemd-boot": [
+        18.2,
+        17.8
+      ]
+    },
+    "guestMemoryMiB": 12288,
+    "initrdBytes": 1457786158,
+    "finding": "In a 4 GiB guest systemd-boot failed to load this initrd (EFI stub: Out of Resources); GRUB loaded it."
+  },
+  "installationQualification": [
+    {
+      "case": "plain-install",
+      "result": "passed",
+      "scope": "actual ISO installation, boot/login, local updater failure/interruption, staged application, GRUB trial boot, unconfirmed-trial fallback, confirmation and rollback; no signed channel or physical qualification",
+      "milestones": {
+        "isoSourceIdentity": {
+          "result": "passed"
+        },
+        "installerCompleted": {
+          "result": "passed",
+          "interface": "JSON plan",
+          "applications": "minimal"
+        },
+        "installedBootAndSerialPasswordLogin": {
+          "result": "passed"
+        },
+        "quietBoot": {
+          "result": "passed",
+          "linesOnConsole": {
+            "kernel": 0,
+            "efiStub": 0
+          },
+          "plymouthTextViewStatusLines": 151
+        },
+        "installedBootMenu": {
+          "result": "passed",
+          "checks": [
+            "GRUB with the installer theme",
+            "labelled exact-system generations",
+            "removable fallback loader",
+            "firmware boot entry",
+            "quiet kernel command line"
+          ]
+        },
+        "installedSourceIdentity": {
+          "result": "passed"
+        },
+        "runtimeEncryption": {
+          "result": "passed",
+          "encrypted": false
+        },
+        "desktopConfigurationCheck": {
+          "result": "passed"
+        },
+        "authenticatedDesktopHealth": {
+          "result": "passed",
+          "login": "SDDM password login"
+        },
+        "sharedPasswordChanges": {
+          "result": "passed",
+          "encrypted": false,
+          "checks": [
+            "real packaged worker and PAM",
+            "no disk change",
+            "reboot and password desktop login",
+            "login keyring unlocked with changed password"
+          ]
+        }
+      },
+      "lifecycle": {
+        "upstreamWithUnavailableVendor": "passed",
+        "personalBaseline": "passed",
+        "evaluationFailure": "passed",
+        "buildFailure": "passed",
+        "interruptedStageRecovery": "passed",
+        "unconfirmedTrialFallback": "passed",
+        "localApplyBootConfirm": "passed",
+        "rollbackAndPersonalPersistence": "passed"
+      }
+    },
+    {
+      "case": "encrypted-install",
+      "result": "passed",
+      "scope": "actual ISO installation, boot/login, local updater failure/interruption, staged application, GRUB trial boot, unconfirmed-trial fallback, confirmation and rollback; no signed channel or physical qualification",
+      "milestones": {
+        "isoSourceIdentity": {
+          "result": "passed"
+        },
+        "installerCompleted": {
+          "result": "passed",
+          "interface": "JSON plan",
+          "applications": "minimal"
+        },
+        "installedBootAndSerialPasswordLogin": {
+          "result": "passed"
+        },
+        "quietBoot": {
+          "result": "passed",
+          "linesOnConsole": {
+            "kernel": 0,
+            "efiStub": 0
+          },
+          "plymouthTextViewStatusLines": 156
+        },
+        "installedBootMenu": {
+          "result": "passed",
+          "checks": [
+            "GRUB with the installer theme",
+            "labelled exact-system generations",
+            "removable fallback loader",
+            "firmware boot entry",
+            "quiet kernel command line"
+          ]
+        },
+        "installedSourceIdentity": {
+          "result": "passed"
+        },
+        "runtimeEncryption": {
+          "result": "passed",
+          "encrypted": true
+        },
+        "desktopConfigurationCheck": {
+          "result": "passed"
+        },
+        "authenticatedDesktopHealth": {
+          "result": "passed",
+          "login": "SDDM password login after disk unlock"
+        },
+        "sharedPasswordChanges": {
+          "result": "passed",
+          "encrypted": true,
+          "checks": [
+            "real packaged worker and PAM",
+            "old disk key rejected",
+            "reboot and password desktop login",
+            "login keyring unlocked with changed password"
+          ]
+        }
+      },
+      "lifecycle": {
+        "upstreamWithUnavailableVendor": "passed",
+        "personalBaseline": "passed",
+        "evaluationFailure": "passed",
+        "buildFailure": "passed",
+        "interruptedStageRecovery": "passed",
+        "unconfirmedTrialFallback": "passed",
+        "localApplyBootConfirm": "passed",
+        "rollbackAndPersonalPersistence": "passed"
+      }
+    }
+  ],
+  "visualInspection": {
+    "result": "passed",
+    "captures": [
+      "GRUB menu with installer theme and highlighted Cybex OS entry",
+      "logo and label kept while GRUB loads the kernel and initrd (no black text window)",
+      "Cybex OS Plymouth splash",
+      "SDDM login"
+    ],
+    "superseded": "The first snapshot showed GRUB's black 70% text window while loading; fixed by the shared theme and background colour."
+  },
+  "pxe": {
+    "checksumVerified": true,
+    "refresh": {
+      "result": "success"
+    },
+    "status": {
+      "status": "running"
+    },
+    "service": "active",
+    "images": [
+      "cybexos-1.0.0-beta.2-20261024-2c0c4bcab02f.iso",
+      "cybexos-1.0.0-beta.2-20261024-wifi-audit-v4.iso",
+      "cybexos-1.0.0-beta.2-20261025-grub-theme.iso"
+    ],
+    "previousImagesPreserved": true
+  },
+  "limits": [
+    "Virtual OVMF/QEMU firmware only; physical firmware boot entries, GRUB load times and Plymouth on real GPUs are not qualified",
+    "QA installs keep a serial console, so Plymouth shows its text view there; the splash-only screen was exercised in the boot VM test",
+    "Secure Boot keeps Lanzaboote/systemd-boot and remains unqualified; the installer still refuses Secure Boot installation",
+    "Development source/ISO; no signed release or channel update"
+  ],
+  "cleanup": {
+    "leases": 9,
+    "allClosed": true,
+    "remainingResources": [],
+    "storeFreedMiB": 122553,
+    "deleted": [
+      "five test disk images (21.29 GiB each), their test drivers/scripts and VM runners",
+      "two ISO builds",
+      "check outputs",
+      "fetched systemd, Plymouth and GRUB sources"
+    ],
+    "stagingDirectory": {
+      "path": "/data/tmp/cybexos-grub-theme-20261025",
+      "removed": true
+    },
+    "noTaskProcessesOrMounts": true
+  },
+  "retainedArtifacts": [
+    {
+      "path": "/data/pxe/iso/cybexos-1.0.0-beta.2-20261025-grub-theme.iso",
+      "bytes": 7113609216,
+      "reason": "verified testing ISO for physical follow-up"
+    },
+    {
+      "path": "/data/pxe/iso/cybexos-1.0.0-beta.2-20261025-grub-theme.iso.sha256",
+      "bytes": 111,
+      "reason": "testing ISO checksum"
+    },
+    {
+      "path": "docs/measurements/installed-boot-menu-2026-10-25.md",
+      "reason": "human-readable audit"
+    },
+    {
+      "path": "docs/measurements/installed-boot-menu-2026-10-25.json",
+      "reason": "bounded machine-readable evidence"
+    },
+    {
+      "path": "docs/measurements/installed-boot-{menu,loading,splash}-2026-10-25.png",
+      "bytes": 60462,
+      "reason": "actual VM captures for UI review"
+    }
+  ]
+}

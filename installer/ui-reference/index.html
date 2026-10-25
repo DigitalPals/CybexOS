@@ -593,7 +593,7 @@ const SCREENS = {
     const d = disk(), z = BYID[S.tz];
     const appsOn = APPS.filter(a => S.apps[a[0]]).length;
     const rows = [
-      ["Account", `${S.fullName ? esc(S.fullName) + " · " : ""}<span class="mono">${esc(S.username || "ada")}</span>`, "account", `password login · home /home/${esc(S.username || "ada")}`],
+      ["Account", `${S.fullName ? esc(S.fullName) + " · " : ""}<span class="mono">${esc(S.username || "ada")}</span>`, "account", `${S.encrypted ? "signs in after disk unlock" : "password login"} · home /home/${esc(S.username || "ada")}`],
       ["Computer", `<span class="mono">${esc(hostname())}</span>`, "account", ""],
       ["Time zone", `${esc(zoneTitle(z))} · <span data-clock="${S.tz}">${zoneTime(S.tz)}</span> now`, "tz", `${S.tz} · ${zoneOffset(S.tz)}`],
       ["Language", `${langName()} · keyboard ${kbName()}`, "lang", `locale ${S.lang} · disk unlock keymap ${CONSOLE[S.kb] || S.kb}`],
@@ -633,14 +633,15 @@ const SCREENS = {
   },
   done() {
     const u = S.username || "ada";
+    const givenName = (S.fullName.trim().split(/\s+/)[0] || u).replace(/^./u, c => c.toUpperCase());
     return `<div class="top"><div class="logo">${LOGO}</div></div><div class="body full center" style="padding-top:56px">
       <div class="symbol">${SYMBOL}</div>
-      <h1 style="margin-top:30px">Welcome home, ${esc(u)}.</h1>
+      <h1 style="margin-top:30px">Welcome home, ${esc(givenName)}.</h1>
       <div class="lead">Cybex OS ${VERSION} is installed on <span class="mono" style="color:var(--ink)">${esc(hostname())}</span>.</div>
       <div class="next">
         <div class="card"><div class="n">01</div><b>Remove the USB drive</b><span>or choose the internal disk if this computer booted over the network.</span></div>
         <div class="card"><div class="n">02</div><b>${S.encrypted ? "Unlock the disk" : "Wait for the login screen"}</b><span>${S.encrypted ? `Type your password at startup, using the ${kbName()} layout.` : "The disk is not encrypted."}</span></div>
-        <div class="card"><div class="n">03</div><b>Sign in as ${esc(u)}</b><span>The first login always asks for your password.</span></div>
+        <div class="card"><div class="n">03</div><b>${S.encrypted ? "Your desktop opens" : `Sign in as ${esc(u)}`}</b><span>${S.encrypted ? `Unlocking the disk signs you in as ${esc(u)}.` : "Use the password you just chose."}</span></div>
       </div>
       <div style="display:flex;gap:14px"><button class="btn primary" data-act="restart">${I("restart")}Restart now</button><button class="btn" data-act="toast" data-v="Powering off…">${I("power")}Power off</button></div>
     </div>`;

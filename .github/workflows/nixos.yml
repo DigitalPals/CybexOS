@@ -59,6 +59,7 @@ jobs:
             cores = 4
       - run: python3 -B scripts/check-ci-capacity --vm
       - run: nix build .#checks.x86_64-linux.vm -L
+      - run: nix build .#checks.x86_64-linux.boot -L
   image:
     runs-on: [self-hosted, linux, x64, cybexos-isolated]
     steps:

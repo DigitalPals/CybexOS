@@ -37,6 +37,13 @@ let
       packages = map toString c.boot.plymouth.themePackages;
       logo = toString c.boot.plymouth.logo;
       label = c.system.nixos.label;
+      menu = {
+        inherit (c.boot.loader.grub) enable efiSupport device default gfxmodeEfi;
+        theme = toString c.boot.loader.grub.theme;
+        firmwareEntries = map (boot: boot.efiBootloaderId) c.boot.loader.grub.mirroredBoots;
+        selection = builtins.fromJSON c.environment.etc."cybexos/boot.json".text;
+      };
+      quiet = { inherit (c.boot) consoleLogLevel; inherit (c.boot.initrd) verbose; params = lib.take 2 c.boot.kernelParams; };
     };
     fonts = map toString c.fonts.packages;
     compositor = c.programs.hyprland.package.version;
@@ -74,6 +81,10 @@ let
     modules = [ module ./machine.nix {
       cybexos.hardware.xps = { enable = true; sku = "0DB9"; camera = true; };
     } ];
+  }).config;
+  secureBoot = (nixpkgs.lib.nixosSystem {
+    inherit system;
+    modules = [ module ./machine.nix { cybexos.secureBoot = true; } ];
   }).config;
   encrypted = (nixpkgs.lib.nixosSystem {
     inherit system;
@@ -142,6 +153,15 @@ assert builtins.length inputSources == builtins.length (nixpkgs.lib.unique input
 assert builtins.all (path: builtins.elem path installer.system.extraDependencies) inputSources;
 assert builtins.fromJSON installer.environment.etc."cybexos/installer-inputs.json".text == inputSources;
 assert installer.boot.plymouth.theme == "cybexos";
+# The installed menu has the medium's own theme and is selected by exact system.
+assert installed.bootBrand.menu.theme == toString installer.isoImage.grubTheme;
+assert installed.bootBrand.menu.enable && installed.bootBrand.menu.efiSupport;
+assert installed.bootBrand.menu.firmwareEntries == [ "CybexOS" ];
+assert installed.bootBrand.menu.selection == { loader = "grub"; menu = "/boot/grub/grub.cfg"; environment = "/boot/grub/grubenv"; };
+assert installed.bootBrand.quiet == { consoleLogLevel = 3; verbose = false; params = [ "quiet" "udev.log_level=3" ]; };
+# Secure Boot keeps signed Lanzaboote UKIs and the systemd-boot selection.
+assert !secureBoot.boot.loader.grub.enable && secureBoot.boot.lanzaboote.enable;
+assert (builtins.fromJSON secureBoot.environment.etc."cybexos/boot.json".text).loader == "systemd-boot";
 assert installer.system.nixos.distroId == "nixos";
 assert live.updates.channel == (if prerelease then "beta" else "stable");
 assert channel { cybexos.release.version = "1.0.0-beta.1"; } == "beta";
@@ -171,6 +191,14 @@ assert !encrypted.services.displayManager.sddm.autoLogin.relogin;
 assert encrypted.security.pam.services.sddm-autologin.rules.auth.cybexos-encryption.control == "requisite";
 assert builtins.elem "${encrypted.cybexos.updaterPackage}/bin/cybexos-verify-encryption"
   encrypted.security.pam.services.sddm-autologin.rules.auth.cybexos-encryption.args;
+# The disk passphrase cached at unlock reaches GNOME Keyring, once per boot.
+assert encrypted.systemd.services.display-manager.serviceConfig.KeyringMode == "shared";
+assert (let auth = encrypted.security.pam.services.sddm-autologin.rules.auth; in
+  auth.systemd-loadkey.enable && auth.gnome_keyring.enable && auth.systemd-loadkey.order < auth.gnome_keyring.order
+  && auth.gnome_keyring.control == "optional"
+  && auth.cybexos-once.control == "requisite" && builtins.elem "/run/cybexos-autologin-used" auth.cybexos-once.args
+  && auth.sddm-autologin-user.order < auth.cybexos-once.order && auth.cybexos-once.order < auth.permit.order);
+assert !(machine.config.systemd.services.display-manager.serviceConfig ? KeyringMode);
 assert !(builtins.elem "v4l2-relayd-ipu7.service" (health machine.config).units);
 assert (health machine.config).userUnits == [ "hypridle.service" ];
 assert builtins.all (unit: builtins.elem unit (health xps).units)

@@ -23,8 +23,9 @@
   the machine Nixpkgs and is pinned to an authenticated exact release revision
   and NAR identity. Major NixOS upgrades are deliberate; do not change
   `system.stateVersion` during routine updates.
-- Preserve password fallback, password-only first login, encryption-gated
-  automatic login, firewall protections and supported hardware. Hardware stack
+- Preserve password fallback, encryption-gated automatic login after disk
+  unlock (once per boot, keyring unlocked from the disk passphrase), firewall
+  protections and supported hardware. Hardware stack
   failure blocks qualification; it must not silently remove support or disable
   Secure Boot.
 - Validate changes through the actual staged updater. Source/fixture tests and
@@ -45,6 +46,16 @@
 - Build in a unique task-specific staging directory, then copy the completed
   ISO and its SHA-256 checksum into `/data/pxe/iso`. Preserve existing images
   unless their replacement or removal is explicitly requested.
+- Each new testing ISO takes the next beta number. Before freezing its source,
+  increment the prerelease number in `VERSION` (for example `1.0.0-beta.2` to
+  `1.0.0-beta.3`) past the highest number in `VERSION` and `/data/pxe/iso`, so
+  the boot menu, release metadata and file name agree. `VERSION` is the only
+  file to change; test fixtures pin their own versions. Change `1.0.0` only by
+  a deliberate release decision. Serve the build's
+  `cybexos-<VERSION>-x86_64-linux.iso` as `cybexos-<VERSION>.iso` with
+  `cybexos-<VERSION>.iso.sha256` naming that file, for example
+  `cybexos-1.0.0-beta.3.iso`, without date or task suffixes. Never reuse a
+  served number; rebuilds before the copy keep it.
 - After adding, replacing, or removing a testing ISO, refresh iVentoy's image
   list before handoff. Finish copying and verifying the checksum first; keep
   incomplete ISOs outside the served ISO tree. Use ASCII filenames without
