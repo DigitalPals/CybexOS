@@ -1,0 +1,577 @@
+{
+  "kind": "welcome-onboarding-installed-hyprland-audit",
+  "recordedAt": "2026-10-25T19:30:00+00:00",
+  "result": "passed-for-exercised-scopes",
+  "identity": {
+    "version": "1.0.0-beta.3",
+    "nixos": "26.05",
+    "architecture": "x86_64-linux",
+    "qualifiedCommit": "576346731327aa4b083892891328e5e11a4e3802",
+    "sourceNarHash": "sha256-iYPvhqbcknp3DAhXVG1Poba+XQRuBVguSaNj2517ywo=",
+    "isoRelease": {
+      "architecture": "x86_64-linux",
+      "configurationApi": 1,
+      "narHash": "sha256-iYPvhqbcknp3DAhXVG1Poba+XQRuBVguSaNj2517ywo=",
+      "nixos": "26.05",
+      "pluginApi": 1,
+      "revision": "576346731327aa4b083892891328e5e11a4e3802",
+      "updaterApi": 1,
+      "version": "1.0.0-beta.3"
+    },
+    "installedRelease": {
+      "architecture": "x86_64-linux",
+      "configurationApi": 1,
+      "narHash": "sha256-iYPvhqbcknp3DAhXVG1Poba+XQRuBVguSaNj2517ywo=",
+      "nixos": "26.05",
+      "pluginApi": 1,
+      "revision": "uncommitted",
+      "updaterApi": 1,
+      "version": "1.0.0-beta.3"
+    },
+    "installedSourceScope": "same exact source NAR; bundled path inputs have no Git revision metadata",
+    "iso": "cybexos-1.0.0-beta.3-x86_64-linux.iso",
+    "isoSha256": "3f6754157008ad748d3aa3b849d63963aa91094555faac8e30b0db15d6c226e4",
+    "isoBytes": 7120576512,
+    "hyprland": "0.56.2, statically embedding Lua 5.5.1",
+    "quickshell": "0.3.0"
+  },
+  "sourceChecks": {
+    "testsRun": {
+      "pythonUnittestDiscover": 626,
+      "nodeTests": 1461,
+      "nodePassed": 1445,
+      "nodeSkipped": 16,
+      "skippedReason": "unchanged by this work: luajit and fish are not in the dev shell",
+      "result": "passed"
+    },
+    "newTests": [
+      "tests/nixos/test_image_boot.py KeyboardShortcutsRuntimeTests (5)",
+      "tests/quickshell/hyprland-lua.test.cjs (2)",
+      "tests/quickshell/keybindings-lua.test.cjs: state published despite ECHILD",
+      "tests/nixos/test_native_input_region.py: catalog defaults to XKB_CONFIG_ROOT"
+    ],
+    "guestDriverDryRun": "passed against a fake session resolving with the real bindings.lua and keybinding_preferences.lua",
+    "hyprlandVerifyConfig": "passed: desktop_check.verify_compositor with real Hyprland 0.56.2 on the payload system; __cybexos_keybindings_error nil, keybindings-state.json written"
+  },
+  "command": "agent-resource run --task \"cybexos beta.3 onboarding qualification (5763467)\" --ttl 6h -- bash -c 'cd <worktree> && nix --extra-experimental-features \"nix-command flakes\" develop -c scripts/qualify-installations /data/tmp/cxb3/iso3-result/iso/cybexos-1.0.0-beta.3-x86_64-linux.iso --interactive --applications standard --case both --scenario lifecycle --work-dir \"$AGENT_RESOURCE_WORKSPACE/vms\" --screenshots /data/tmp/cxb3/shots3 --output /data/tmp/cxb3/installations3.json'",
+  "installationQualification": [
+    {
+      "case": "plain-install",
+      "result": "passed",
+      "scope": "actual ISO installation, boot/login, local updater failure/interruption, staged application, GRUB trial boot, unconfirmed-trial fallback, confirmation and rollback; no signed channel or physical qualification",
+      "milestones": {
+        "isoSourceIdentity": {
+          "result": "passed"
+        },
+        "nativeGuiAssertions": {
+          "result": "passed",
+          "installerOnlyRuntime": "tty1 kiosk as cybexos-installer; no live account, compositor or display manager",
+          "display": [
+            1280,
+            800
+          ],
+          "developmentConsent": "Enter on the screen",
+          "encryptionSwitch": "pointer click turned encryption off",
+          "lowercaseUsername": "typed CybexQA; the screen kept cybexqa",
+          "reviewedPlan": {
+            "username": "cybexqa",
+            "fullName": "Cybex QA",
+            "hostname": "cybexqa-cybexos",
+            "timezone": "Europe/Amsterdam",
+            "keyboard": "us",
+            "encrypted": false,
+            "autoLogin": false,
+            "features": {
+              "developer": true,
+              "proprietary": true,
+              "steam": true,
+              "docker": true,
+              "podman": true,
+              "tailscale": true,
+              "connectedWidgets": true,
+              "assistant": true,
+              "localNetworkServices": true
+            }
+          },
+          "completed": {
+            "username": "cybexqa",
+            "hostname": "cybexqa-cybexos",
+            "encrypted": false
+          }
+        },
+        "installerCompleted": {
+          "result": "passed",
+          "interface": "tty1 Slint screen with real QMP keyboard and pointer input",
+          "applications": "standard"
+        },
+        "installedBootAndSerialPasswordLogin": {
+          "result": "passed"
+        },
+        "quietBoot": {
+          "result": "passed",
+          "linesOnConsole": {
+            "kernel": 0,
+            "efiStub": 0
+          },
+          "plymouthTextViewStatusLines": 152,
+          "scope": "serial console of the installed boot until the login prompt"
+        },
+        "installedBootMenu": {
+          "result": "passed",
+          "checks": [
+            "GRUB with the installer theme",
+            "labelled exact-system generations",
+            "removable fallback loader",
+            "firmware boot entry",
+            "quiet kernel command line"
+          ]
+        },
+        "installedSourceIdentity": {
+          "result": "passed",
+          "scope": "same exact source NAR; bundled path inputs have no Git revision metadata"
+        },
+        "runtimeEncryption": {
+          "result": "passed",
+          "encrypted": false
+        },
+        "desktopConfigurationCheck": {
+          "result": "passed"
+        },
+        "welcomeFirstLogin": {
+          "result": "passed",
+          "opened": true,
+          "dismissed": true,
+          "unmapped": true,
+          "helloSummaryServices": {
+            "region": {
+              "loaded": true,
+              "failed": false
+            },
+            "input": {
+              "loaded": true,
+              "failed": false
+            }
+          }
+        },
+        "keyboardShortcutsRuntime": {
+          "userLuaBefore": "absent",
+          "defaults": {
+            "actions": 99,
+            "binds": 107,
+            "describedBinds": 107,
+            "requiredActions": 40,
+            "stateError": null,
+            "evalErrorNil": true,
+            "browser": [
+              "SUPER + B"
+            ]
+          },
+          "keymap": {
+            "entries": 478,
+            "keycode10": "1",
+            "layout": [
+              [
+                "us",
+                "English (US)"
+              ]
+            ]
+          },
+          "applied": {
+            "browser": [
+              "SUPER + ALT + B"
+            ],
+            "custom": [
+              {
+                "group": "Web",
+                "id": "custom.qa-docs",
+                "keys": [
+                  "SUPER + ALT + D"
+                ],
+                "label": "QA docs",
+                "run": {
+                  "type": "url",
+                  "url": "https://example.org"
+                }
+              }
+            ],
+            "diagnostics": [],
+            "customBind": [
+              {
+                "modmask": 72,
+                "key": "D",
+                "description": "Web: QA docs",
+                "dispatcher": "__lua"
+              }
+            ]
+          },
+          "reset": {
+            "browser": [
+              "SUPER + B"
+            ],
+            "custom": [],
+            "changedRows": 0
+          },
+          "userLuaAfter": "absent",
+          "settingsPage": {
+            "opened": "cybexos-runtime ipc settings open shortcuts",
+            "page": "shortcuts"
+          },
+          "journal": {
+            "lines": 10,
+            "onboardingQmlErrors": [],
+            "otherQmlErrors": 0,
+            "otherQmlErrorSamples": []
+          },
+          "result": "passed"
+        },
+        "authenticatedDesktopHealth": {
+          "result": "passed",
+          "login": "SDDM password login"
+        },
+        "sharedPasswordChanges": {
+          "result": "passed",
+          "encrypted": false,
+          "roundTrips": 2,
+          "keyringStored": true,
+          "accountChanges": 2,
+          "checks": [
+            "real packaged worker and PAM",
+            "no disk change",
+            "reboot and password desktop login",
+            "login keyring unlocked with changed password"
+          ]
+        }
+      },
+      "lifecycle": {
+        "upstreamWithUnavailableVendor": "passed",
+        "personalBaseline": "passed",
+        "evaluationFailure": "passed",
+        "buildFailure": "passed",
+        "interruptedStageRecovery": "passed",
+        "unconfirmedTrialFallback": "passed",
+        "localApplyBootConfirm": "passed",
+        "rollbackAndPersonalPersistence": "passed"
+      },
+      "reviewedPlan": {
+        "username": "cybexqa",
+        "fullName": "Cybex QA",
+        "hostname": "cybexqa-cybexos",
+        "timezone": "Europe/Amsterdam",
+        "keyboard": "us",
+        "encrypted": false,
+        "autoLogin": false,
+        "features": {
+          "developer": true,
+          "proprietary": true,
+          "steam": true,
+          "docker": true,
+          "podman": true,
+          "tailscale": true,
+          "connectedWidgets": true,
+          "assistant": true,
+          "localNetworkServices": true
+        }
+      }
+    },
+    {
+      "case": "encrypted-install",
+      "result": "passed",
+      "scope": "actual ISO installation, boot/login, local updater failure/interruption, staged application, GRUB trial boot, unconfirmed-trial fallback, confirmation and rollback; no signed channel or physical qualification",
+      "milestones": {
+        "isoSourceIdentity": {
+          "result": "passed"
+        },
+        "nativeGuiAssertions": {
+          "result": "passed",
+          "installerOnlyRuntime": "tty1 kiosk as cybexos-installer; no live account, compositor or display manager",
+          "display": [
+            1280,
+            800
+          ],
+          "developmentConsent": "Enter on the screen",
+          "lowercaseUsername": "typed CybexQA; the screen kept cybexqa",
+          "reviewedPlan": {
+            "username": "cybexqa",
+            "fullName": "Cybex QA",
+            "hostname": "cybexqa-cybexos",
+            "timezone": "Europe/Amsterdam",
+            "keyboard": "us",
+            "encrypted": true,
+            "autoLogin": true,
+            "features": {
+              "developer": true,
+              "proprietary": true,
+              "steam": true,
+              "docker": true,
+              "podman": true,
+              "tailscale": true,
+              "connectedWidgets": true,
+              "assistant": true,
+              "localNetworkServices": true
+            }
+          },
+          "completed": {
+            "username": "cybexqa",
+            "hostname": "cybexqa-cybexos",
+            "encrypted": true
+          }
+        },
+        "installerCompleted": {
+          "result": "passed",
+          "interface": "tty1 Slint screen with real QMP keyboard and pointer input",
+          "applications": "standard"
+        },
+        "installedBootAndSerialPasswordLogin": {
+          "result": "passed"
+        },
+        "quietBoot": {
+          "result": "passed",
+          "linesOnConsole": {
+            "kernel": 0,
+            "efiStub": 0
+          },
+          "plymouthTextViewStatusLines": 155,
+          "scope": "serial console of the installed boot until the login prompt"
+        },
+        "installedBootMenu": {
+          "result": "passed",
+          "checks": [
+            "GRUB with the installer theme",
+            "labelled exact-system generations",
+            "removable fallback loader",
+            "firmware boot entry",
+            "quiet kernel command line"
+          ]
+        },
+        "installedSourceIdentity": {
+          "result": "passed",
+          "scope": "same exact source NAR; bundled path inputs have no Git revision metadata"
+        },
+        "runtimeEncryption": {
+          "result": "passed",
+          "encrypted": true
+        },
+        "desktopConfigurationCheck": {
+          "result": "passed"
+        },
+        "welcomeFirstLogin": {
+          "result": "passed",
+          "opened": true,
+          "dismissed": true,
+          "unmapped": true,
+          "helloSummaryServices": {
+            "region": {
+              "loaded": true,
+              "failed": false
+            },
+            "input": {
+              "loaded": true,
+              "failed": false
+            }
+          }
+        },
+        "keyboardShortcutsRuntime": {
+          "userLuaBefore": "absent",
+          "defaults": {
+            "actions": 99,
+            "binds": 107,
+            "describedBinds": 107,
+            "requiredActions": 40,
+            "stateError": null,
+            "evalErrorNil": true,
+            "browser": [
+              "SUPER + B"
+            ]
+          },
+          "keymap": {
+            "entries": 478,
+            "keycode10": "1",
+            "layout": [
+              [
+                "us",
+                "English (US)"
+              ]
+            ]
+          },
+          "applied": {
+            "browser": [
+              "SUPER + ALT + B"
+            ],
+            "custom": [
+              {
+                "group": "Web",
+                "id": "custom.qa-docs",
+                "keys": [
+                  "SUPER + ALT + D"
+                ],
+                "label": "QA docs",
+                "run": {
+                  "type": "url",
+                  "url": "https://example.org"
+                }
+              }
+            ],
+            "diagnostics": [],
+            "customBind": [
+              {
+                "modmask": 72,
+                "key": "D",
+                "description": "Web: QA docs",
+                "dispatcher": "__lua"
+              }
+            ]
+          },
+          "reset": {
+            "browser": [
+              "SUPER + B"
+            ],
+            "custom": [],
+            "changedRows": 0
+          },
+          "userLuaAfter": "absent",
+          "settingsPage": {
+            "opened": "cybexos-runtime ipc settings open shortcuts",
+            "page": "shortcuts"
+          },
+          "journal": {
+            "lines": 10,
+            "onboardingQmlErrors": [],
+            "otherQmlErrors": 0,
+            "otherQmlErrorSamples": []
+          },
+          "result": "passed"
+        },
+        "authenticatedDesktopHealth": {
+          "result": "passed",
+          "login": "SDDM automatic login after disk unlock, keyring unlocked"
+        },
+        "sharedPasswordChanges": {
+          "result": "passed",
+          "encrypted": true,
+          "roundTrips": 2,
+          "keyringStored": true,
+          "accountChanges": 2,
+          "checks": [
+            "real packaged worker and PAM",
+            "old disk key rejected",
+            "reboot and automatic desktop login after disk unlock",
+            "login keyring unlocked with changed password"
+          ]
+        }
+      },
+      "lifecycle": {
+        "upstreamWithUnavailableVendor": "passed",
+        "personalBaseline": "passed",
+        "evaluationFailure": "passed",
+        "buildFailure": "passed",
+        "interruptedStageRecovery": "passed",
+        "unconfirmedTrialFallback": "passed",
+        "localApplyBootConfirm": "passed",
+        "rollbackAndPersonalPersistence": "passed"
+      },
+      "reviewedPlan": {
+        "username": "cybexqa",
+        "fullName": "Cybex QA",
+        "hostname": "cybexqa-cybexos",
+        "timezone": "Europe/Amsterdam",
+        "keyboard": "us",
+        "encrypted": true,
+        "autoLogin": true,
+        "features": {
+          "developer": true,
+          "proprietary": true,
+          "steam": true,
+          "docker": true,
+          "podman": true,
+          "tailscale": true,
+          "connectedWidgets": true,
+          "assistant": true,
+          "localNetworkServices": true
+        }
+      }
+    }
+  ],
+  "defectsFound": [
+    {
+      "commit": "dd318fd",
+      "kind": "onboarding",
+      "summary": "keybinding_helpers.lua assigned to a for-loop variable, which Lua 5.5 rejects at compile time. keybinding_preferences failed, no keybindings-state.json was written and cybexos-desktop-check rejected the configuration",
+      "whyMissed": "the dev shell ran Lua 5.4",
+      "test": "tests/quickshell/hyprland-lua.test.cjs; the dev shell now provides lua5_5"
+    },
+    {
+      "commit": "d59de42",
+      "kind": "onboarding",
+      "summary": "publish() checked the status of os.execute(\"mkdir ...\"). Under Hyprland it returns nil, \"No child processes\", ECHILD even on success, so the state was never published",
+      "test": "keybindings-lua.test.cjs simulates the reaped status"
+    },
+    {
+      "commit": "5763467",
+      "kind": "pre-existing on main, surfaced by the welcome guide",
+      "summary": "The Settings input catalog read /usr/share/X11/xkb/rules/evdev.xml, which NixOS lacks. The input snapshot failed, so Settings → Keyboard had no data and the Hello step showed \"Keyboard layout: Not available\"",
+      "test": "test_native_input_region.py; the desktop installCheck reads the xkeyboard-config rules"
+    },
+    {
+      "commit": "5763467",
+      "kind": "qualification script",
+      "summary": "installed-desktop.png was captured before the dismissed guide left the screen; the script now waits for Hyprland to unmap it"
+    }
+  ],
+  "earlierRuns": [
+    {
+      "commit": "f8f3076",
+      "isoSha256": "bcae1e3c78c795ffd188cd1507a46076017867d6710c281ed103ee4398f5f4bf",
+      "result": "failed",
+      "cases": {
+        "plain-install": "failed",
+        "encrypted-install": "failed"
+      },
+      "failure": "desktopConfigurationCheck in both cases after 8 passed milestones: keybinding_helpers.lua:10: attempt to assign to const variable 'part'"
+    },
+    {
+      "commit": "d59de42",
+      "isoSha256": "a5abe9a7194f3e4e97ef85bc096ada9145741f2305eb1c460da1c0e56e417096",
+      "result": "passed",
+      "cases": {
+        "plain-install": "passed",
+        "encrypted-install": "passed"
+      },
+      "note": "every milestone passed, but the Hello step showed \"Keyboard layout: Not available\" and installed-desktop.png still showed the guide; both are fixed in 5763467"
+    }
+  ],
+  "screenshots": {
+    "welcome-onboarding-hello-2026-10-25.png": "Hello step at first login, plain installation",
+    "welcome-onboarding-shortcuts-page-2026-10-25.png": "Settings → Keyboard shortcuts, opened through IPC",
+    "welcome-onboarding-desktop-2026-10-25.png": "Desktop after dismissal: default moon-mountains wallpaper and the first-dismissal notification"
+  },
+  "visualObservations": [
+    "The guide is centred, about 1080 × 735 on the 1280 × 800 display, rounded, with no foreign title bar",
+    "Text is upright and legible in the guide, the Settings page and the notification",
+    "The default moon-mountains wallpaper shows on both fresh installations",
+    "The welcome notification shows an empty icon square; most shell notifications send no appIcon",
+    "Encrypted case: the Updates chip shows a red count, because this development image deliberately has no available vendor channel"
+  ],
+  "limits": [
+    "Virtual OVMF/QEMU only (virtio-vga, 1280 × 800, US layout); no physical hardware, multiple monitors or other layouts",
+    "The guide was opened, captured on its Hello step and dismissed; its other steps, the wallpaper picker, Wallhaven and the practice tasks were not driven on real Hyprland",
+    "Shortcut changes went through the Settings backend service, not through key presses recorded in the UI",
+    "Development source and ISO; no signed release, channel update or Secure Boot"
+  ],
+  "cleanup": {
+    "leases": {
+      "b1f9c2dfb2894577ac8968b5635733ae": "closed, nothing remaining",
+      "5662289102a041e7bc72a9b48c609369": "closed, nothing remaining",
+      "6b6784f8224641148ec714999795ade3": "closed, nothing remaining"
+    },
+    "supersededIsoStorePathsDeleted": [
+      "/nix/store/999ywdspg4kb26fnglhs4bxfd63srvl1-cybexos-1.0.0-beta.3-x86_64-linux.iso",
+      "/nix/store/znjp7dcg2aj14rhmdx27g18sq49l30br-cybexos-1.0.0-beta.3-x86_64-linux.iso",
+      "/nix/store/7brikq48s640zv41vfy74cj2g1ydds4z-cybexos-1.0.0-beta.3-x86_64-linux.iso"
+    ],
+    "retained": {
+      "/data/tmp/cxb3/cybexos-1.0.0-beta.3.iso": "qualified ISO for PXE delivery, 7,120,576,512 bytes",
+      "/data/tmp/cxb3/cybexos-1.0.0-beta.3.iso.sha256": "its checksum",
+      "/data/tmp/cxb3/iso3-result": "GC root of the qualified build output"
+    }
+  }
+}
