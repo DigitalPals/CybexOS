@@ -17,8 +17,10 @@ import subprocess
 import tempfile
 import time
 
+import shell_fonts
+
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = Path('/data/tmp/cybexos-onboarding-wallpaper')
+OUTPUT = Path(os.environ.get('CYBEXOS_WALLPAPER_SCREENSHOTS', '/data/tmp/cybexos-onboarding-wallpaper'))
 QML_ERRORS = re.compile(r'TypeError|ReferenceError|Binding loop|is not a type|Type \w+ unavailable'
                         r'|Cannot assign|Unable to assign|Illegal method name|Failed to load configuration')
 
@@ -131,7 +133,9 @@ def main():
                'WLR_RENDERER': 'pixman', 'WLR_LIBINPUT_NO_DEVICES': '1', 'CYBEXOS_ASSISTANT': '0',
                'CYBEXOS_CONNECTED_WIDGETS': '0', 'CYBEXOS_DEVELOPER_TOOLS': '0', 'CYBEXOS_WELCOME': '0',
                'QT_PLUGIN_PATH': subprocess.check_output(['qtpaths', '--query', 'QT_INSTALL_PLUGINS'], text=True).strip(),
-               'SSL_CERT_FILE': '/etc/ssl/certs/ca-certificates.crt', 'CYBEXOS_LANG': 'en', 'QML_IMPORT_PATH': str(native / 'qml') + ':' + os.environ.get('CYBEXOS_QML_IMPORT_PATH', '')}
+               'SSL_CERT_FILE': '/etc/ssl/certs/ca-certificates.crt', 'CYBEXOS_LANG': os.environ.get('CYBEXOS_LANG', 'en'),
+               'QML_IMPORT_PATH': str(native / 'qml') + ':' + os.environ.get('CYBEXOS_QML_IMPORT_PATH', ''),
+               **shell_fonts.fontconfig(base)}
         for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE', 'SWAYSOCK'):
             env.pop(name, None)
 

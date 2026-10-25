@@ -478,6 +478,13 @@ They are deleted. `browse`, `list`, `set` and `status` stay.
   actually run, not be skipped, for example with `nix shell nixpkgs#luajit`.
   `tests/run` and the QML lint must pass. Real-engine checks run the actual
   shell under a private headless Sway, as `tests/assistant-overlay.py` does.
+  `tests/welcome-guide.py`, `tests/wallpaper-picker.py` and
+  `tests/shortcut-editor.py` draw with the installed desktop's fonts:
+  `tests/shell_fonts.py` builds the default desktop's own `/etc/fonts`
+  (`fonts.packages` and NixOS's conf.d) and points a private
+  `FONTCONFIG_FILE` at it. Without it Qt substitutes the host's fonts; on a
+  Debian host that is Nimbus Sans, whose medium and bold text is drawn
+  oblique, so every screenshot looked italic although the shell is not.
 
 ## 5. Keyboard-shortcut backend: implementation notes and API additions
 

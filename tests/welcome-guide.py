@@ -21,6 +21,8 @@ import subprocess
 import tempfile
 import time
 
+import shell_fonts
+
 ROOT = Path(__file__).resolve().parents[1]
 TITLE = 'Welcome to Cybex OS'
 ERRORS = re.compile(r'TypeError|ReferenceError|Binding loop|is not a type|Type \w+ unavailable'
@@ -149,7 +151,8 @@ class Session:
             'CYBEXOS_CONNECTED_WIDGETS': '0', 'CYBEXOS_DEVELOPER_TOOLS': '0', 'PYTHONDONTWRITEBYTECODE': '1',
             'CYBEXOS_THEME_ROOT': str(self.home / '.local/share/cybexos/themes'),
             'QML_IMPORT_PATH': str(imports) + ':' + os.environ.get('CYBEXOS_QML_IMPORT_PATH', ''),
-            'PATH': str(base / 'bin') + ':' + str(self.source / 'assets/scripts') + ':' + os.environ['PATH']}
+            'PATH': str(base / 'bin') + ':' + str(self.source / 'assets/scripts') + ':' + os.environ['PATH'],
+            **shell_fonts.fontconfig(base)}
         for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'SWAYSOCK', 'DBUS_SESSION_BUS_ADDRESS'):
             self.env.pop(key, None)
         self.processes = []

@@ -23,6 +23,8 @@ import subprocess
 import tempfile
 import time
 
+import shell_fonts
+
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = Path(os.environ.get('CYBEXOS_SHORTCUT_SCREENSHOTS', '/data/tmp/cybexos-onboarding-B'))
 QML_ERRORS = re.compile(r'TypeError|ReferenceError|Binding loop|is not a type|Type \w+ unavailable'
@@ -240,7 +242,7 @@ def main():
                'PATH': str(base / 'bin') + os.pathsep + os.environ['PATH'],
                'QT_PLUGIN_PATH': subprocess.check_output(['qtpaths', '--query', 'QT_INSTALL_PLUGINS'], text=True).strip(),
                'QML_IMPORT_PATH': str(native / 'qml') + ':' + os.environ.get('CYBEXOS_QML_IMPORT_PATH', ''),
-               'PYTHONDONTWRITEBYTECODE': '1'}
+               'PYTHONDONTWRITEBYTECODE': '1', **shell_fonts.fontconfig(base)}
         for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'HYPRLAND_INSTANCE_SIGNATURE', 'SWAYSOCK', 'DBUS_SESSION_BUS_ADDRESS'):
             env.pop(name, None)
         subprocess.run([str(hyprctl), 'reload'], env=env, check=True, capture_output=True)
