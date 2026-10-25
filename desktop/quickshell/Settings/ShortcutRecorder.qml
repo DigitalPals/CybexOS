@@ -16,14 +16,21 @@ import "../Common/ShortcutEditor.js" as Helpers
 //
 // The host calls start(); `accepted(combo, mode)` follows once a
 // combination is chosen. Conflicts are checked against Keybindings: a
-// protected action or user.lua blocks the key, any other holder is offered
-// as "Replace", which unbinds that key from it in the draft first.
+// protected action's reserved default or user.lua blocks the key, any other
+// holder is offered as "Replace", which unbinds that key from it in the draft
+// first. A holder that only might share the physical key (`uncertain`) is a
+// warning: "Use anyway" keeps it bound.
+//
+// A protected action's reserved defaults (`lockedKeys`) always stay bound.
+// They show as locked caps, and "Replace" replaces only the keys beyond them.
 FocusScope {
     id: root
 
     property string actionId: ""
     property string actionLabel: ""
     property var currentKeys: []
+    property var lockedKeys: []
+    readonly property var extraKeys: currentKeys.filter(key => !lockedKeys.some(other => Editor.same(key, other)))
     property bool allowAdd: true
     property string mode: "replace"
     property bool shown: false
@@ -32,17 +39,18 @@ FocusScope {
     property string combo: ""
     property bool complete: false
     property string reserved: ""
-    property var verdict: ({ kind: "", reason: "", blockers: [], replace: [] })
+    property var verdict: ({ kind: "", reason: "", blockers: [], replace: [], maybe: [] })
     readonly property bool inhibiting: inhibitor.active
     readonly property bool inhibitorEnabled: inhibitor.enabled
     signal accepted(string combo, string mode)
     signal canceled()
 
-    function start(id, label, keys, add) {
+    function start(id, label, keys, add, locked) {
         actionId = id || "";
         actionLabel = label || "";
         currentKeys = keys || [];
-        allowAdd = add !== false && currentKeys.length > 0 && currentKeys.length < 4;
+        lockedKeys = locked || [];
+        allowAdd = add !== false && extraKeys.length > 0 && extraKeys.length < 4;
         mode = "replace";
         shown = true;
         listen();
@@ -55,7 +63,7 @@ FocusScope {
         complete = false;
         reserved = "";
         paused = false;
-        verdict = { kind: "", reason: "", blockers: [], replace: [] };
+        verdict = { kind: "", reason: "", blockers: [], replace: [], maybe: [] };
         listening = true;
     }
     function stop() { listening = false; }
@@ -75,7 +83,7 @@ FocusScope {
         canceled();
     }
     function finish(value) {
-        const decision = Helpers.decide(value, Keybindings.conflicts(value, actionId));
+        const decision = Helpers.decide(value, Keybindings.conflicts(value, actionId), id => Keybindings.action(id));
         if (decision.kind === "reserved") {
             // Keep listening: the reason replaces the hint until the next key.
             reserved = decision.reason;
@@ -99,8 +107,11 @@ FocusScope {
         hide();
         accepted(chosen, allowAdd ? mode : "replace");
     }
+    // Two names at most, then a count: a Shift guess can name ten holders.
     function owners(list) {
-        return list.map(row => I18n.tr(row.label)).join(", ");
+        const names = list.map(row => I18n.tr(row.label));
+        return names.length > 3 ? I18n.format("%1 and %2 more", [names.slice(0, 2).join(", "), names.length - 2])
+            : names.join(", ");
     }
     readonly property string status: {
         if (paused)
@@ -117,14 +128,20 @@ FocusScope {
             return I18n.format("%1 needs this key and it cannot be taken.", [owners(verdict.blockers)]);
         if (verdict.kind === "blocked")
             return I18n.format("Your user.lua binds this key to %1. Change it there; user.lua loads last.", [owners(verdict.blockers)]);
+        if (verdict.kind === "replace" && verdict.maybe.length)
+            return I18n.format("Already used by %1. Replace removes it there. It may also conflict with %2, which keeps its key.",
+                [owners(verdict.replace), owners(verdict.maybe)]);
         if (verdict.kind === "replace")
             return I18n.format("Already used by %1. Replace removes it there.", [owners(verdict.replace)]);
+        if (verdict.kind === "maybe")
+            return I18n.format("May conflict with %1. Your keyboard layout could not be read to be sure; that shortcut keeps its key.",
+                [owners(verdict.maybe)]);
         if (verdict.kind === "free")
             return I18n.tr("This combination is free.");
         return "";
     }
     readonly property string statusTone: reserved !== "" || paused ? "warning"
-        : verdict.kind === "blocked" ? "error" : verdict.kind === "replace" ? "warning"
+        : verdict.kind === "blocked" ? "error" : verdict.kind === "replace" || verdict.kind === "maybe" ? "warning"
         : verdict.kind === "free" ? "active" : "info"
 
     // Geometry, not anchors: the welcome guide reparents the recorder to its
@@ -230,7 +247,17 @@ FocusScope {
                     font.pixelSize: Theme.typography.secondary
                     color: Theme.textFaint
                 }
-                ShortcutKeycaps { keys: root.currentKeys }
+                ShortcutKeycaps { keys: root.currentKeys; lockedKeys: root.lockedKeys }
+            }
+            Text {
+                width: parent.width
+                visible: root.lockedKeys.length > 0
+                wrapMode: Text.Wrap
+                text: I18n.format("%1 always stays as well: a protected shortcut keeps its default keys.",
+                    [root.lockedKeys.map(key => Editor.display(key).join(" + ")).join(", ")])
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.secondary
+                color: Theme.textFaint
             }
 
             // The capture surface: it holds focus while listening and shows
@@ -326,7 +353,7 @@ FocusScope {
             PillRow {
                 visible: root.allowAdd
                 width: Math.min(parent.width, naturalWidth)
-                model: [{ value: "replace", label: I18n.tr("Replace current keys") },
+                model: [{ value: "replace", label: root.lockedKeys.length ? I18n.tr("Replace added keys") : I18n.tr("Replace current keys") },
                     { value: "add", label: I18n.tr("Add as another key") }]
                 current: root.mode
                 onPicked: value => root.mode = value
@@ -361,7 +388,8 @@ FocusScope {
                     objectName: "shortcutUse"
                     primary: true
                     visible: root.complete && root.verdict.kind !== "blocked"
-                    text: root.verdict.kind === "replace" ? I18n.tr("Replace") : I18n.tr("Use shortcut")
+                    text: root.verdict.kind === "replace" ? I18n.tr("Replace")
+                        : root.verdict.kind === "maybe" ? I18n.tr("Use anyway") : I18n.tr("Use shortcut")
                     onTriggered: root.accept()
                 }
             }
@@ -369,8 +397,9 @@ FocusScope {
     }
 
     function record(event) {
+        // The layout's keymap names Shift combinations as Hyprland binds them.
         const result = Editor.fromKeyEvent({ key: event.key, modifiers: event.modifiers,
-            nativeScanCode: event.nativeScanCode, text: event.text });
+            nativeScanCode: event.nativeScanCode, text: event.text }, Keybindings.keymap);
         combo = result.keys;
         reserved = "";
         if (result.complete)

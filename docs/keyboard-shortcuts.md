@@ -67,13 +67,21 @@ and `SysRq`, which stay with the system. It then checks what else uses the
 keys:
 
 - **Protected shortcuts** — lock screen, exit, Settings and the shortcut sheet
-  — can move to other keys but always keep one, and nothing else can take
-  their default keys, even after you move them. A lock marks them in the list
-  and on the map.
+  — always keep their default keys, and nothing else can take them. You can
+  give them more keys: their defaults show as dimmed, locked keycaps in the
+  list, in the recorder and on the keyboard map, and **Replace added keys**
+  replaces only the keys you added. They cannot be disabled. Keys you added
+  to a protected shortcut are ordinary keys that another shortcut may take
+  with **Replace**.
 - A combination that `user.lua` binds cannot be taken here: `user.lua` loads
   after these settings and wins. Change it in that file.
 - Any other shortcut using the keys is named, and **Replace** takes the keys
   from it.
+- When your keyboard layout cannot be read, a `Shift` combination is stored
+  by its key code and the recorder cannot be sure which shortcuts share it.
+  It then says the keys **may conflict** with the shortcuts it names. **Use
+  anyway** keeps them all: nothing is taken from a shortcut that only might
+  share the key.
 
 Personal bindings that only `user.lua` defines, mouse drags and hardware keys
 are read-only. A Cybex OS shortcut that `user.lua` changed can still be edited
@@ -91,7 +99,8 @@ Changes collect until you choose **Apply** in the bar at the foot of the page,
 or **Discard**. Applying reloads Hyprland; if the reload fails the previous
 file is restored and the error appears on the page. **Reset all…** asks before
 it returns every shortcut to its default and removes your own; that too waits
-for Apply. Nothing in Settings writes `user.lua`.
+for Apply. Nothing in Settings writes `user.lua`. `Escape` closes an open Add
+form or Reset question first; a second `Escape` closes Settings.
 
 The welcome guide's **Shortcuts** step shows the same keyboard map and the
 main shortcuts with **Edit**, with its own Apply bar, and links here.
@@ -238,8 +247,9 @@ written, with the key's unshifted name for your current layout (for example
 AZERTY). If the layout cannot be read it stores the key's code instead and
 warns that it may overlap other Shift shortcuts.
 
-If `keybindings.json` cannot be loaded, the vendor shortcuts stay active, the
-editor shows the reason and is read only, and **Reset all** is the way out.
+If `keybindings.json` cannot be loaded, the vendor shortcuts stay active. The
+page and the welcome guide's Shortcuts step show the reason in a banner and
+change nothing, and **Reset all** is the way out.
 Applying it replaces the file only after copying the old bytes to
 `keybindings.json.invalid-<timestamp>` in the same directory; that copy is
 never deleted.

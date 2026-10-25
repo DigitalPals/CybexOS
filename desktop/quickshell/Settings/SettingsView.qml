@@ -171,8 +171,8 @@ PopoutPanel {
     }
 
     // Called by the window host. An active search consumes the first Escape, a
-    // module drag the next, an open inline widget panel the one after that;
-    // otherwise the host closes the panel.
+    // module drag the next, an open inline widget panel the one after that,
+    // then a page's own open form or trial; otherwise the host closes the panel.
     function handleEscape(): bool {
         if (searchActive || searchField.activeFocus) {
             clearSearch();
@@ -189,6 +189,10 @@ PopoutPanel {
         // A pending display trial answers first: Escape reverts it.
         const displays = pageLoader.item as DisplaysPage;
         if (displays && displays.handleEscape())
+            return true;
+        // An open Add form or reset question on Keyboard shortcuts closes first.
+        const shortcuts = pageLoader.item as ShortcutsPage;
+        if (shortcuts && shortcuts.handleEscape())
             return true;
         return false;
     }

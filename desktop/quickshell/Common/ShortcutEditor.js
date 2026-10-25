@@ -157,12 +157,7 @@ function counts(actions, userBinds, diagnostics) {
     return out;
 }
 
-// The recorder's verdict on one combination. A reserved combination keeps
-// listening and says why; otherwise conflicts decide the buttons:
-//   free     — use it;
-//   replace  — other actions hold it; Replace unbinds them in the draft;
-//   blocked  — a protected action or user.lua holds it, which an edit here
-//              cannot take away (user.lua loads last and wins).
+// Why the recorder refuses a combination, "" when it may be recorded.
 function reservedReason(keys) {
     var normal = Editor.normalize(keys);
     if (!normal)
@@ -176,19 +171,55 @@ function reservedReason(keys) {
         return "modifier";
     return Editor.isReserved(normal) ? "system" : "";
 }
-function decide(keys, conflicts) {
+// The recorder's verdict on one combination. A reserved combination keeps
+// listening and says why; otherwise conflicts decide the buttons:
+//   free     — use it;
+//   replace  — other actions hold it; Replace unbinds them in the draft;
+//   maybe    — only `uncertain` holders (a Shift combination the layout map
+//              could not name): a warning, "Use anyway", nothing is unbound;
+//   blocked  — a protected action's reserved default or user.lua holds it,
+//              which an edit here cannot take away (user.lua loads last).
+// `lookup(id)` returns a holder's row: a protected action's extra keys are
+// ordinary claims, so only its reserved defaults block.
+function decide(keys, conflicts, lookup) {
     var reason = reservedReason(keys);
     if (reason)
-        return { kind: "reserved", reason: reason, blockers: [], replace: [] };
-    var blockers = (conflicts || []).filter(function(row) { return row.protected || row.source === "user"; });
-    var replace = (conflicts || []).filter(function(row) { return !row.protected && row.source !== "user"; });
+        return { kind: "reserved", reason: reason, blockers: [], replace: [], maybe: [] };
+    function locked(row) {
+        if (!row.protected)
+            return false;
+        var action = lookup ? lookup(row.id) : null;
+        return !action || (action.defaultKeys || []).some(function(key) { return Editor.same(key, keys); });
+    }
+    var certain = (conflicts || []).filter(function(row) { return !row.uncertain; });
+    var blockers = certain.filter(function(row) { return locked(row) || row.source === "user"; });
+    var replace = certain.filter(function(row) { return !locked(row) && row.source !== "user"; });
+    var maybe = (conflicts || []).filter(function(row) { return !!row.uncertain; });
     return {
-        kind: blockers.length ? "blocked" : replace.length ? "replace" : "free",
+        kind: blockers.length ? "blocked" : replace.length ? "replace" : maybe.length ? "maybe" : "free",
         reason: blockers.some(function(row) { return row.protected; }) ? "protected"
             : blockers.length ? "user" : "",
         blockers: blockers,
-        replace: replace
+        replace: replace,
+        maybe: maybe
     };
+}
+// A protected action always keeps its reserved defaults (§1.3): they are
+// shown locked and the editor only ever edits the keys beyond them.
+function lockedKeys(row) {
+    if (!row || !row.protected)
+        return [];
+    return (row.defaultKeys || []).filter(function(key) {
+        return (row.keys || []).some(function(other) { return Editor.same(key, other); });
+    });
+}
+function editableKeys(row) {
+    if (!row)
+        return [];
+    var locked = lockedKeys(row);
+    return (row.keys || []).filter(function(key) {
+        return !locked.some(function(other) { return Editor.same(key, other); });
+    });
 }
 // What a recorded combination does to the row's keys: replace them all, or
 // join them as another alternative (at most four).
@@ -238,8 +269,8 @@ function releaseCombo(event, current) {
 }
 
 // The Super+letter and Super+digit keys. Each key names its owner (a
-// catalog or custom action, or a read-only user.lua binding), whether a
-// protected action holds or reserves it, and whether it is free.
+// catalog or custom action, or a read-only user.lua binding), whether it is a
+// protected action's reserved default (locked), and whether it is free.
 function keyboardMap(actions, userBinds) {
     var owners = {}, reserved = {};
     function token(key) { return lower(Editor.normalize(key)); }
@@ -270,7 +301,9 @@ function keyboardMap(actions, userBinds) {
                 key: letter, combo: combo, row: rowIndex, column: column,
                 owner: list.length ? list[0] : null, owners: list,
                 shared: list.length > 1,
-                protected: list.some(function(owner) { return owner.protected; }) || !!guard,
+                // Only a protected action's reserved default is locked; its
+                // extra keys can be moved like any other.
+                protected: !!guard,
                 reservedBy: guard && !list.some(function(owner) { return owner.id === guard.id; })
                     ? { id: guard.id, label: guard.label, group: guard.group } : null,
                 free: list.length === 0 && !guard
@@ -393,6 +426,7 @@ function sheetMarks(actions, userBinds) {
 var exported = { FILTERS: FILTERS, WEBAPPS: WEBAPPS, RUN_TYPES: RUN_TYPES, DEFAULT_GROUPS: DEFAULT_GROUPS,
     MAP_ROWS: MAP_ROWS, keysMatch: keysMatch, matches: matches, conflictIds: conflictIds, groups: groups,
     counts: counts, reservedReason: reservedReason, decide: decide, nextKeys: nextKeys, withoutKey: withoutKey,
+    lockedKeys: lockedKeys, editableKeys: editableKeys,
     recorderCommand: recorderCommand, keyboardMap: keyboardMap, mapMove: mapMove, runTarget: runTarget,
     runValue: runValue, labelError: labelError, appChoices: appChoices, webappChoices: webappChoices,
     sheetMarks: sheetMarks, liveCaps: liveCaps, releaseCombo: releaseCombo,

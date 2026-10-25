@@ -278,10 +278,10 @@ As built:
   feeds `KeybindEditor.fromKeyEvent`; Escape cancels, a bare Backspace/Delete
   clears. A reserved combination keeps listening and shows its reason. A
   complete one is checked with `Keybindings.conflicts(keys, actionId)`:
-  protected holders (including reserved protected defaults) and `user.lua`
-  holders block, because `user.lua` loads last; other holders are offered as
-  Replace, which removes that key from them in the draft before the host
-  applies the new keys. The `ShortcutInhibitor` is enabled only while
+  reserved protected defaults and `user.lua` holders block, because
+  `user.lua` loads last; other holders are offered as Replace, which removes
+  that key from them in the draft before the host applies the new keys.
+  Uncertain holders only warn (see §6). The `ShortcutInhibitor` is enabled only while
   listening and is released when a combination completes, on cancel and
   accept, when the window deactivates (recording pauses), when the
   compositor cancels it, when the card hides and on destruction.
@@ -591,11 +591,41 @@ as required by the sheet's existing description convention.
 No `Keybindings` or `KeybindEditor` API was added or changed. The editor's
 pure view logic is `Common/ShortcutEditor.js`, tested in
 `tests/quickshell/shortcut-editor.test.cjs`: grouping and filters, search,
-conflict decisions (`decide` returns `free`, `replace`, `blocked` with reason
-`protected` or `user`, or `reserved` with reason `modifier`, `mouse`,
-`power`, `system` or `invalid`), recorder key commands, the keyboard-map
-layout and focus moves, run-target validation with the backend's limits, and
-the sheet marks.
+conflict decisions, recorder key commands, the keyboard-map layout and focus
+moves, run-target validation with the backend's limits, and the sheet marks.
+
+`decide(keys, conflicts, lookup)` returns `{kind, reason, blockers, replace,
+maybe}`. `kind` is one of:
+
+- `reserved`, with reason `modifier`, `mouse`, `power`, `system` or `invalid`;
+- `blocked`, with reason `protected` or `user`;
+- `replace`;
+- `maybe`, when only `uncertain` holders remain;
+- `free`.
+
+Conflicts with `uncertain: true` never block and are never unbound; they go
+to `maybe` and the recorder says "May conflict with …" and offers **Use
+anyway**. With `lookup(id)` (the recorder passes `Keybindings.action`), a
+protected holder blocks only when the combination is one of its reserved
+`defaultKeys`; its extra keys are ordinary claims that Replace may take.
+
+Protected rows: `lockedKeys(row)` is a protected row's reserved defaults
+(present in its published `keys`), and `editableKeys(row)` the rest. Rows,
+the recorder's "Now" line and the welcome step draw locked keys dimmed with a
+lock. The keyboard map's `protected` flag (its lock) marks only those reserved
+defaults. Hosts compute `nextKeys(editableKeys(row), combo, mode)`, so
+"Replace added keys" replaces only the extras, and `setKeys` drops the
+defaults again. The recorder's `start(id, label, keys, allowAdd, lockedKeys)`
+offers "Add as another key" only when extras exist. Every recorder passes
+`Keybindings.keymap` to `fromKeyEvent`.
+
+While `Keybindings.readOnly`, the page and the welcome step show
+`preferencesError` in a banner (the page's error line no longer repeats it).
+Record, Disable, Reset, Add and the map's edit and add requests are refused.
+Reset all stays enabled and explains `keybindings.json.invalid-<time>`, and
+the Apply bar says the file will be replaced. `ShortcutsPage.handleEscape()`
+is part of `SettingsView.handleEscape()`: an open Reset question or Add form
+closes before Settings does.
 
 Quickshell 0.3's type is `ShortcutInhibitor` (`enabled`, `window`, read-only
 `active`, `cancelled()`), imported from `Quickshell.Wayland`. When the
@@ -607,7 +637,10 @@ than binding it. `window` is the item's `QsWindow.window`.
 `tests/shortcut-editor.py` runs the real shell under a private headless Sway.
 Its fake `hyprctl reload` runs the real `bindings.lua` and
 `keybinding_preferences.lua` through the Node tests' Lua stub, so the written
-`keybindings.json` and the resolved state follow the actual Lua contract.
+`keybindings.json` and the resolved state follow the actual Lua contract. It
+also records `Super+Shift+1` without and then with a layout (the fake `hyprctl
+devices` names `us`, compiled by the real `xkbcli`), remaps the protected
+lock screen twice, and replaces a malformed file through the read-only page.
 Headless Sway has no keyboard of its own: when a key-sending `wtype` exits,
 Qt deactivates the window and nothing re-enters it, so the check keeps one
 idle `wtype` attached for the session. An item reparented out of a clipped
