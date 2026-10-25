@@ -82,3 +82,7 @@ singleton InputDrafts InputDrafts.qml
 ApplicationsPage ApplicationsPage.qml
 StoragePage StoragePage.qml
 DeploymentReview DeploymentReview.qml
+
+WallpaperPicker WallpaperPicker.qml
+WallpaperPreviewPanel WallpaperPreviewPanel.qml
+WallpaperGrid WallpaperGrid.qml

@@ -162,20 +162,6 @@ ShellRoot {
                 Screens.focused ? Screens.focused.name : "");
         }
 
-        // Starts the default Popular listing unless it is already loaded.
-        function popular(): void {
-            OnlineWallpapers.showPopular();
-        }
-
-        function results(): string {
-            return JSON.stringify(OnlineWallpapers.state());
-        }
-
-        // Downloads (if needed) and applies a listed result.
-        function pick(id: string): string {
-            return OnlineWallpapers.pick(id) ? "ok" : "unknown";
-        }
-
         function list(): string {
             return JSON.stringify({dir: Settings.wallDir, current: Settings.wall,
                 files: Wallpaper.files.map(file => Wallpaper.basename(file))});

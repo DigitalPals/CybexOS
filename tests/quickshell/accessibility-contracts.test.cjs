@@ -147,3 +147,25 @@ test("reduced-motion mode stops infinite activity loops instead of busy-looping 
                 `${relative} has an infinite loop that ignores reduced motion`);
     }
 });
+
+test("the reusable wallpaper picker separates accessible preview and apply actions", () => {
+    const picker = read("Settings/WallpaperPicker.qml");
+    const grid = read("Settings/WallpaperGrid.qml");
+    const preview = read("Settings/WallpaperPreviewPanel.qml");
+    const online = read("Settings/WallpaperOnlineView.qml");
+    assert.match(picker, /signal applied\(string fileName\)/);
+    assert.match(picker, /signal escapeRequested\(\)/);
+    assert.match(picker, /Keys.onEscapePressed/);
+    assert.match(grid, /activeFocusOnTab: index === root.currentIndex/);
+    assert.match(grid, /Accessible.role: Accessible.Button/);
+    assert.match(grid, /Accessible.name:.*Preview wallpaper %1/);
+    assert.match(grid, /Accessible.selected: chosen/);
+    for (const key of ["Left", "Right", "Up", "Down", "Return", "Enter"])
+        assert.match(grid, new RegExp(`Qt.Key_${key}`));
+    assert.match(grid, /root.selected\(modelData\)/);
+    assert.doesNotMatch(grid, /Wallpaper.set|OnlineWallpapers.apply/);
+    assert.match(preview, /id: useButton[\s\S]*primary: true[\s\S]*Use this wallpaper/);
+    assert.match(preview, /anchors.bottom: useButton.top/,
+        "the primary action remains visible while metadata scrolls");
+    assert.match(online, /Accessible.role: Accessible.RadioButton[\s\S]*Accessible.name:.*Filter by colour %1/);
+});

@@ -115,11 +115,11 @@ test("thumbnail sets from an older cache version are pruned", t => {
 });
 
 test("the wallpaper grid requests cached previews instead of full images", () => {
-    const page = fs.readFileSync(path.join(shellDir, "Settings/WallpaperPage.qml"), "utf8");
+    const page = fs.readFileSync(path.join(shellDir, "Settings/WallpaperGrid.qml"), "utf8");
     const wallpaper = fs.readFileSync(path.join(shellDir, "Common/Wallpaper.qml"), "utf8");
 
-    assert.match(page, /Wallpaper\.requestThumbnail\(imagePath\)/);
-    assert.match(page, /source:\s*cell\.thumbnailSource/);
+    assert.match(page, /Wallpaper\.requestThumbnail\(modelData.path\)/);
+    assert.match(page, /Wallpaper\.thumbnailFor\(cell.modelData.path\)/);
     assert.match(wallpaper, /wallpaper-thumbnail\.py/);
     assert.match(wallpaper, /property var thumbnailPaths/);
     assert.match(wallpaper, /stdout:\s*SplitParser/,

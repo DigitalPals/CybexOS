@@ -88,7 +88,7 @@ var ROWS = [
     { page: "appearance", pageLabel: "Appearance", group: "Accessibility", label: "Reduce motion", key: "reducedMotion", terms: "animation accessibility" },
 
     // Wallpaper
-    { page: "wallpaper", pageLabel: "Wallpaper", group: "Library", label: "Wallpaper", key: "wall", terms: "desktop image background picture online wallhaven download" },
+    { page: "wallpaper", pageLabel: "Wallpaper", group: "Library", label: "Wallpaper", key: "wall", terms: "desktop image background picture collection bundled moon mountains online wallhaven download topic color preview" },
     { page: "wallpaper", pageLabel: "Wallpaper", group: "Folder", label: "Folder", key: "wallDir", terms: "directory pictures" },
     { page: "wallpaper", pageLabel: "Wallpaper", group: "Rotation", label: "Rotate", key: "shuffle", terms: "shuffle slideshow interval" },
 

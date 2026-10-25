@@ -1552,11 +1552,44 @@ def connection_extras() -> dict[str, Any]:
     return {"vpns": vpns, "hotspot": hotspot_status(multiline_records(output, "NAME"))}
 
 
+def metered_status() -> dict[str, Any]:
+    """One bounded, untranslated read; inactive devices do not veto the route.
+
+    NM reports 1/2 for explicit yes/no and 3/4 for guessed yes/no. nmcli's
+    GENERAL.METERED spells these out. Unknown or no active device asks first.
+    Taking any metered active device is conservative on multi-route systems.
+    """
+    output = run(["nmcli", "--terse", "--fields", "GENERAL.TYPE,GENERAL.STATE,GENERAL.METERED",
+                  "device", "show"], seconds=3, label="NetworkManager metering").stdout
+    return parse_metered(output)
+
+
+def parse_metered(output: str) -> dict[str, Any]:
+    states = []
+    active = False
+    relevant = True
+    for line in output.splitlines():
+        if line.startswith("GENERAL.TYPE:"):
+            # NetworkManager may mark loopback/container links activated;
+            # their unknown metering says nothing about an Internet route.
+            relevant = line.partition(":")[2].strip() not in ("loopback", "veth", "dummy")
+            active = False
+        elif line.startswith("GENERAL.STATE:"):
+            active = line.partition(":")[2].strip().split(" ")[0] == "100"
+        elif line.startswith("GENERAL.METERED:") and active and relevant:
+            states.append(line.partition(":")[2].strip().lower())
+    known = bool(states) and all(value in ("yes", "no", "yes (guessed)", "no (guessed)")
+                                 for value in states)
+    return {"known": known, "metered": not known or any(value.startswith("yes") for value in states)}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Quickshell network helper")
     parser.add_argument("command", choices=("snapshot", "wifi", "dns", "band", "password", "qr",
-                                            "vpn", "hotspot"))
+                                            "vpn", "hotspot", "metered"))
     arguments = parser.parse_args()
+    if arguments.command == "metered":
+        emit(metered_status())
     if arguments.command == "snapshot":
         emit(snapshot())
     request = read_request()

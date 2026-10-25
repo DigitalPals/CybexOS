@@ -339,6 +339,14 @@ exec_runtime() {
       if [[ $kind == hyprlock && $selected != "$user_config" ]]; then
         selected=$(render_hyprlock_config "$selected")
       fi
+      if [[ $kind == hyprlock ]]; then
+        # The vendor lock is usable before SystemTheme's first render too.
+        # Use the same source/installed collection as the Quickshell picker.
+        export CYBEXOS_DEFAULT_WALLPAPER=$runtime_root/wallpapers/moon-mountains.png
+        if source=$(active_source); then
+          export CYBEXOS_DEFAULT_WALLPAPER=$source/assets/wallpapers/moon-mountains.png
+        fi
+      fi
       if [[ $kind == hypridle ]]; then
         exec hypridle --config "$selected"
       else
