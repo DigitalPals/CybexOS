@@ -269,7 +269,13 @@ receive `cybexqa`), both passwords, and a pointer click on **Erase … & install
 The serial console only observes the service's snapshots; QA-only choices (the
 installed serial console, the smaller application set) go through the same
 service. It checks plain and encrypted installed password login, then exercises
-the staged updater and rollback. `--applications minimal` explicitly selects fewer optional
+the staged updater and rollback. On the installed Hyprland session it also checks
+the welcome guide at first login and the keyboard shortcuts
+(`keyboardShortcutsRuntime`): valid `hyprctl binds -j` holding every resolved
+key, a complete error-free `keybindings-state.json`, the xkbcli keymap, a remap
+and website shortcut applied and reset through the shipped Settings
+`keybindings` service with `user.lua` unchanged, Settings opened on
+**Keyboard shortcuts**, and no onboarding QML errors in the shell's journal. `--applications minimal` explicitly selects fewer optional
 groups; it does not qualify the standard application selection. VM files are
 removed when the tool exits. Screenshots and JSON evidence are retained only
 when requested. `--serial-console` is an installer option for this isolated test;
