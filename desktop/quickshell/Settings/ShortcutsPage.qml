@@ -25,7 +25,7 @@ SettingsPage {
     property string recordFor: "row"
     property var rowItems: ({})
     readonly property var groups: Helpers.groups(Keybindings.actions, Keybindings.userBinds,
-        Keybindings.diagnostics, { query: page.query, filter: page.filter, translate: text => I18n.tr(text) })
+        Keybindings.diagnostics, { query: page.query, filter: page.filter, translate: text => I18n.actionLabel(text) })
     readonly property var order: groups.reduce((all, group) => all.concat(group.rows.map(row => row.id)), [])
     readonly property var counts: Helpers.counts(Keybindings.actions, Keybindings.userBinds, Keybindings.diagnostics)
     readonly property bool anyChanged: Keybindings.dirty

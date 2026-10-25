@@ -632,7 +632,10 @@ Record, Disable, Reset, Add and the map's edit and add requests are refused.
 Reset all stays enabled and explains `keybindings.json.invalid-<time>`, and
 the Apply bar says the file will be replaced. `ShortcutsPage.handleEscape()`
 is part of `SettingsView.handleEscape()`: an open Reset question or Add form
-closes before Settings does.
+closes before Settings does. A host shorter than the recorder card scrolls the
+card and keeps the capture area or the focused button in view.
+`I18n.actionLabel()` names actions everywhere in the editor and the sheet, so
+numbered labels translate through `"Switch to workspace %1"`-style entries.
 
 Quickshell 0.3's type is `ShortcutInhibitor` (`enabled`, `window`, read-only
 `active`, `cancelled()`), imported from `Quickshell.Wayland`. When the

@@ -313,7 +313,7 @@ PanelWindow {
                                                     width: shortcut.stacked ? parent.width
                                                         : Math.max(0, parent.width - keys.width - Theme.controlSpacing)
                                                     rightPadding: shortcut.mark !== "" ? markDot.width + Theme.iconTextSpacing : 0
-                                                    text: I18n.tr(shortcut.modelData.label)
+                                                    text: I18n.actionLabel(shortcut.modelData.label)
                                                     font.family: Theme.fontMenu
                                                     font.pixelSize: Theme.typography.primary
                                                     font.weight: Theme.weightSemibold

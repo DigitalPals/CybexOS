@@ -392,3 +392,21 @@ test('the editor UI is wired to the shared contract', () => {
     for (const host of [page, step])
         assert.match(host, /Helpers\.nextKeys\(Helpers\.editableKeys\(/, 'protected defaults stay locked when recording');
 });
+
+test('numbered action labels translate through their stem, everywhere the editor names an action', () => {
+    const I18nHelpers = load('I18nHelpers.js');
+    const nl = require(path.join(root, 'desktop/quickshell/Common/i18n/nl.js')).MESSAGES;
+    const singleton = fs.readFileSync(path.join(root, 'desktop/quickshell/Common/I18n.qml'), 'utf8');
+    const body = singleton.match(/function actionLabel\(label: string\): string \{([\s\S]*?)\n    \}/)[1];
+    const actionLabel = (catalog, label) => new Function('label', 'I18nHelpers', 'root', body)(label, I18nHelpers, {
+        catalog, tr: text => I18nHelpers.translate(catalog, text), format: (text, args) => I18nHelpers.format(catalog, text, args)});
+    assert.equal(actionLabel(nl, 'Switch to workspace 10'), 'Naar werkblad 10 gaan');
+    assert.equal(actionLabel(nl, 'Move window to workspace 3'), 'Venster naar werkblad 3 verplaatsen');
+    assert.equal(actionLabel(nl, 'Launcher'), I18nHelpers.translate(nl, 'Launcher'));
+    assert.equal(actionLabel(nl, 'Notes 2'), 'Notes 2', 'a custom label without a stem entry stays as typed');
+    assert.equal(actionLabel({}, 'Switch to workspace 10'), 'Switch to workspace 10');
+    const shell = path.join(root, 'desktop/quickshell');
+    for (const name of ['Settings/ShortcutRow.qml', 'Settings/ShortcutKeyboardMap.qml', 'Settings/ShortcutRecorder.qml',
+        'ShortcutsOverlay.qml', 'Welcome/ShortcutsStep.qml'])
+        assert.doesNotMatch(fs.readFileSync(path.join(shell, name), 'utf8'), /I18n\.tr\([\w.]*\.label\)/, name);
+});

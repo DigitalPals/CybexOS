@@ -84,9 +84,15 @@ function dataKeys() {
     const bindings = fs.readFileSync(path.join(shellDir, "../hypr/bindings.lua"), "utf8");
     for (const match of bindings.matchAll(/description = "([^":]+): ([^"]+)"/g)) {
         add(match[1]);
-        // Numbered labels ("Switch to workspace " .. i) are composed, not shown as is.
+        // Numbered labels ("Switch to workspace " .. i) are composed, not shown
+        // as is: I18n.actionLabel() translates them through "<stem> %1", and
+        // the sheet shows a collapsed range under the stem alone.
         if (!/ \.\. /.test(match[2]) && !/[\d ]$/.test(match[2]))
             add(match[2]);
+        else if (/ $/.test(match[2])) {
+            add(match[2].trim());
+            keys.add(match[2].trim() + " %1");
+        }
     }
     // These errors are translated dynamically by Keybindings.reject() and
     // the service's error property, rather than literal QML tr() calls.

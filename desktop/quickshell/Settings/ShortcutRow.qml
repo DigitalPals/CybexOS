@@ -28,10 +28,10 @@ ValueRow {
     readonly property bool canReset: canEdit && !entry.custom && entry.source !== "user"
         && (entry.changed || entry.source === "changed")
 
-    label: I18n.tr(entry.label)
+    label: I18n.actionLabel(entry.label)
     // The row's reset chip is its Reset, as on every settings row.
     dirty: canReset
-    resetLabel: I18n.tr(entry.label)
+    resetLabel: I18n.actionLabel(entry.label)
     hint: entry.userBind ? I18n.tr("Set in user.lua. Change it there.")
         : entry.source === "user" ? I18n.tr("Changed in user.lua, which loads last and wins.")
         : !entry.editable ? I18n.tr("Mouse and hardware keys cannot be changed here.")
@@ -42,7 +42,7 @@ ValueRow {
     hintTone: entry.conflict ? "warning" : "info"
     activeFocusOnTab: current
     Accessible.role: Accessible.ListItem
-    Accessible.name: I18n.format("%1: %2", [I18n.tr(entry.label), caps.Accessible.name])
+    Accessible.name: I18n.format("%1: %2", [I18n.actionLabel(entry.label), caps.Accessible.name])
     Accessible.description: hint
     Accessible.onPressAction: if (canEdit) editRequested()
     onActiveFocusChanged: if (activeFocus) focused()
@@ -95,7 +95,7 @@ ValueRow {
         enabled: root.canEdit
         compact: true
         glyph: "edit"
-        text: I18n.format("Change %1", [I18n.tr(root.entry.label)])
+        text: I18n.format("Change %1", [I18n.actionLabel(root.entry.label)])
         tooltip: root.entry.custom ? I18n.tr("Edit") : I18n.tr("Record new keys")
         Accessible.role: Accessible.Button
         Accessible.name: text
@@ -116,8 +116,8 @@ ValueRow {
         compact: true
         danger: root.entry.custom
         glyph: root.entry.custom ? "delete" : "do_not_disturb_on"
-        text: root.entry.custom ? I18n.format("Remove %1", [I18n.tr(root.entry.label)])
-            : I18n.format("Disable %1", [I18n.tr(root.entry.label)])
+        text: root.entry.custom ? I18n.format("Remove %1", [I18n.actionLabel(root.entry.label)])
+            : I18n.format("Disable %1", [I18n.actionLabel(root.entry.label)])
         tooltip: root.entry.custom ? I18n.tr("Remove") : I18n.tr("Disable")
         Accessible.role: Accessible.Button
         Accessible.name: text

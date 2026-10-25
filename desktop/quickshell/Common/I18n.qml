@@ -28,6 +28,15 @@ Singleton {
         return I18nHelpers.format(root.catalog, text, args);
     }
 
+    // A shortcut's label. Numbered labels are composed in bindings.lua
+    // ("Switch to workspace 3"), so they translate through "<stem> %1".
+    function actionLabel(label: string): string {
+        const numbered = /^(.*\D)\s+(\d+)$/.exec(label);
+        if (numbered && I18nHelpers.translate(root.catalog, numbered[1] + " %1") !== numbered[1] + " %1")
+            return root.format(numbered[1] + " %1", [numbered[2]]);
+        return root.tr(label);
+    }
+
     // A POSIX locale value by name in the session's language: "en_US.UTF-8"
     // is "English (United States)", "Engels (Verenigde Staten)" in Dutch.
     // An unknown language keeps the raw value.

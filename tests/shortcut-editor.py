@@ -571,6 +571,26 @@ def main():
             assert json.loads((home / '.config/cybexos/keybindings.json').read_text()) == {'v': 1}
             ipc('settings', 'close')
 
+            # The page, its map and the recorder at Settings' minimum size.
+            ipc('settings', 'open', 'shortcuts')
+            wait(lambda: (s := state()).get('page') and s.get('loaded') and s, 'page for the minimum size')
+            subprocess.run(['swaymsg', '[title="Cybex OS Settings"]', 'resize set 480 400'], env=env,
+                           check=True, capture_output=True)
+            ipc('shortcut-test', 'view', 'list')
+            ipc('shortcut-test', 'scroll', '0')
+            screenshot('shortcuts-minimum.png')
+            ipc('shortcut-test', 'view', 'map')
+            screenshot('shortcuts-map-minimum.png')
+            ipc('shortcut-test', 'view', 'list')
+            ipc('shortcut-test', 'edit', 'shell.lock')
+            focus_settings()
+            wait(lambda: recorder().get('listening'), 'recorder at the minimum size')
+            screenshot('shortcuts-recorder-minimum.png')
+            keyboard = start(['wtype', '-s', '300', '-k', 'Escape', '-s', '200'], 'minimum-escape.log')
+            wait(lambda: recorder().get('shown') is False, 'cancel at the minimum size')
+            keyboard.wait(timeout=5)
+            ipc('settings', 'close')
+
             errors = [line for line in (base / 'qs.log').read_text(errors='replace').splitlines()
                       if QML_ERRORS.search(line) or 'activeFocusOnTab' in line
                       or re.search(r'(WARN|ERROR).*(Shortcut\w*\.qml|Keybind\w*\.qml|ShortcutEditor\.js|ShortcutsStep)', line)]

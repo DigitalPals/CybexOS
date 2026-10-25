@@ -79,6 +79,13 @@ TEST_IPC = '''
             grid.focusItem(grid.currentIndex);
         }
         function focusSearch(): void { shell.testItem("wallhavenSearch").forceActiveFocus(); }
+        function colour(): string {
+            const filter = shell.testItem("wallhavenColour");
+            if (!filter) return "missing";
+            filter.open();
+            return "ok";
+        }
+        function colourOpen(): string { const filter = shell.testItem("wallhavenColour"); return String(!!filter && filter.opened); }
         function focusRoot(): void { shell.testItem("welcomeView").focusInitial(); }
         function task(id: string): void {
             shell.testFind(welcomeWindow.contentItem, item => item.tasks !== undefined && item.selected !== undefined).selected = id;
@@ -533,6 +540,19 @@ def main():
                         session.wait(lambda: (r := session.guide_rect()) and (r['width'], r['height']) == (width, height),
                                      f'{size} guide')
                         session.capture_guide(shots, f'tour-{language}-{size}-{step}.png')
+                    # Wallhaven's colour grid opens over the picker and
+                    # Escape closes only the grid. Metering is unknown here,
+                    # so nothing is requested.
+                    session.ipc('open', 'wallpaper')
+                    session.call('welcome-test', 'tab', 'online')
+                    session.wait(lambda: session.call('welcome-test', 'colour') == 'ok', 'colour filter')
+                    session.wait(lambda: session.call('welcome-test', 'colourOpen') == 'true', 'colour grid open')
+                    session.capture_guide(shots, f'tour-{language}-{size}-colours.png')
+                    session.key('-k', 'Escape')
+                    session.wait(lambda: session.call('welcome-test', 'colourOpen') == 'false', 'Escape closes the grid')
+                    assert session.state()['open'], 'Escape in the colour grid must not dismiss the guide'
+                    assert session.probe()['requests'] == 0, 'the colour grid must not contact Wallhaven'
+                    session.call('welcome-test', 'tab', 'collection')
             session.ipc('open', 'hello')
             session.capture(shots, 'welcome-hello-nl.png')
             session.ipc('close')

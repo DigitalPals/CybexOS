@@ -125,7 +125,7 @@ Column {
                 GuideText {
                     anchors.left: parent.left; anchors.leftMargin: Theme.scaled(16); anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - keys.width - edit.width - Theme.scaled(56); elide: Text.ElideRight; maximumLineCount: 1
-                    text: row.action ? I18n.tr(row.action.label) : ""
+                    text: row.action ? I18n.actionLabel(row.action.label) : ""
                 }
                 Keycaps {
                     id: keys
@@ -144,7 +144,7 @@ Column {
                     text: I18n.tr("Edit")
                     glyph: "edit"
                     enabled: !!row.action && row.action.editable && !root.readOnly
-                    Accessible.name: I18n.format("Change %1", [row.action ? I18n.tr(row.action.label) : ""])
+                    Accessible.name: I18n.format("Change %1", [row.action ? I18n.actionLabel(row.action.label) : ""])
                     onTriggered: root.edit(row.modelData)
                 }
             }

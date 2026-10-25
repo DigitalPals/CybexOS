@@ -14,6 +14,7 @@ Item {
     id: root
 
     property string current: ""
+    readonly property bool opened: popup.visible
     signal picked(string value)
 
     // Sized for the longer label, so choosing a colour does not move the row.
@@ -110,6 +111,9 @@ Item {
         popupType: Controls.Popup.Item
         focus: true
         padding: Theme.scaled(10)
+        // Kept inside the window: a short guide shifts the grid up over the
+        // control rather than cutting off its last rows.
+        margins: Theme.scaled(8)
         y: root.height + 4
         x: Math.min(0, root.width - width)
         closePolicy: Controls.Popup.CloseOnEscape | Controls.Popup.CloseOnPressOutside

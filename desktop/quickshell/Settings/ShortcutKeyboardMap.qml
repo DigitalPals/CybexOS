@@ -72,13 +72,13 @@ Column {
         if (!owner)
             return "";
         const workspace = Helpers.workspaceNumber(owner.label);
-        return workspace ? I18n.format("Workspace %1", [workspace]) : I18n.tr(owner.label);
+        return workspace ? I18n.format("Workspace %1", [workspace]) : I18n.actionLabel(owner.label);
     }
     function describe(key) {
         if (key.free)
             return I18n.tr("Free");
         if (key.reservedBy)
-            return I18n.format("Kept for %1", [I18n.tr(key.reservedBy.label)]);
+            return I18n.format("Kept for %1", [I18n.actionLabel(key.reservedBy.label)]);
         let text = label(key.owner);
         if (key.shared)
             text = I18n.format("%1 and %2 more", [text, key.owners.length - 1]);
@@ -202,7 +202,7 @@ Column {
                             anchors.bottomMargin: Theme.scaled(3)
                             width: parent.width - Theme.scaled(8)
                             visible: !keyCap.modelData.free
-                            text: keyCap.modelData.reservedBy ? I18n.tr(keyCap.modelData.reservedBy.label)
+                            text: keyCap.modelData.reservedBy ? I18n.actionLabel(keyCap.modelData.reservedBy.label)
                                 : root.label(keyCap.modelData.owner)
                             wrapMode: longestWord.advanceWidth <= width ? Text.WordWrap : Text.NoWrap
                             maximumLineCount: wrapMode === Text.NoWrap ? 1 : 2
@@ -319,7 +319,7 @@ Column {
                         ? root.selectedKey.owners.filter(owner => owner.editable) : []
                     delegate: SettingsAction {
                         required property var modelData
-                        text: I18n.format("Edit %1", [I18n.tr(modelData.label)])
+                        text: I18n.format("Edit %1", [I18n.actionLabel(modelData.label)])
                         glyph: "edit"
                         onTriggered: root.editRequested(modelData.id)
                     }
