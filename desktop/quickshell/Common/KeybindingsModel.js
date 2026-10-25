@@ -138,7 +138,7 @@ function merge(state, binds) {
     return { actions: rows, userBinds: user, diagnostics: copy(state.diagnostics || []) };
 }
 function create() {
-    return { loaded: false, version: "", saved: {v: 1}, draft: {v: 1}, problem: "", recover: false,
+    return { loaded: false, version: "", saved: {v: 1}, draft: {v: 1}, problem: "", recover: false, keymap: {},
         state: {actions: [], custom: [], diagnostics: []}, binds: [], pending: null };
 }
 // A rejected keybindings.json: the backend's reason (model.problem) or the one
@@ -151,6 +151,7 @@ function guardBroken(model) {
 function dirty(model) { return model.recover || !equal(model.saved, model.draft); }
 function ingest(model, snapshot) {
     model.binds = copy(snapshot.binds || []);
+    model.keymap = copy(snapshot.keymap || {});
     if (!model.loaded || !dirty(model)) {
         model.state = copy(snapshot.state);
         model.saved = copy(snapshot.preferences);
@@ -184,24 +185,56 @@ function view(model) {
 }
 function action(model, id) { return view(model).actions.find(function(row) { return row.id === id; }) || null; }
 function keysFor(model, id) { var row = action(model, id); return row ? row.keys.slice() : []; }
+// How a recorded key relates to an existing one: 1 = the same key, 2 = it might
+// be (a Shift combination stored as code:N that the layout map cannot name, so
+// any non-letter key with the same modifiers could be on that physical key),
+// 0 = a different key. With a layout map, code:N is first translated to the
+// keysym Hyprland matches binds against.
+function matcher(model, key) {
+    var normal = Editor.normalize(key), parts = normal ? normal.split(" + ") : [];
+    var base = parts.pop() || "", code = /^code:([0-9]+)$/.exec(base), keymap = model.keymap || {};
+    var mapped = code && Object.prototype.hasOwnProperty.call(keymap, code[1]) ? keymap[code[1]] : "";
+    var translated = mapped ? Editor.normalize(parts.concat([mapped]).join(" + ")) : "";
+    var doubtful = !!code && !translated && parts.indexOf("SHIFT") >= 0;
+    return function(other) {
+        if (Editor.same(normal, other) || (translated && Editor.same(translated, other))) return 1;
+        if (!doubtful) return 0;
+        var shape = Editor.normalize(other).split(" + "), otherKey = shape.pop();
+        return shape.join(" + ") === parts.join(" + ") && otherKey && !/^[A-Za-z]$/.test(otherKey)
+            && !/^mouse/i.test(otherKey) ? 2 : 0;
+    };
+}
+function strength(test, keys) {
+    var best = 0;
+    keys.forEach(function(other) {
+        var level = test(other);
+        if (level === 1 || (level === 2 && !best)) best = level;
+    });
+    return best;
+}
 function conflicts(model, key, exceptId) {
-    var result = [], current = view(model);
+    var result = [], current = view(model), test = matcher(model, key);
+    function add(entry, level) {
+        if (!level) return;
+        if (level === 2) entry.uncertain = true;
+        result.push(entry);
+    }
+    function listed(id) { return result.some(function(other) { return other.id === id; }); }
     current.actions.forEach(function(row) {
-        var protectedDefault = row.protected && row.defaultKeys.some(function(other) { return Editor.same(key, other); });
-        if (row.id !== exceptId && (protectedDefault || row.keys.some(function(other) { return Editor.same(key, other); })))
-            result.push({ id: row.id, group: row.group, label: row.label, protected: row.protected, source: row.source });
+        if (row.id !== exceptId)
+            add({ id: row.id, group: row.group, label: row.label, protected: row.protected, source: row.source },
+                strength(test, row.protected ? row.keys.concat(row.defaultKeys) : row.keys));
     });
     // user.lua runs after the next apply too. A draft remap must not hide
     // a live personal key that will still be present after the reload.
     merge(model.state, model.binds).actions.forEach(function(row) {
-        if (row.source === "user" && row.id !== exceptId
-                && !result.some(function(other) { return other.id === row.id; })
-                && row.keys.some(function(other) { return Editor.same(key, other); }))
-            result.push({ id: row.id, group: row.group, label: row.label, protected: row.protected, source: "user" });
+        if (row.source === "user" && row.id !== exceptId && !listed(row.id))
+            add({ id: row.id, group: row.group, label: row.label, protected: row.protected, source: "user" },
+                strength(test, row.keys));
     });
     current.userBinds.forEach(function(row, index) {
-        if (row.keys.some(function(other) { return Editor.same(key, other); }))
-            result.push({ id: "user." + index, group: row.group, label: row.label, protected: false, source: "user" });
+        add({ id: "user." + index, group: row.group, label: row.label, protected: false, source: "user" },
+            strength(test, row.keys));
     });
     // Competing claims can be dropped by resolution; keep them visible while
     // editing so a second pending assignment never appears conflict-free.
@@ -210,10 +243,10 @@ function conflicts(model, key, exceptId) {
         return row ? Object.assign({}, row, {keys: model.draft.actions[id].keys}) : null;
     }).concat(model.draft.custom || []);
     claimed.forEach(function(row) {
-        if (row && row.id !== exceptId && !result.some(function(other) { return other.id === row.id; })
-                && row.keys.some(function(other) { return Editor.same(key, other); }))
-            result.push({ id: row.id, group: row.group, label: row.label, protected: !!row.protected,
-                source: row.custom || row.id.indexOf("custom.") === 0 ? "custom" : "changed" });
+        if (row && row.id !== exceptId && !listed(row.id))
+            add({ id: row.id, group: row.group, label: row.label, protected: !!row.protected,
+                source: row.custom || row.id.indexOf("custom.") === 0 ? "custom" : "changed" },
+                strength(test, row.keys));
     });
     return result;
 }

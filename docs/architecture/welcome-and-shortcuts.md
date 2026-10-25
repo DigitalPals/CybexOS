@@ -213,7 +213,7 @@ readonly property bool dirty                 // draft differs from the saved fil
 function refresh()
 function keysFor(id) -> [keyString]          // effective keys, including the draft; [] if unbound or unknown
 function action(id) -> row | null
-function conflicts(keyString, exceptId) -> [{ id, group, label, protected, source }]
+function conflicts(keyString, exceptId) -> [{ id, group, label, protected, source, uncertain? }]
 function setKeys(id, keys) / disable(id) / reset(id) / resetAll()
 function addCustom({ group, label, keys, run }) -> id
 function updateCustom(id, patch) / removeCustom(id)
@@ -429,6 +429,31 @@ recording incomplete. Qt Wayland's native scan code is already xkb
 and KeybindManager adds 8 to incoming evdev events before matching. Do not
 subtract 8. Synthetic events without a known keysym or a valid scan code are
 incomplete. This API is intended for Wayland, not Qt's other platform plugins.
+
+**Layout keymap.** Hyprland matches a bind against the key's unmodified
+(level 1) keysym, so `SUPER + SHIFT + code:10` is a different key to Lua and
+JS than the vendor `SUPER + SHIFT + 1` and would bind beside it. The
+`keybindings` snapshot therefore carries `keymap`, `{ "<xkb keycode>":
+"<keysym>" }` for the first level of the main keyboard's active group
+(`hyprctl devices -j`: `layout`, `variant`, `options`, `rules`, `model`, and
+`active_keymap` to pick the group). It is built from `xkbcli compile-keymap`
+(libxkbcommon, in the desktop runtime's PATH) by
+`scripts/system_settings_keymap.py`, which reads the `xkb_keycodes` and
+`xkb_symbols` sections (compact and `symbols[GroupN]=` forms) and is cached
+per layout string in memory and as at most eight small files under
+`$XDG_RUNTIME_DIR/cybexos/keymap-*.json`. Arguments are validated, the tool
+runs with a 5 s timeout and a size cap, and any failure yields `{}`: no map
+means no translation. `Keybindings.keymap` exposes it, and
+`KeybindEditor.fromKeyEvent(event, keymap)` takes it as an optional second
+argument and turns a `code:N` result into the keysym when the map has one
+(US: `SUPER + SHIFT + 1`; AZERTY: `SUPER + SHIFT + ampersand`). Pass
+`Keybindings.keymap` from every recorder.
+
+`conflicts()` applies the same translation to a `code:N` key. When there is no
+map entry for a `code:N` key with Shift, any action with the same modifiers
+whose key is not a letter might be on that physical key, so each is reported
+with `uncertain: true` (exact matches carry no flag). The UI should word those
+as "may conflict".
 
 The recorder reserves unmodified keys except F-keys/XF86 keys; modifier-only,
 mouse, SysRq, power/sleep keys, Ctrl+Alt+F1–F12, Ctrl+Alt+Delete and

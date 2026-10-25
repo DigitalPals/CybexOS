@@ -10,6 +10,7 @@ import tempfile
 import time
 
 from system_settings_input import run
+from system_settings_keymap import active_map
 
 MAX_BYTES = 65536
 # A broken file up to this size can still be replaced, after it is copied.
@@ -210,8 +211,9 @@ class KeybindingsSettings:
                 raise ValueError('invalid binds')
         except (ValueError, UnicodeError, RecursionError) as error:
             raise ValueError('Shortcut state could not be read. Reload Hyprland and retry.') from error
+        # { "<xkb keycode>": "<level-1 keysym>" } for the recorder; {} when unknown.
         return {'state': state, 'preferences': document, 'version': version, 'binds': binds,
-                'preferencesError': problem}
+                'preferencesError': problem, 'keymap': active_map()}
 
     def atomic_write(self, raw):
         fd, name = tempfile.mkstemp(prefix='.keybindings-', dir=self.path.parent)

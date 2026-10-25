@@ -24,6 +24,10 @@ Singleton {
             : problem.file ? I18n.tr(problem.file) : "";
     }
     readonly property bool readOnly: { root.revision; return Model.broken(root.model); }
+    // { "<xkb keycode>": "<level-1 keysym>" } for the active layout, {} when
+    // unknown. Pass it to KeybindEditor.fromKeyEvent so Shift combinations are
+    // recorded as Hyprland binds them (SUPER + SHIFT + 1, not code:10).
+    readonly property var keymap: { root.revision; return root.model.keymap || ({}); }
     readonly property var actions: root.rows.actions
     readonly property var userBinds: root.rows.userBinds
     readonly property var diagnostics: root.rows.diagnostics

@@ -31,6 +31,9 @@ class KeybindingsBackend(unittest.TestCase):
         self.service.state_path.parent.mkdir(parents=True)
         self.state = {'v': 1, 'error': None, 'actions': [], 'custom': [], 'diagnostics': []}
         self.service.state_path.write_text(json.dumps(self.state))
+        patcher = patch.object(backend, 'active_map', return_value={})
+        self.active_map = patcher.start()
+        self.addCleanup(patcher.stop)
         patcher = patch.object(backend, 'run', return_value='ok')
         self.run = patcher.start()
         self.addCleanup(patcher.stop)
@@ -50,6 +53,12 @@ class KeybindingsBackend(unittest.TestCase):
         self.assertEqual(result['version'], hashlib.sha256(raw).hexdigest())
         self.assertEqual(result['binds'][0]['description'], 'Personal: Browser')
         self.run.assert_called_once_with(['hyprctl', '-j', 'binds'])
+
+    def test_snapshot_carries_the_active_layouts_keymap(self):
+        self.run.return_value = '[]'
+        self.assertEqual(self.service.snapshot()['keymap'], {})
+        self.active_map.return_value = {'10': 'ampersand', '24': 'a'}
+        self.assertEqual(self.service.snapshot()['keymap'], {'10': 'ampersand', '24': 'a'})
 
     def test_malformed_state_is_a_read_error_not_a_partially_loaded_model(self):
         self.state['actions'] = [None]

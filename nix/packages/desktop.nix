@@ -7,7 +7,7 @@
   libnotify, wtype, pulseaudio, pipewire, wireplumber, wl-clipboard, cliphist, grim, slurp,
   wf-recorder, ffmpeg, libva-utils, jq, procps, findutils, gnugrep, gnused, gawk,
   xdg-utils, xdg-terminal-exec, curl, nodejs, iw, iproute2, brightnessctl, playerctl, bluez, upower,
-  power-profiles-daemon, restic, openssh, age, gnutar, zstd, util-linux, kitty, fetchFromGitHub }:
+  power-profiles-daemon, restic, openssh, age, gnutar, zstd, util-linux, kitty, libxkbcommon, fetchFromGitHub }:
 let
   lazyvimStarter = fetchFromGitHub {
     owner = "LazyVim"; repo = "starter";
@@ -24,7 +24,8 @@ let
     satty wayfreeze tesseract zbar qrencode hyprpicker hyprsunset imagemagick libnotify wtype
     pulseaudio pipewire wireplumber wl-clipboard cliphist grim slurp wf-recorder ffmpeg libva-utils jq
     procps findutils gnugrep gnused gawk xdg-utils xdg-terminal-exec curl nodejs iw iproute2 brightnessctl playerctl
-    networkmanager bluez upower power-profiles-daemon restic openssh age gnutar zstd util-linux kitty libsecret fwupd ];
+    networkmanager bluez upower power-profiles-daemon restic openssh age gnutar zstd util-linux kitty libsecret fwupd
+    libxkbcommon ];  # xkbcli: the shortcut recorder's keycode -> keysym map
   images = stdenv.mkDerivation {
     pname = "cybexos-notification-images";
     version = "1";
@@ -88,7 +89,10 @@ in stdenv.mkDerivation {
     for module in Keybindings.qml KeybindingsModel.js KeybindEditor.js; do
       test -r "$out/share/cybexos/runtime/quickshell/Common/$module"
     done
-    test -r "$out/share/cybexos/runtime/quickshell/scripts/system_settings_keybindings.py"
+    for module in system_settings_keybindings system_settings_keymap; do
+      test -r "$out/share/cybexos/runtime/quickshell/scripts/$module.py"
+    done
+    PATH=${lib.makeBinPath [ libxkbcommon ]} xkbcli compile-keymap --layout us > /dev/null
     env -i HOME="$TMPDIR" $out/libexec/cybexos-desktop-runtime-check
     runHook postInstallCheck
   '';
