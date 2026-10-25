@@ -140,6 +140,9 @@ the vendor defaults apply and the reason is published.
 1. Start from the catalog defaults.
 2. Apply overrides to editable actions.
    - An override of a protected action to `[]` is ignored.
+   - A protected action always keeps its reserved default keys, in addition to
+     any remap, so a typo such as `SUPER + Lcok` cannot leave it unbound.
+     Its published `keys` are the accepted remap keys followed by the defaults.
    - Overrides for unknown or non-editable actions are ignored.
 3. Overrides and custom entries claim their key combinations.
    - A default binding that uses a claimed combination loses that key. This
@@ -210,7 +213,7 @@ readonly property bool dirty                 // draft differs from the saved fil
 function refresh()
 function keysFor(id) -> [keyString]          // effective keys, including the draft; [] if unbound or unknown
 function action(id) -> row | null
-function conflicts(keyString, exceptId) -> [{ id, group, label, protected, source }]
+function conflicts(keyString, exceptId) -> [{ id, group, label, protected, source, uncertain? }]
 function setKeys(id, keys) / disable(id) / reset(id) / resetAll()
 function addCustom({ group, label, keys, run }) -> id
 function updateCustom(id, patch) / removeCustom(id)
@@ -453,12 +456,42 @@ and KeybindManager adds 8 to incoming evdev events before matching. Do not
 subtract 8. Synthetic events without a known keysym or a valid scan code are
 incomplete. This API is intended for Wayland, not Qt's other platform plugins.
 
+**Layout keymap.** Hyprland matches a bind against the key's unmodified
+(level 1) keysym, so `SUPER + SHIFT + code:10` is a different key to Lua and
+JS than the vendor `SUPER + SHIFT + 1` and would bind beside it. The
+`keybindings` snapshot therefore carries `keymap`, `{ "<xkb keycode>":
+"<keysym>" }` for the first level of the main keyboard's active group
+(`hyprctl devices -j`: `layout`, `variant`, `options`, `rules`, `model`, and
+`active_keymap` to pick the group). It is built from `xkbcli compile-keymap`
+(libxkbcommon, in the desktop runtime's PATH) by
+`scripts/system_settings_keymap.py`, which reads the `xkb_keycodes` and
+`xkb_symbols` sections (compact and `symbols[GroupN]=` forms) and is cached
+per layout string in memory and as at most eight small files under
+`$XDG_RUNTIME_DIR/cybexos/keymap-*.json`. Arguments are validated, the tool
+runs with a 5 s timeout and a size cap, and any failure yields `{}`: no map
+means no translation. `Keybindings.keymap` exposes it, and
+`KeybindEditor.fromKeyEvent(event, keymap)` takes it as an optional second
+argument and turns a `code:N` result into the keysym when the map has one
+(US: `SUPER + SHIFT + 1`; AZERTY: `SUPER + SHIFT + ampersand`). Pass
+`Keybindings.keymap` from every recorder.
+
+`conflicts()` applies the same translation to a `code:N` key. When there is no
+map entry for a `code:N` key with Shift, any action with the same modifiers
+whose key is not a letter might be on that physical key, so each is reported
+with `uncertain: true` (exact matches carry no flag). The UI should word those
+as "may conflict".
+
 The recorder reserves unmodified keys except F-keys/XF86 keys; modifier-only,
 mouse, SysRq, power/sleep keys, Ctrl+Alt+F1–F12, Ctrl+Alt+Delete and
 Ctrl+Alt+Backspace are also reserved. The Lua resolver independently reserves
 the protected actions' default combinations, even when those actions have
-been remapped. A protected remap whose claims are all dropped falls back to
-its reserved defaults. Settings may show that fallback in the preview.
+been remapped. A protected action keeps those defaults bound in addition to any
+remap (see §1.3), and its published `keys` include them. The draft preview in
+`KeybindingsModel.js` does the same, and `setKeys` stores only the keys beyond
+the defaults, so a protected remap back to just its defaults removes the
+override. Only schema fields of a custom entry are copied into the state, and
+the state encoder writes non-finite numbers as `null`; the Lua JSON decoder
+already rejects overflowing numbers such as `1e999`.
 
 The Python request is `{action: "apply", version, preferences}`; snapshots
 return `{state, preferences, version, binds}`. The successful apply returns
@@ -466,6 +499,21 @@ return `{state, preferences, version, binds}`. The successful apply returns
 `SystemSettings.keybindings`, with no monitor process while idle.
 `KeybindingsModel.js` contains pure draft/merge helpers; saved resolution is
 always read from Lua's state, and only an unsaved draft is resolved in JS.
+
+A `keybindings.json` that the loader rejects does not stop the page. The
+snapshot still returns Lua's `state` and the live `binds`, with `preferences`
+`{v: 1}`, the exact bytes' hash as `version`, and `preferencesError` (a string,
+`""` when the file is fine). `Keybindings` exposes `preferencesError`, preferring
+Lua's published reason, and `readOnly`, true while either side rejects the file.
+While `readOnly`, every edit except `resetAll()` is refused with a failure.
+`resetAll()` marks the draft dirty even though it looks unchanged; the next
+`apply()` sends `replaceInvalid: true`. Only then does the backend replace the
+file, after copying its exact bytes to `keybindings.json.invalid-<UTC
+timestamp>` beside it (mode 0600, never overwritten or deleted). If that copy
+fails nothing changes. The usual version check and reload rollback apply, and
+the backup stays after a rollback. A file that is not a regular file (a
+symlink, a FIFO) or is over 1 MiB is reported but cannot be replaced; repair it
+by hand. `replaceInvalid` is ignored when the file is valid.
 
 One transport addition touches `LauncherWindow.qml`: the existing `launcher`
 IPC target now has `launchDesktop(desktopId: string): string`, returning

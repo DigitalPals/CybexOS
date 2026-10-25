@@ -45,3 +45,33 @@ test('reservations preserve typing, recovery and hardware power keys; display re
     assert.deepEqual(plain(E.display('SUPER + SHIFT + B')), ['Super','Shift','B']);
     assert.deepEqual(plain(E.display('SUPER + comma')), ['Super',',']);
 });
+// The maps are the parser's output for `xkbcli compile-keymap --layout us|fr`
+// (tests/nixos/test_keybindings_keymap.py reads the .xkb the maps come from).
+const keymap = name => JSON.parse(fs.readFileSync(path.join(root, 'tests/fixtures/keybindings', 'keymap-' + name + '.json'), 'utf8'));
+test('Shift combinations record the base keysym when the layout map is known', () => {
+    const us = keymap('us'), fr = keymap('fr');
+    const record = (map, key, nativeScanCode, modifiers = meta | shift) => plain(E.fromKeyEvent({key, modifiers, nativeScanCode}, map));
+    // US: Qt reports the shifted symbol; the vendor binds are written with the base one.
+    assert.equal(record(us, 33, 10).keys, 'SUPER + SHIFT + 1');
+    assert.equal(record(us, 64, 11).keys, 'SUPER + SHIFT + 2');
+    assert.equal(record(us, 95, 20, shift).keys, 'SHIFT + minus');
+    assert.equal(record(us, 126, 49, shift).keys, 'SHIFT + grave');
+    assert.equal(record(us, 63, 61, shift).keys, 'SHIFT + slash');
+    assert.equal(record(us, 33, 10).complete, true);
+    // AZERTY: the unshifted number-row key is ampersand and Shift produces the digit.
+    assert.equal(record(fr, 49, 10).keys, 'SUPER + SHIFT + ampersand');
+    assert.equal(record(fr, 50, 11).keys, 'SUPER + SHIFT + eacute');
+    assert.equal(record(fr, 63, 61, shift).keys, 'SHIFT + exclam');
+    // Without a map the keycode fallback is unchanged, and an unknown code stays a code.
+    assert.equal(record(undefined, 33, 10).keys, 'SUPER + SHIFT + code:10');
+    assert.equal(record({}, 33, 10).keys, 'SUPER + SHIFT + code:10');
+    assert.equal(record({'11': '2'}, 33, 10).keys, 'SUPER + SHIFT + code:10');
+    // Hostile or malformed map values are ignored, and unrelated keys are untouched.
+    for (const value of ['; rm', '', 7, null, 'a b']) assert.equal(record({'10': value}, 33, 10).keys, 'SUPER + SHIFT + code:10');
+    assert.equal(record({'__proto__': 'x', 'constructor': 'y'}, 33, 10).keys, 'SUPER + SHIFT + code:10');
+    assert.equal(record(us, 66, 56, meta | shift).keys, 'SUPER + SHIFT + B');
+    assert.equal(record(us, 0x01000004, 36).keys, 'SUPER + SHIFT + Return');
+    // An unshifted record needs no map; the map never rewrites a key with a known name.
+    assert.equal(plain(E.fromKeyEvent({key: 49, modifiers: meta, nativeScanCode: 10}, us)).keys, 'SUPER + 1');
+    assert.equal(plain(E.fromKeyEvent({key: 38, modifiers: meta, nativeScanCode: 10}, fr)).keys, 'SUPER + ampersand');
+});

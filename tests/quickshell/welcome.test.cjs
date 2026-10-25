@@ -108,3 +108,36 @@ test('FileView writes coalesce changes, protect unreadable data and retry identi
     context.settled(true); context.loadFailed(3); context.document = W.visit(context.document, 'finish'); context.saveNow();
     assert.equal(writes.length, 3, 'unreadable data closes every write path');
 });
+test('the welcome window follows Hyprland events for its pin instead of polling the client list', () => {
+    const qml = fs.readFileSync(path.join(shellDir, 'WelcomeWindow.qml'), 'utf8');
+    assert.doesNotMatch(qml, /Timer \{/, 'no repeating timer');
+    assert.match(qml, /Connections \{\s*target: Hyprland\s*function onRawEvent\(event\) \{ window\.handleHyprlandEvent\(event\); \}/);
+    assert.match(qml, /function onOpenChanged\(\)[^]*?window\.syncPin\(\)/);
+    assert.match(qml, /function onPracticingChanged\(\) \{ window\.syncPin\(\); \}/);
+    const calls = [];
+    const context = vm.createContext({Welcome: {open: true, hasHyprland: true}, title: 'Welcome to Cybex OS',
+        pinQueued: false, pinRequest: {running: false}, syncPin() { calls.push('sync'); }});
+    context.window = context;
+    for (const name of ['syncPin', 'handleHyprlandEvent']) {
+        const match = qml.match(new RegExp('^    function ' + name + '\\([^]*?^    }', 'm'));
+        assert.ok(match, name);
+        if (name === 'handleHyprlandEvent') vm.runInContext(match[0], context);
+    }
+    const event = (name, data) => context.handleHyprlandEvent({name, data});
+    event('openwindow', '0x55d,2,kitty,Welcome to Cybex OS'); assert.equal(calls.length, 1, 'the guide mapped');
+    event('openwindow', '0x55e,2,kitty,Terminal'); assert.equal(calls.length, 1, 'another window mapped');
+    event('pin', '0x55d,1'); assert.equal(calls.length, 2, 'a pin changed');
+    for (const name of ['workspacev2', 'activewindowv2', 'closewindow', 'movewindowv2', 'focusedmonv2'])
+        event(name, '0x55d,1');
+    assert.equal(calls.length, 2, 'unrelated events cost nothing');
+    context.Welcome.open = false; event('pin', '0x55d,0'); event('openwindow', 'x,y,z,Welcome to Cybex OS');
+    assert.equal(calls.length, 2, 'a closed guide ignores events');
+    // A request in flight queues one follow-up read instead of dropping the change.
+    const sync = vm.createContext({Welcome: {hasHyprland: true}, pinQueued: false, pinRequest: {running: true}});
+    vm.runInContext(qml.match(/^    function syncPin\([^]*?^    }/m)[0], sync);
+    sync.syncPin(); sync.syncPin();
+    assert.equal(sync.pinQueued, true); assert.equal(sync.pinRequest.running, true);
+    sync.pinRequest.running = false; sync.syncPin();
+    assert.equal(sync.pinRequest.running, true);
+    assert.match(qml, /onAvailable: \{ if \(window\.pinQueued\) \{ window\.pinQueued = false; window\.syncPin\(\); \} \}/);
+});

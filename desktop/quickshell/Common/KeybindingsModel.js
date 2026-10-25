@@ -49,8 +49,11 @@ function resolve(catalog, document) {
             }
         });
         row.keys = accepted;
-        if (row.protected && !row.keys.length)
-            row.keys = row.defaultKeys.slice();
+        // Protected actions always keep their reserved defaults, as in Lua.
+        if (row.protected)
+            row.defaultKeys.forEach(function(key) {
+                if (!row.keys.some(function(other) { return Editor.same(other, key); })) row.keys.push(key);
+            });
     }
     rows.forEach(function(row) { if (overridden[row.id]) claim(row); });
     var custom = (document.custom || []).map(function(entry) {
@@ -135,17 +138,26 @@ function merge(state, binds) {
     return { actions: rows, userBinds: user, diagnostics: copy(state.diagnostics || []) };
 }
 function create() {
-    return { loaded: false, version: "", saved: {v: 1}, draft: {v: 1},
+    return { loaded: false, version: "", saved: {v: 1}, draft: {v: 1}, problem: "", recover: false, keymap: {},
         state: {actions: [], custom: [], diagnostics: []}, binds: [], pending: null };
 }
-function dirty(model) { return !equal(model.saved, model.draft); }
+// A rejected keybindings.json: the backend's reason (model.problem) or the one
+// Lua published (state.error). Nothing can be edited until resetAll() is applied.
+function broken(model) { return !!(model.problem || model.state.error); }
+function problem(model) { return { file: model.problem || "", lua: model.state.error || "" }; }
+function guardBroken(model) {
+    if (broken(model)) throw new Error("Reset all shortcuts before editing; keybindings.json could not be loaded");
+}
+function dirty(model) { return model.recover || !equal(model.saved, model.draft); }
 function ingest(model, snapshot) {
     model.binds = copy(snapshot.binds || []);
+    model.keymap = copy(snapshot.keymap || {});
     if (!model.loaded || !dirty(model)) {
         model.state = copy(snapshot.state);
         model.saved = copy(snapshot.preferences);
         model.draft = copy(snapshot.preferences);
         model.version = snapshot.version;
+        model.problem = snapshot.preferencesError || "";
     }
     model.loaded = true;
 }
@@ -173,24 +185,56 @@ function view(model) {
 }
 function action(model, id) { return view(model).actions.find(function(row) { return row.id === id; }) || null; }
 function keysFor(model, id) { var row = action(model, id); return row ? row.keys.slice() : []; }
+// How a recorded key relates to an existing one: 1 = the same key, 2 = it might
+// be (a Shift combination stored as code:N that the layout map cannot name, so
+// any non-letter key with the same modifiers could be on that physical key),
+// 0 = a different key. With a layout map, code:N is first translated to the
+// keysym Hyprland matches binds against.
+function matcher(model, key) {
+    var normal = Editor.normalize(key), parts = normal ? normal.split(" + ") : [];
+    var base = parts.pop() || "", code = /^code:([0-9]+)$/.exec(base), keymap = model.keymap || {};
+    var mapped = code && Object.prototype.hasOwnProperty.call(keymap, code[1]) ? keymap[code[1]] : "";
+    var translated = mapped ? Editor.normalize(parts.concat([mapped]).join(" + ")) : "";
+    var doubtful = !!code && !translated && parts.indexOf("SHIFT") >= 0;
+    return function(other) {
+        if (Editor.same(normal, other) || (translated && Editor.same(translated, other))) return 1;
+        if (!doubtful) return 0;
+        var shape = Editor.normalize(other).split(" + "), otherKey = shape.pop();
+        return shape.join(" + ") === parts.join(" + ") && otherKey && !/^[A-Za-z]$/.test(otherKey)
+            && !/^mouse/i.test(otherKey) ? 2 : 0;
+    };
+}
+function strength(test, keys) {
+    var best = 0;
+    keys.forEach(function(other) {
+        var level = test(other);
+        if (level === 1 || (level === 2 && !best)) best = level;
+    });
+    return best;
+}
 function conflicts(model, key, exceptId) {
-    var result = [], current = view(model);
+    var result = [], current = view(model), test = matcher(model, key);
+    function add(entry, level) {
+        if (!level) return;
+        if (level === 2) entry.uncertain = true;
+        result.push(entry);
+    }
+    function listed(id) { return result.some(function(other) { return other.id === id; }); }
     current.actions.forEach(function(row) {
-        var protectedDefault = row.protected && row.defaultKeys.some(function(other) { return Editor.same(key, other); });
-        if (row.id !== exceptId && (protectedDefault || row.keys.some(function(other) { return Editor.same(key, other); })))
-            result.push({ id: row.id, group: row.group, label: row.label, protected: row.protected, source: row.source });
+        if (row.id !== exceptId)
+            add({ id: row.id, group: row.group, label: row.label, protected: row.protected, source: row.source },
+                strength(test, row.protected ? row.keys.concat(row.defaultKeys) : row.keys));
     });
     // user.lua runs after the next apply too. A draft remap must not hide
     // a live personal key that will still be present after the reload.
     merge(model.state, model.binds).actions.forEach(function(row) {
-        if (row.source === "user" && row.id !== exceptId
-                && !result.some(function(other) { return other.id === row.id; })
-                && row.keys.some(function(other) { return Editor.same(key, other); }))
-            result.push({ id: row.id, group: row.group, label: row.label, protected: row.protected, source: "user" });
+        if (row.source === "user" && row.id !== exceptId && !listed(row.id))
+            add({ id: row.id, group: row.group, label: row.label, protected: row.protected, source: "user" },
+                strength(test, row.keys));
     });
     current.userBinds.forEach(function(row, index) {
-        if (row.keys.some(function(other) { return Editor.same(key, other); }))
-            result.push({ id: "user." + index, group: row.group, label: row.label, protected: false, source: "user" });
+        add({ id: "user." + index, group: row.group, label: row.label, protected: false, source: "user" },
+            strength(test, row.keys));
     });
     // Competing claims can be dropped by resolution; keep them visible while
     // editing so a second pending assignment never appears conflict-free.
@@ -199,10 +243,10 @@ function conflicts(model, key, exceptId) {
         return row ? Object.assign({}, row, {keys: model.draft.actions[id].keys}) : null;
     }).concat(model.draft.custom || []);
     claimed.forEach(function(row) {
-        if (row && row.id !== exceptId && !result.some(function(other) { return other.id === row.id; })
-                && row.keys.some(function(other) { return Editor.same(key, other); }))
-            result.push({ id: row.id, group: row.group, label: row.label, protected: !!row.protected,
-                source: row.custom || row.id.indexOf("custom.") === 0 ? "custom" : "changed" });
+        if (row && row.id !== exceptId && !listed(row.id))
+            add({ id: row.id, group: row.group, label: row.label, protected: !!row.protected,
+                source: row.custom || row.id.indexOf("custom.") === 0 ? "custom" : "changed" },
+                strength(test, row.keys));
     });
     return result;
 }
@@ -215,10 +259,19 @@ function checkedKeys(keys) {
     return out;
 }
 function setKeys(model, id, keys) {
+    guardBroken(model);
     var row = action(model, id);
     if (!row || !row.editable) throw new Error("This shortcut cannot be edited");
     keys = checkedKeys(keys);
     if (row.protected && !keys.length) throw new Error("This shortcut must keep at least one key");
+    // The reserved defaults stay bound whatever is stored, so only extra keys
+    // are kept in the file; nothing extra means the plain default.
+    if (row.protected) {
+        keys = keys.filter(function(key) {
+            return !row.defaultKeys.some(function(other) { return Editor.same(key, other); });
+        });
+        if (!keys.length) keys = row.defaultKeys.slice();
+    }
     if (row.custom) {
         model.draft.custom.find(function(entry) { return entry.id === id; }).keys = keys;
     } else {
@@ -229,6 +282,7 @@ function setKeys(model, id, keys) {
     }
 }
 function reset(model, id) {
+    guardBroken(model);
     if (id.indexOf("custom.") === 0) {
         var saved = (model.saved.custom || []).find(function(row) { return row.id === id; });
         removeCustom(model, id);
@@ -241,6 +295,9 @@ function reset(model, id) {
 function resetAll(model) {
     delete model.draft.actions;
     delete model.draft.custom;
+    // The saved document of a rejected file is empty, so the draft would look
+    // unchanged; mark the pending replacement explicitly.
+    if (broken(model)) model.recover = true;
 }
 function checkCustom(entry) {
     if (!entry || typeof entry.group !== "string" || typeof entry.label !== "string"
@@ -259,6 +316,7 @@ function checkCustom(entry) {
 }
 function byteLength(value) { return unescape(encodeURIComponent(value)).length; }
 function addCustom(model, entry) {
+    guardBroken(model);
     entry = checkCustom(copy(entry));
     var index = 1;
     var all = (model.saved.custom || []).concat(model.draft.custom || []);
@@ -269,6 +327,7 @@ function addCustom(model, entry) {
     return entry.id;
 }
 function updateCustom(model, id, patch) {
+    guardBroken(model);
     var index = (model.draft.custom || []).findIndex(function(row) { return row.id === id; });
     if (index < 0) throw new Error("Unknown custom shortcut");
     if (Object.keys(patch).some(function(key) { return ["group", "label", "keys", "run"].indexOf(key) < 0; }))
@@ -276,22 +335,27 @@ function updateCustom(model, id, patch) {
     model.draft.custom[index] = checkCustom(Object.assign({}, model.draft.custom[index], copy(patch)));
 }
 function removeCustom(model, id) {
+    guardBroken(model);
     model.draft.custom = (model.draft.custom || []).filter(function(row) { return row.id !== id; });
     if (!model.draft.custom.length) delete model.draft.custom;
 }
-function discard(model) { model.draft = copy(model.saved); }
+function discard(model) { model.draft = copy(model.saved); model.recover = false; }
 function request(model) {
     model.pending = copy(model.draft);
-    return {action: "apply", version: model.version, preferences: copy(model.pending)};
+    var message = {action: "apply", version: model.version, preferences: copy(model.pending)};
+    if (model.recover) message.replaceInvalid = true;
+    return message;
 }
 function applied(model, result) {
+    model.recover = false;
+    model.problem = "";
     model.version = result.version;
     model.saved = copy(result.preferences || model.pending);
     model.state = resolve(model.state.actions, model.saved);
     model.pending = null;
     // Edits made while the request was running remain a dirty draft.
 }
-var exported = { create: create, ingest: ingest, view: view, resolve: resolve, merge: merge, dirty: dirty,
+var exported = { create: create, ingest: ingest, broken: broken, problem: problem, view: view, resolve: resolve, merge: merge, dirty: dirty,
     action: action, keysFor: keysFor, conflicts: conflicts, setKeys: setKeys, reset: reset, resetAll: resetAll,
     addCustom: addCustom, updateCustom: updateCustom, removeCustom: removeCustom, discard: discard,
     request: request, applied: applied, checkedKeys: checkedKeys };

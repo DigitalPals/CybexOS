@@ -7,10 +7,14 @@ from pathlib import Path
 import re
 import stat
 import tempfile
+import time
 
 from system_settings_input import run
+from system_settings_keymap import active_map
 
 MAX_BYTES = 65536
+# A broken file up to this size can still be replaced, after it is copied.
+RECOVERY_LIMIT = 1048576
 STATE_MAX_BYTES = 1048576
 
 
@@ -123,16 +127,68 @@ class KeybindingsSettings:
         runtime = os.environ.get('XDG_RUNTIME_DIR')
         self.state_path = Path(runtime) / 'cybexos/keybindings-state.json' if runtime else None
 
-    def read(self):
-        raw = read_bytes(self.path, MAX_BYTES)
+    def parse(self, raw):
         try:
-            document = {'v': 1} if raw is None else validate(decode(raw))
+            return {'v': 1} if raw is None else validate(decode(raw))
         except (ValueError, UnicodeError, RecursionError) as error:
-            raise ValueError('Shortcut preferences are invalid. Repair keybindings.json before applying changes.') from error
-        return document, hashlib.sha256(raw or b'').hexdigest(), raw
+            raise ValueError('Shortcut preferences are invalid. Repair keybindings.json, or reset all shortcuts to replace it; a backup copy is kept.') from error
+
+    def load(self):
+        """Read the saved file without raising for bad content.
+
+        Returns (document, version, raw, problem, replaceable). A bad file keeps
+        its exact bytes' hash as the version, so replacing it still rejects a
+        concurrent edit. Only a regular file that fits RECOVERY_LIMIT can be
+        replaced; anything else must be repaired by hand.
+        """
+        try:
+            raw = read_bytes(self.path, RECOVERY_LIMIT)
+        except ValueError as error:
+            return {'v': 1}, '', None, str(error), False
+        version = hashlib.sha256(raw or b'').hexdigest()
+        try:
+            if raw is not None and len(raw) > MAX_BYTES:
+                raise ValueError('Shortcut preferences are too large')
+            return self.parse(raw), version, raw, '', True
+        except ValueError as error:
+            return {'v': 1}, version, raw, str(error), True
+
+    def read(self):
+        document, version, raw, problem, _ = self.load()
+        if problem:
+            raise ValueError(problem)
+        return document, version, raw
+
+    def keep_backup(self, raw):
+        """Copy the bytes about to be replaced beside the file. Never deleted."""
+        stamp = time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())
+        for attempt in range(100):
+            name = self.path.with_name('%s.invalid-%s%s' % (self.path.name, stamp, '-%d' % attempt if attempt else ''))
+            try:
+                fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            except FileExistsError:
+                continue
+            except OSError as error:
+                raise ValueError('Could not keep a backup copy of keybindings.json. Nothing was changed.') from error
+            try:
+                with os.fdopen(fd, 'wb') as target:
+                    target.write(raw)
+                    target.flush()
+                    os.fsync(target.fileno())
+                directory = os.open(self.path.parent, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    os.fsync(directory)
+                finally:
+                    os.close(directory)
+            except OSError as error:
+                raise ValueError('Could not keep a backup copy of keybindings.json. Nothing was changed.') from error
+            return name
+        raise ValueError('Could not keep a backup copy of keybindings.json. Nothing was changed.')
 
     def snapshot(self):
-        document, version, _ = self.read()
+        # A bad preferences file must not hide Lua's published reason or lock
+        # the editor: report it beside the state instead of failing the read.
+        document, version, _, problem, _ = self.load()
         raw = read_bytes(self.state_path, STATE_MAX_BYTES) if self.state_path else None
         if raw is None:
             raise ValueError('Shortcut state is unavailable. Reload Hyprland and retry.')
@@ -155,7 +211,9 @@ class KeybindingsSettings:
                 raise ValueError('invalid binds')
         except (ValueError, UnicodeError, RecursionError) as error:
             raise ValueError('Shortcut state could not be read. Reload Hyprland and retry.') from error
-        return {'state': state, 'preferences': document, 'version': version, 'binds': binds}
+        # { "<xkb keycode>": "<level-1 keysym>" } for the recorder; {} when unknown.
+        return {'state': state, 'preferences': document, 'version': version, 'binds': binds,
+                'preferencesError': problem, 'keymap': active_map()}
 
     def atomic_write(self, raw):
         fd, name = tempfile.mkstemp(prefix='.keybindings-', dir=self.path.parent)
@@ -188,9 +246,16 @@ class KeybindingsSettings:
         lock_fd = os.open(self.path.with_suffix('.lock'), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         with os.fdopen(lock_fd, 'w') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            _, version, previous = self.read()
+            _, version, previous, problem, replaceable = self.load()
             if request.get('version') != version:
                 raise ValueError('Shortcut preferences changed elsewhere. Discard the pending edits and refresh before applying.')
+            if problem:
+                # Only an explicit reset may replace a file the loader rejects,
+                # and only after its exact bytes are kept beside it.
+                if request.get('replaceInvalid') is not True or not replaceable:
+                    raise ValueError(problem)
+                if previous is not None:
+                    self.keep_backup(previous)
             try:
                 self.atomic_write(payload)
                 if run(['hyprctl', 'reload']).lower() != 'ok':

@@ -49,7 +49,10 @@ var PUNCTUATION = {
     "@": "at", "[": "bracketleft", "\\": "backslash", "]": "bracketright", "^": "asciicircum",
     "_": "underscore", "`": "grave", "{": "braceleft", "|": "bar", "}": "braceright", "~": "asciitilde"
 };
-function fromKeyEvent(event) {
+// keymap: optional { "<xkb keycode>": "<level-1 keysym>" } of the active layout
+// (Keybindings.keymap). Hyprland matches the unmodified keysym, so a code:N
+// fallback is translated to it whenever the layout is known.
+function fromKeyEvent(event, keymap) {
     event = event || {};
     var key = Number(event.key), mask = Number(event.modifiers) || 0;
     var mods = [];
@@ -98,6 +101,11 @@ function fromKeyEvent(event) {
     // release it and record again instead of saving a combination that fails.
     if (mask & 0x40000000)
         return { keys: mods.join(" + "), complete: false };
+    if (keymap && /^code:[0-9]+$/.test(name)) {
+        var base = Object.prototype.hasOwnProperty.call(keymap, name.slice(5)) ? keymap[name.slice(5)] : "";
+        if (typeof base === "string" && /^[A-Za-z0-9_]+$/.test(base))
+            name = base;
+    }
     var keys = name ? normalize(mods.concat([name]).join(" + ")) : "";
     return { keys: keys, complete: keys !== "" };
 }

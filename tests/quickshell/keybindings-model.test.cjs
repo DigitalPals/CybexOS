@@ -134,3 +134,105 @@ test('desktop launch IPC validates filenames and uses the Apps tab execute path'
     assert.equal(calls.length,3);
     assert.equal(invoke('missing.desktop',entries,launcher),'unknown');
 });
+test('a protected remap keeps its reserved defaults and stores only the extra keys', () => {
+    const data = model();
+    M.setKeys(data,'shell.lock',['SUPER + T']);
+    assert.deepEqual(plain(M.keysFor(data,'shell.lock')),['SUPER + T','SUPER + L']);
+    assert.deepEqual(plain(data.draft.actions['shell.lock'].keys),['SUPER + T']);
+    M.setKeys(data,'shell.lock',['SUPER + L','SUPER + T']);
+    assert.deepEqual(plain(data.draft.actions['shell.lock'].keys),['SUPER + T']);
+    M.setKeys(data,'shell.lock',['SUPER + L']);
+    assert.equal(M.dirty(data),false);
+    assert.throws(()=>M.setKeys(data,'shell.lock',[]),/at least one/);
+});
+test('a rejected keybindings.json refuses edits except resetAll, which is applied as an explicit replacement', () => {
+    const data = model();
+    const snapshot = {state:{v:1,error:'invalid number at byte 148',actions:catalog.map(row=>({...row,keys:row.defaultKeys})),custom:[],diagnostics:[]},
+        preferences:{v:1},version:'broken-hash',binds,preferencesError:'Shortcut preferences are invalid.'};
+    data.loaded = false;
+    M.ingest(data, snapshot);
+    assert.equal(data.loaded,true);
+    assert.equal(M.broken(data),true);
+    assert.deepEqual(plain(M.problem(data)),{file:'Shortcut preferences are invalid.',lua:'invalid number at byte 148'});
+    assert.equal(M.dirty(data),false);
+    for (const edit of [()=>M.setKeys(data,'apps.first',['SUPER + T']),()=>M.reset(data,'apps.first'),
+        ()=>M.addCustom(data,{group:'Apps',label:'X',keys:['SUPER + T'],run:{type:'command',command:'true'}}),
+        ()=>M.updateCustom(data,'custom.x',{label:'Y'}),()=>M.removeCustom(data,'custom.x')])
+        assert.throws(edit,/Reset all shortcuts/);
+    assert.equal(M.dirty(data),false);
+    M.resetAll(data);
+    assert.equal(M.dirty(data),true);
+    assert.deepEqual(plain(M.request(data)),{action:'apply',version:'broken-hash',preferences:{v:1},replaceInvalid:true});
+    M.discard(data);
+    assert.equal(M.dirty(data),false);
+    M.resetAll(data);
+    M.applied(data,{version:'new-hash',preferences:{v:1}});
+    assert.equal(M.broken(data),false);
+    assert.equal(M.dirty(data),false);
+    assert.equal(data.version,'new-hash');
+    M.setKeys(data,'apps.first',['SUPER + T']);
+    assert.equal(M.request(data).replaceInvalid,undefined);
+});
+test('Lua alone rejecting the file also makes the editor read only, and a healthy file is never read only', () => {
+    const data = model();
+    const state = {v:1,error:'catalog failed',actions:catalog.map(row=>({...row,keys:row.defaultKeys})),custom:[],diagnostics:[]};
+    M.ingest(data,{state,preferences:{v:1},version:'h',binds,preferencesError:''});
+    assert.equal(M.broken(data),true);
+    M.ingest(data,{state:{...state,error:null},preferences:{v:1},version:'h',binds,preferencesError:''});
+    assert.equal(M.broken(data),false);
+    M.setKeys(data,'apps.first',['SUPER + T']);
+});
+const shiftRows = [
+    {id:'workspaces.move.1',group:'Workspaces',label:'Move to 1',keys:['SUPER + SHIFT + 1'],defaultKeys:['SUPER + SHIFT + 1'],editable:true,protected:false,hidden:false,custom:false},
+    {id:'workspaces.move.2',group:'Workspaces',label:'Move to 2',keys:['SUPER + SHIFT + 2'],defaultKeys:['SUPER + SHIFT + 2'],editable:true,protected:false,hidden:false,custom:false},
+    {id:'tools.grave',group:'Tools',label:'Grave',keys:['SUPER + SHIFT + grave'],defaultKeys:['SUPER + SHIFT + grave'],editable:true,protected:false,hidden:false,custom:false},
+    {id:'apps.letter',group:'Apps',label:'Letter',keys:['SUPER + SHIFT + B'],defaultKeys:['SUPER + SHIFT + B'],editable:true,protected:false,hidden:false,custom:false},
+    {id:'workspaces.switch.1',group:'Workspaces',label:'Switch to 1',keys:['SUPER + 1'],defaultKeys:['SUPER + 1'],editable:true,protected:false,hidden:false,custom:false},
+    {id:'shell.lock',group:'Shell',label:'Lock',keys:['SUPER + SHIFT + Delete'],defaultKeys:['SUPER + SHIFT + Delete'],editable:true,protected:true,hidden:false,custom:false}
+];
+function shiftModel(keymap) {
+    const out = M.create(), preferences = {v:1}, masks = {SUPER:64, SHIFT:1};
+    const live = shiftRows.map(row => { const parts = row.keys[0].split(' + '), key = parts.pop();
+        return bind(key, row.group + ': ' + row.label, parts.reduce((mask, part) => mask | masks[part], 0)); });
+    M.ingest(out, {state:M.resolve(shiftRows,preferences),preferences,version:'v',binds:live,keymap});
+    return out;
+}
+test('a recorded Shift combination conflicts with the vendor bind once the layout map names it', () => {
+    const us = JSON.parse(fs.readFileSync(path.join(root,'tests/fixtures/keybindings/keymap-us.json'),'utf8'));
+    const fr = JSON.parse(fs.readFileSync(path.join(root,'tests/fixtures/keybindings/keymap-fr.json'),'utf8'));
+    // The recorder translates first; a leftover code:N is translated again for the check.
+    assert.deepEqual(plain(M.conflicts(shiftModel(us),'SUPER + SHIFT + 1')).map(row => row.id),['workspaces.move.1']);
+    assert.deepEqual(plain(M.conflicts(shiftModel(us),'SUPER + SHIFT + code:10')).map(row => row.id),['workspaces.move.1']);
+    assert.equal(M.conflicts(shiftModel(us),'SUPER + SHIFT + code:10')[0].uncertain,undefined);
+    assert.deepEqual(plain(M.conflicts(shiftModel(us),'SUPER + SHIFT + code:49')).map(row => row.id),['tools.grave']);
+    // AZERTY: the same physical key is ampersand, so the vendor SHIFT + 1 bind is a different key.
+    assert.deepEqual(plain(M.conflicts(shiftModel(fr),'SUPER + SHIFT + code:10')),[]);
+    assert.deepEqual(plain(M.conflicts(shiftModel(fr),'SUPER + SHIFT + ampersand')),[]);
+});
+test('without a layout map a Shift code:N key may conflict with any non-letter key with the same modifiers', () => {
+    for (const keymap of [undefined, {}, {'11':'2'}]) {
+        const data = shiftModel(keymap);
+        const result = plain(M.conflicts(data,'SUPER + SHIFT + code:10'));
+        assert.deepEqual(result.map(row => row.id).sort(),['shell.lock','tools.grave','workspaces.move.1','workspaces.move.2']);
+        assert.ok(result.every(row => row.uncertain === true));
+        assert.equal(result.find(row => row.id === 'shell.lock').protected,true);
+        // Letters, other modifiers and the key itself being exactly stored are not guesses.
+        assert.equal(result.some(row => row.id === 'apps.letter' || row.id === 'workspaces.switch.1'),false);
+        assert.deepEqual(plain(M.conflicts(data,'SUPER + code:10')),[]);
+        assert.deepEqual(plain(M.conflicts(data,'CTRL + SHIFT + code:10')),[]);
+        assert.deepEqual(plain(M.conflicts(data,'SUPER + SHIFT + code:10','workspaces.move.1')).map(row => row.id).includes('workspaces.move.1'),false);
+    }
+    const data = shiftModel();
+    M.setKeys(data,'apps.letter',['SUPER + SHIFT + code:10']);
+    const draft = plain(M.conflicts(data,'SUPER + SHIFT + code:10','workspaces.move.2'));
+    assert.ok(draft.some(row => row.id === 'apps.letter' && !row.uncertain));
+    assert.ok(draft.some(row => row.id === 'workspaces.move.1' && row.uncertain));
+});
+test('the snapshot keymap is stored with the model, refreshed on every snapshot', () => {
+    const data = shiftModel({'10':'1'});
+    assert.deepEqual(plain(data.keymap),{'10':'1'});
+    M.ingest(data,{state:data.state,preferences:{v:1},version:'v',binds:[],keymap:{'10':'ampersand'}});
+    assert.deepEqual(plain(data.keymap),{'10':'ampersand'});
+    M.ingest(data,{state:data.state,preferences:{v:1},version:'v',binds:[]});
+    assert.deepEqual(plain(data.keymap),{});
+});

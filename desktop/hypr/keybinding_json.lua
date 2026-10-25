@@ -30,6 +30,8 @@ function M.encode(value)
       return string.format("\\u%04x", char:byte())
     end) .. '"'
   end
+  -- JSON has no infinity or NaN; tostring would write "inf" and corrupt the file.
+  if type(value) == "number" and (value ~= value or value == math.huge or value == -math.huge) then return "null" end
   if type(value) == "boolean" or type(value) == "number" then return tostring(value) end
   assert(type(value) == "table", "cannot encode state value")
   local out = {}

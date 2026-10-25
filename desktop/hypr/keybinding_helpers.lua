@@ -38,6 +38,11 @@ local function contains(keys, key)
   for _, candidate in ipairs(keys) do if M.same(candidate, key) then return true end end
   return false
 end
+local run_fields = { app = "desktopId", webapp = "id", url = "url", command = "command" }
+local function copy_run(run)
+  local field = run and run_fields[run.type]
+  return field and { type = run.type, [field] = run[field] } or run
+end
 function M.resolve(catalog, document)
   document = document or {}
   local rows, customs, diagnostics, reserved, claims, overridden = {}, {}, {}, {}, {}, {}
@@ -69,14 +74,20 @@ function M.resolve(catalog, document)
       end
     end
     row.keys = accepted
-    -- A protected remap can lose all its claims. Its reserved defaults are
-    -- still available, so it always has a working way into the session.
-    if row.protected and #row.keys == 0 then row.keys = copy_keys(row.defaultKeys) end
+    -- A protected action always keeps its reserved defaults, whatever the
+    -- remap says. A typo such as "SUPER + Lcok" is an unknown keysym that
+    -- Hyprland cannot bind; the defaults keep a working way into the session.
+    if row.protected then
+      for _, key in ipairs(row.defaultKeys) do
+        if not contains(row.keys, key) then row.keys[#row.keys + 1] = key end
+      end
+    end
   end
   for _, row in ipairs(rows) do if overridden[row.id] then claim(row) end end
   for _, entry in ipairs(document.custom or {}) do
-    local row = {}
-    for key, value in pairs(entry) do row[key] = value end
+    -- Copy only the schema fields: the state file is rebuilt from this row,
+    -- so a hand-added field (say 1e999, which no JSON can carry) never reaches it.
+    local row = { id = entry.id, group = entry.group, label = entry.label, run = copy_run(entry.run) }
     row.keys = copy_keys(entry.keys)
     claim(row)
     customs[#customs + 1] = row

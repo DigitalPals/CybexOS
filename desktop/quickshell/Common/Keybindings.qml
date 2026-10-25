@@ -14,6 +14,20 @@ Singleton {
         return root.localError || (backend.error ? I18n.tr(backend.error)
             : root.model.state.error ? I18n.format("Could not load keyboard shortcuts: %1", root.model.state.error) : "");
     }
+    // Why keybindings.json is not in effect, "" when it is. Lua's published
+    // reason wins over the backend's. While set, only resetAll() is accepted;
+    // applying that reset replaces the file after a backup copy is kept.
+    readonly property string preferencesError: {
+        root.revision;
+        const problem = Model.problem(root.model);
+        return problem.lua ? I18n.format("Could not load keyboard shortcuts: %1", problem.lua)
+            : problem.file ? I18n.tr(problem.file) : "";
+    }
+    readonly property bool readOnly: { root.revision; return Model.broken(root.model); }
+    // { "<xkb keycode>": "<level-1 keysym>" } for the active layout, {} when
+    // unknown. Pass it to KeybindEditor.fromKeyEvent so Shift combinations are
+    // recorded as Hyprland binds them (SUPER + SHIFT + 1, not code:10).
+    readonly property var keymap: { root.revision; return root.model.keymap || ({}); }
     readonly property var actions: root.rows.actions
     readonly property var userBinds: root.rows.userBinds
     readonly property var diagnostics: root.rows.diagnostics
@@ -88,6 +102,7 @@ Singleton {
             return reject("Wait for the shortcut change to finish");
         Model.discard(model);
         revision++;
+        backend.error = "";
         refresh();
         return true;
     }
@@ -123,10 +138,6 @@ Singleton {
                 Model.applied(root.model, result);
                 root.revision++;
                 root.applied();
-            } else {
-                // A successful follow-up snapshot may clear the transport
-                // error; keep the failed apply visible until the next edit.
-                root.localError = I18n.tr(root.backend.error);
             }
         }
         function onLoadingChanged() { Qt.callLater(root.releaseIdle); }
