@@ -215,6 +215,15 @@ class InputPersistence(unittest.TestCase):
         result = inputs.catalog(path)
         self.assertEqual(result[0]['variants'][1], {'value': 'intl', 'label': 'International'})
 
+    def test_catalog_defaults_to_the_xkb_config_root(self):
+        rules = Path(self.temp.name) / 'rules'
+        rules.mkdir()
+        (rules / 'evdev.xml').write_text('<xkbConfigRegistry><layoutList><layout><configItem><name>nl</name>'
+                                         '<description>Dutch</description></configItem></layout></layoutList></xkbConfigRegistry>')
+        patch.stopall()
+        with patch.dict(os.environ, {'XKB_CONFIG_ROOT': self.temp.name}):
+            self.assertEqual(inputs.catalog()[0]['label'], 'Dutch')
+
     def test_real_stdin_protocol_handles_subprocess_failure(self):
         binary = Path(self.temp.name) / 'hyprctl'
         binary.write_text(f'#!{shutil.which("sh")}\nexit 7\n')

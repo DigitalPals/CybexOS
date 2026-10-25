@@ -7,7 +7,8 @@
   libnotify, wtype, pulseaudio, pipewire, wireplumber, wl-clipboard, cliphist, grim, slurp,
   wf-recorder, ffmpeg, libva-utils, jq, procps, findutils, gnugrep, gnused, gawk,
   xdg-utils, xdg-terminal-exec, curl, nodejs, iw, iproute2, brightnessctl, playerctl, bluez, upower,
-  power-profiles-daemon, restic, openssh, age, gnutar, zstd, util-linux, kitty, libxkbcommon, fetchFromGitHub }:
+  power-profiles-daemon, restic, openssh, age, gnutar, zstd, util-linux, kitty, libxkbcommon, xkeyboard-config,
+  fetchFromGitHub }:
 let
   lazyvimStarter = fetchFromGitHub {
     owner = "LazyVim"; repo = "starter";
@@ -76,6 +77,7 @@ in stdenv.mkDerivation {
       wrapProgram "$script" "''${gappsWrapperArgs[@]}" \
         --prefix PATH : ${lib.makeBinPath runtimeTools} \
         --prefix PATH : "$out/bin" \
+        --set-default XKB_CONFIG_ROOT ${xkeyboard-config}/etc/X11/xkb \
         --prefix XDG_DATA_DIRS : ${lib.makeSearchPath "share" [ adwaita-icon-theme gnome-online-accounts evolution-data-server ]} \
         --prefix QML_IMPORT_PATH : ${lib.makeSearchPath "lib/qt-6/qml" [ images qt6.qtwebsockets qt6.qtmultimedia qt6.qt5compat ]}
     done
@@ -93,6 +95,8 @@ in stdenv.mkDerivation {
       test -r "$out/share/cybexos/runtime/quickshell/scripts/$module.py"
     done
     PATH=${lib.makeBinPath [ libxkbcommon ]} xkbcli compile-keymap --layout us > /dev/null
+    # Settings → Keyboard lists layouts from the same data (no /usr/share on NixOS).
+    test -r ${xkeyboard-config}/etc/X11/xkb/rules/evdev.xml
     env -i HOME="$TMPDIR" $out/libexec/cybexos-desktop-runtime-check
     runHook postInstallCheck
   '';

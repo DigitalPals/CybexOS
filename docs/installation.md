@@ -270,7 +270,8 @@ The serial console only observes the service's snapshots; QA-only choices (the
 installed serial console, the smaller application set) go through the same
 service. It checks plain and encrypted installed password login, then exercises
 the staged updater and rollback. On the installed Hyprland session it also checks
-the welcome guide at first login and the keyboard shortcuts
+the welcome guide at first login (its Hello summary of the installer's
+choices loads, and the dismissed window leaves the compositor) and the keyboard shortcuts
 (`keyboardShortcutsRuntime`): valid `hyprctl binds -j` holding every resolved
 key, a complete error-free `keybindings-state.json`, the xkbcli keymap, a remap
 and website shortcut applied and reset through the shipped Settings

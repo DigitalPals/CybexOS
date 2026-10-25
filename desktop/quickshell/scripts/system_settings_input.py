@@ -60,7 +60,11 @@ def validate(document):
     return document
 
 
-def catalog(path=Path('/usr/share/X11/xkb/rules/evdev.xml')):
+def catalog(path=None):
+    # NixOS has no /usr/share. The desktop wrapper sets libxkbcommon's own
+    # XKB_CONFIG_ROOT to the xkeyboard-config that libxkbcommon was built with.
+    if path is None:
+        path = Path(os.environ.get('XKB_CONFIG_ROOT') or '/usr/share/X11/xkb') / 'rules/evdev.xml'
     result = []
     for layout in ET.parse(path).getroot().findall('./layoutList/layout'):
         info = layout.find('configItem')
