@@ -183,6 +183,25 @@ function view(model) {
     }
     return result;
 }
+// What applying the draft would change, for a summary before it is applied:
+// each action whose keys differ from the saved ones (a key taken from another
+// action changes that one too) and each custom shortcut added, removed or
+// edited, with its keys before and after. Both sides are resolved here, so
+// only the person's edits show.
+function changes(model) {
+    if (!dirty(model)) return [];
+    var saved = resolve(model.state.actions || [], model.saved), draft = resolve(model.state.actions || [], model.draft);
+    var before = saved.actions.concat(saved.custom), after = draft.actions.concat(draft.custom);
+    function find(rows, id) { return rows.find(function(row) { return row.id === id; }) || null; }
+    function shape(row) { return row ? { keys: row.keys.map(identity), group: row.group, label: row.label, run: row.run || null } : null; }
+    var ids = [];
+    before.concat(after).forEach(function(row) { if (ids.indexOf(row.id) < 0) ids.push(row.id); });
+    return ids.filter(function(id) { return !equal(shape(find(before, id)), shape(find(after, id))); }).map(function(id) {
+        var old = find(before, id), next = find(after, id), row = next || old;
+        return { id: id, group: row.group, label: row.label, custom: id.indexOf("custom.") === 0,
+            before: old ? old.keys.slice() : [], after: next ? next.keys.slice() : [], removed: !next };
+    });
+}
 function action(model, id) { return view(model).actions.find(function(row) { return row.id === id; }) || null; }
 function keysFor(model, id) { var row = action(model, id); return row ? row.keys.slice() : []; }
 // How a recorded key relates to an existing one: 1 = the same key, 2 = it might
@@ -373,7 +392,7 @@ function applied(model, result) {
     model.pending = null;
     // Edits made while the request was running remain a dirty draft.
 }
-var exported = { create: create, ingest: ingest, broken: broken, problem: problem, view: view, resolve: resolve, merge: merge, dirty: dirty,
+var exported = { create: create, ingest: ingest, broken: broken, problem: problem, view: view, resolve: resolve, merge: merge, dirty: dirty, changes: changes,
     action: action, keysFor: keysFor, conflicts: conflicts, setKeys: setKeys, setManyKeys: setManyKeys, reset: reset, resetAll: resetAll,
     addCustom: addCustom, updateCustom: updateCustom, removeCustom: removeCustom, discard: discard,
     request: request, applied: applied, checkedKeys: checkedKeys };

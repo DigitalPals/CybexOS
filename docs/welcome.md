@@ -27,10 +27,12 @@ guide itself keeps the installer's colours.
 
 **Shortcuts** shows the Super keys as a keyboard. Lit keys do something;
 choose one to see what, and **Change key** to record another. The essentials
-are listed beside it. Changes wait for **Apply** in the footer, as in
-Settings. Your bindings come from the same data as Settings, including
-changes made there or in `user.lua`; an action you disabled shows
-**Not bound**.
+are listed beside it. A change takes effect only once you apply it: when
+you leave the step with **Continue**, **Back** or Close, the guide lists what
+would change and asks you to **Apply** or **Discard** it first. Enter
+applies; **Keep editing** or Escape returns to the step. Your bindings come
+from the same data as Settings, including changes made there or in
+`user.lua`; an action you disabled shows **Not bound**.
 
 **Ready** sums up your choices and offers optional extras: web apps, the AI
 assistant, fingerprint (when a reader is available), security keys, backups
@@ -98,12 +100,17 @@ with a test-only IPC target. Shortcut state is served by a fake `hyprctl`
 - a sheet over the guide, which Escape closes without dismissing the guide;
 - Ctrl+PageUp / Ctrl+PageDown, Escape from the wallpaper grid, and the claim
   release;
-- a tour of every step, sheet and the resume pill in English and Dutch at
+- a tour of every step, sheet (including the question about unapplied
+  shortcut changes) and the resume pill in English and Dutch at
   1440×900 and 1024×600, saved as `tour-<language>-<size>-<name>.png`.
 
 `tests/shortcut-editor.py` drives the Shortcuts step's recorder: the
 keyboard-shortcut inhibitor, conflicts, and the guide's own keys working at
-once after the recorder closes by Escape or by accepting a key.
+once after the recorder closes by Escape or by accepting a key. With a change
+waiting, it checks that leaving the step asks first, lists the change and
+focuses Apply; that Escape keeps the draft on the step; that Discard
+restores the keys and goes on; and that Enter twice applies the change
+through the real resolver and opens Ready.
 
 It draws with the installed desktop's fonts (`tests/shell_fonts.py`), so the
 screenshots match an installation rather than the host's font fallback.

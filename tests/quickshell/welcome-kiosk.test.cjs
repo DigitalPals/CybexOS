@@ -85,6 +85,29 @@ test('steps open Settings only after stepping aside', () => {
     }
 });
 
+test('shortcut changes are applied or discarded on the way out of the step, not from its footer', () => {
+    const step = read('Welcome/ShortcutsStep.qml');
+    assert.doesNotMatch(step, /Keybindings\.(apply|discard)\(/, 'the step has no Apply bar');
+    assert.match(step, /onNext: Welcome\.move\(1\)/);
+    const welcome = read('Common/Welcome.qml');
+    assert.match(welcome, /function move\(delta\) \{\s*leave\(/);
+    assert.match(welcome, /step === "shortcuts" && target !== step && Keybindings\.dirty\) \{\s*leaving = target;\s*sheet = "shortcuts";/);
+    assert.match(read('Welcome/WelcomeView.qml'), /shortcuts: "ShortcutChangesSheet\.qml"/);
+    // The guide's own ways out ask too; only Hello's Not now and the resume
+    // pill (the step is not on screen) dismiss directly.
+    for (const name of fs.readdirSync(path.join(shellDir, 'Welcome')).filter(file => file.endsWith('.qml'))) {
+        const source = read('Welcome/' + name);
+        assert.doesNotMatch(source, /Welcome\.go\(/, name);
+        if (!['HelloStep.qml', 'ResumePill.qml'].includes(name))
+            assert.doesNotMatch(source, /Welcome\.dismiss\(/, `${name} closes the guide without asking`);
+    }
+    const sheet = read('Welcome/ShortcutChangesSheet.qml');
+    assert.match(sheet, /Keybindings\.apply\(\)/);
+    assert.match(sheet, /if \(Keybindings\.discard\(\)\) Welcome\.proceed\(\);/);
+    assert.match(sheet, /function onApplied\(\) \{\s*if \(!root\.applying\) return;\s*root\.applying = false;\s*Welcome\.proceed\(\);/);
+    assert.match(sheet, /kind: "primary"\s*focus: true/, 'Enter applies');
+});
+
 test('the desktop ships the installer faces and the wordmark', () => {
     const nix = fs.readFileSync(path.join(root, 'nix/modules/applications.nix'), 'utf8');
     assert.match(nix, /\.\.\/packages\/space-grotesk\.nix/);

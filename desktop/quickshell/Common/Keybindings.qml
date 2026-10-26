@@ -40,6 +40,8 @@ Singleton {
     readonly property var diagnostics: root.rows.diagnostics
     readonly property bool dirty: { root.revision; return Model.dirty(root.model); }
     readonly property var rows: { root.revision; return Model.view(root.model); }
+    // [{ id, group, label, custom, before, after, removed }] that apply() would change.
+    readonly property var changes: { root.revision; return Model.changes(root.model); }
     readonly property var backend: SystemSettings.keybindings
     property var model: Model.create()
     property int revision: 0

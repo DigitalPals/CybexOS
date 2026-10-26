@@ -66,7 +66,7 @@ Item {
         KioskChip {
             icon: "close"
             Accessible.name: I18n.tr("Close welcome guide")
-            onClicked: Welcome.dismiss()
+            onClicked: Welcome.leave("dismiss")
         }
     }
 }

@@ -71,6 +71,31 @@ test('draft editing, protected keys, conflict claims and discard work without a 
     M.reset(data,'apps.first');
     assert.equal(M.dirty(data),false);
 });
+test('changes lists what applying the draft would change, displaced keys included', () => {
+    const data = model();
+    assert.deepEqual(plain(M.changes(data)),[]);
+    M.setKeys(data,'apps.first',['SUPER + M']);
+    assert.deepEqual(plain(M.changes(data)),[
+        {id:'apps.first',group:'Apps',label:'apps.first',custom:false,before:['SUPER + B'],after:['SUPER + M'],removed:false},
+        {id:'apps.second',group:'Apps',label:'apps.second',custom:false,before:['SUPER + M'],after:[],removed:false}]);
+    M.setKeys(data,'apps.first',['SUPER + B']);
+    assert.equal(M.dirty(data),false);
+    assert.deepEqual(plain(M.changes(data)),[]);
+    const id = M.addCustom(data,{group:'Apps',label:'Notes',keys:['SUPER + N'],run:{type:'command',command:'notes'}});
+    assert.deepEqual(plain(M.changes(data)),[{id,group:'Apps',label:'Notes',custom:true,before:[],after:['SUPER + N'],removed:false}]);
+    const saved = model({v:1,custom:[{id:'custom.shortcut-1',group:'Apps',label:'Notes',keys:['SUPER + N'],run:{type:'command',command:'notes'}}]});
+    M.updateCustom(saved,'custom.shortcut-1',{run:{type:'command',command:'notes --new'}});
+    assert.deepEqual(plain(M.changes(saved)).map(row=>[row.id,row.before,row.after,row.removed]),
+        [['custom.shortcut-1',['SUPER + N'],['SUPER + N'],false]]);
+    M.removeCustom(saved,'custom.shortcut-1');
+    assert.deepEqual(plain(M.changes(saved)).map(row=>[row.id,row.after,row.removed]),[['custom.shortcut-1',[],true]]);
+    // Only edits show, even where the published state differs from the file.
+    const stale = model();
+    stale.state.actions[1].keys = ['SUPER + ALT + M'];
+    M.setKeys(stale,'shell.lock',['SUPER + I']);
+    assert.deepEqual(plain(M.changes(stale)).map(row=>[row.id,row.before,row.after]),
+        [['shell.lock',['SUPER + L'],['SUPER + I','SUPER + L']]]);
+});
 test('draft remaps retain conflict warnings for keys user.lua will bind again', () => {
     const data = model();
     data.binds = [bind('N','Apps: apps.first'), ...binds.slice(1)];

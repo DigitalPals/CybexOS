@@ -210,6 +210,8 @@ readonly property var actions                // rows: { id, group, label, keys[]
 readonly property var userBinds              // read-only rows from user.lua: { keys[], group, label }
 readonly property var diagnostics
 readonly property bool dirty                 // draft differs from the saved file
+readonly property var changes                // what apply() would change: { id, group, label, custom,
+                                             //   before[], after[], removed }
 function refresh()
 function keysFor(id) -> [keyString]          // effective keys, including the draft; [] if unbound or unknown
 function action(id) -> row | null
@@ -317,9 +319,10 @@ As built:
 - **Welcome step.** `Welcome/ShortcutsStep.qml` draws the same
   `ShortcutEditor.keyboardMap` model in installer keycaps
   (`Welcome/KioskKeyMap.qml`), the essentials (keycaps from
-  `Keybindings.keysFor`) with Edit, and "All shortcuts in Settings". Its
-  footer becomes the Apply bar while a draft waits. A free or shared key
-  hands over to Settings, where the Add form lives.
+  `Keybindings.keysFor`) with Edit, and "All shortcuts in Settings". It has
+  no Apply bar: while a draft waits, its footer says so, and leaving the
+  step asks first (§2.3, Sheets). A free or shared key hands over to
+  Settings, where the Add form lives.
 
 ## 2. Welcome guide
 
@@ -430,13 +433,28 @@ Integration notes (as implemented):
   run the region backend's `locale` and `timezone` actions; the keyboard
   sheet makes the chosen layout the first through `InputDrafts.keyboard`;
   the theme sheet calls `Themes.apply`. The page beneath is disabled while a
-  sheet is open, so Tab stays in it, and Escape closes only the sheet.
+  sheet is open, so Tab stays in it, and Escape closes only the sheet; keys
+  the sheet leaves alone do not move the guide beneath it.
+- **Unapplied shortcut changes.** The guide's ways out (Continue, Back,
+  Enter, Ctrl+PageUp/PageDown, Close and Escape) call `Welcome.leave(target)`
+  with a step or `"dismiss"`. On the Shortcuts step with `Keybindings.dirty`
+  it records the target in `Welcome.leaving` and opens the `shortcuts` sheet
+  (`ShortcutChangesSheet.qml`) instead. The sheet lists
+  `Keybindings.changes` (each action or custom shortcut whose keys or entry
+  differ from the saved state, including actions that lose a key to
+  another) and offers Keep editing, Discard and Apply, with Apply focused.
+  Discard, or Apply once `Keybindings.applied` arrives, calls
+  `Welcome.proceed()`, which continues to the target; a failed apply stays
+  on the sheet with the reason. A pending Reset all of a rejected
+  `keybindings.json` is asked about the same way. Stepping aside, Hello's
+  Not now, the resume pill and the `close` IPC call do not ask; the draft
+  stays in Settings' Apply bar.
 
 ### 2.4 IPC target `welcome`
 
 `open(step: string): string` takes `""` for the saved step and returns `ok`
 or `unknown`. The other calls are `close(): void` and `status(): string`,
-which returns JSON `{ open, status, step, checklist }`.
+which returns JSON `{ open, aside, sheet, leaving, status, step, checklist }`.
 `reset(): void` exists for tests and qualification; it deletes only
 `welcome.json`.
 

@@ -21,8 +21,10 @@ FocusScope {
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Escape) {
             root.peeking = false;
-            if (root.sheetOpen) Welcome.closeSheet(); else Welcome.dismiss();
+            if (root.sheetOpen) Welcome.closeSheet(); else Welcome.leave("dismiss");
             event.accepted = true;
+        } else if (root.sheetOpen) {
+            // A key a sheet left alone does not move the guide beneath it.
         } else if (event.modifiers & Qt.ControlModifier) {
             if (event.key === Qt.Key_PageDown || event.key === Qt.Key_PageUp) {
                 Welcome.move(event.key === Qt.Key_PageDown ? 1 : -1);
@@ -96,7 +98,7 @@ FocusScope {
         anchors.fill: parent
         active: root.sheetOpen && !root.peeking
         source: ({language: "LanguageSheet.qml", keyboard: "KeyboardSheet.qml", timezone: "TimezoneSheet.qml",
-            theme: "ThemeSheet.qml"})[Welcome.sheet] || ""
+            theme: "ThemeSheet.qml", shortcuts: "ShortcutChangesSheet.qml"})[Welcome.sheet] || ""
         onLoaded: (item as Item)?.forceActiveFocus()
     }
 }

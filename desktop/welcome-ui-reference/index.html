@@ -421,7 +421,7 @@ const SC = {
           <div class="lbl" style="margin:12px 0 6px">The essentials <span class="aux">Super + K shows all</span></div>
           ${ESS.map(e => `<div class="er"><span class="l">${e[0]}</span>${e[1].map(k => `<span class="key sm">${k}</span>`).join('<span class="plus">+</span>')}<span class="lk" title="Always keeps this key">${e[2] ? I("lock") : ""}</span><button class="ed" title="Change">${I("pen")}</button></div>`).join("")}
         </div>
-      </div></div>${foot(`${I("kb")}Edits wait for Apply here, as in Settings. Your user.lua still loads last.`)}`;
+      </div></div>${foot(`${I("kb")}Edits wait until you leave the step; Continue asks to apply or discard them.`)}`;
   },
   ready() {
     const w = W(), cn = S.colour === "wallpaper" ? "wallpaper colours" : S.colour === "theme" ? "Nord theme" : "your accent";

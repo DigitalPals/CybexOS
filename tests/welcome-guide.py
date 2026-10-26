@@ -95,6 +95,9 @@ TEST_IPC = '''
         function focusRoot(): void { shell.testItem("welcomeView").focusInitial(); }
         function aside(): void { Welcome.stepAside(false); }
         function sheet(id: string): void { Welcome.openSheet(id); }
+        function draftShortcut(): string { return String(Keybindings.setKeys("apps.terminal", ["F9"])); }
+        function discardShortcuts(): string { return String(Keybindings.discard()); }
+        function next(): void { Welcome.move(1); }
         function launcher(open: bool): void { Launcher.open = open; }
         function state(): string {
             const view = shell.testItem("welcomeView");
@@ -625,6 +628,19 @@ def main():
                         session.capture_guide(shots, f'tour-{language}-{size}-sheet-{sheet}.png')
                         session.key('-k', 'Escape')
                         session.wait(lambda: session.state().get('sheet') == '', f'{sheet} closed')
+                    # A shortcut change waiting: the footer note, then the
+                    # question Continue asks, which Escape closes.
+                    assert session.ipc('open', 'shortcuts') == 'ok'
+                    session.wait(lambda: session.probe().get('keysLoaded'), 'shortcuts loaded')
+                    assert session.call('welcome-test', 'draftShortcut') == 'true'
+                    session.capture_guide(shots, f'tour-{language}-{size}-shortcuts-pending.png')
+                    session.call('welcome-test', 'next')
+                    session.wait(lambda: session.state().get('sheet') == 'shortcuts', 'shortcut question')
+                    session.capture_guide(shots, f'tour-{language}-{size}-sheet-shortcuts.png')
+                    session.key('-k', 'Escape')
+                    session.wait(lambda: (s := session.state()).get('sheet') == '' and s.get('step') == 'shortcuts',
+                                 'shortcut question closed')
+                    assert session.call('welcome-test', 'discardShortcuts') == 'true'
                     session.call('welcome-test', 'aside')
                     session.wait(lambda: session.state().get('aside'), 'aside')
                     session.capture(shots, f'tour-{language}-{size}-aside.png')

@@ -148,6 +148,14 @@ TEST_IPC = '''
                 geometry: [recorder.x, recorder.y, recorder.width, recorder.height, recorder.z],
                 parentGeometry: recorder.parent ? [recorder.parent.width, recorder.parent.height, String(recorder.parent)] : [] } : null);
         }
+        function welcomeChanges(): string {
+            const view = shortcutWelcome.contentItem;
+            const sheet = shell.findNamed(view, "welcomeShortcutChanges");
+            const apply = sheet ? shell.findNamed(sheet, "welcomeShortcutApply") : null;
+            const note = shell.findNamed(view, "welcomeShortcutsPending");
+            return JSON.stringify({ sheet: sheet !== null, changes: Keybindings.changes,
+                applyFocused: apply ? apply.activeFocus : false, note: note ? note.visible : false });
+        }
         function sheet(): string {
             return JSON.stringify({ open: Session.keysOpen, groups: Session.shortcutGroups.length,
                 settings: Settings.panelOpen, page: Settings.page });
@@ -460,11 +468,43 @@ def main():
             keyboard = start(['wtype', '-s', '500', '-k', 'F9', '-s', '600', '-k', 'Return', '-s', '300'], 'welcome-accept.log')
             keyboard.wait(timeout=10)
             wait(lambda: welcome().get('shown') is False and state().get('dirty'), 'F9 accepted in the welcome recorder')
+            terminal_before = json.loads(ipc('shortcut-test', 'welcomeChanges'))['changes'][0]['before']
             assert state()['terminal']['keys'] == ['F9'], state()['terminal']
+            changes = lambda: json.loads(ipc('shortcut-test', 'welcomeChanges'))
+            assert changes()['note'] and not changes()['sheet'], 'the footer says the change waits; no Apply bar'
+            # Leaving the step with a change waiting asks first. Escape keeps
+            # editing; Discard then goes where Ctrl+PageUp was going.
             guide_keys('-M', 'ctrl', '-k', 'Prior', '-m', 'ctrl', log='welcome-after-accept.log')
-            wait(lambda: guide().get('step') == 'style', 'Ctrl+PageUp after accepting in the recorder')
-            assert ipc('shortcut-test', 'discard') == 'true'
-            wait(lambda: not state().get('dirty'), 'welcome draft discarded')
+            asked = wait(lambda: (g := guide()).get('sheet') == 'shortcuts' and g, 'Ctrl+PageUp asks about the change')
+            assert asked['step'] == 'shortcuts' and asked['leaving'] == 'style', asked
+            listed = wait(lambda: (c := changes()).get('applyFocused') and c, 'Apply focused in the question')
+            assert [row['id'] for row in listed['changes']] == ['apps.terminal'], listed['changes']
+            assert listed['changes'][0]['after'] == ['F9'], listed['changes']
+            screenshot('welcome-shortcut-changes.png')
+            guide_keys('-k', 'Escape', log='welcome-keep-editing.log')
+            kept = wait(lambda: (g := guide()).get('sheet') == '' and g, 'Escape keeps editing')
+            assert kept['step'] == 'shortcuts' and kept['open'] and state()['dirty'], kept
+            guide_keys('-M', 'ctrl', '-k', 'Prior', '-m', 'ctrl', log='welcome-ask-again.log')
+            wait(lambda: changes().get('applyFocused'), 'asked again')
+            guide_keys('-M', 'shift', '-k', 'Tab', '-m', 'shift', '-s', '200', '-k', 'Return', log='welcome-discard.log')
+            wait(lambda: guide().get('step') == 'style' and not state().get('dirty'), 'Discard, then the step before')
+            assert state()['terminal']['keys'] == terminal_before, state()['terminal']
+            # Enter on the step, then Enter on the question: applied, then Ready.
+            assert ipc('welcome', 'open', 'shortcuts') == 'ok'
+            wait(lambda: guide().get('step') == 'shortcuts', 'shortcuts step to apply')
+            ipc('shortcut-test', 'welcomeEdit', 'apps.terminal')
+            wait(lambda: welcome().get('inhibiting'), 'welcome recorder listens for the change to apply')
+            keyboard = start(['wtype', '-s', '500', '-k', 'F9', '-s', '600', '-k', 'Return', '-s', '300'], 'welcome-apply-key.log')
+            keyboard.wait(timeout=10)
+            wait(lambda: welcome().get('shown') is False and state().get('dirty'), 'F9 accepted again')
+            guide_keys('-k', 'Return', log='welcome-continue.log')
+            wait(lambda: (g := guide()).get('sheet') == 'shortcuts' and g.get('leaving') == 'finish', 'Enter asks about the change')
+            wait(lambda: changes().get('applyFocused'), 'Apply focused for Enter')
+            guide_keys('-k', 'Return', log='welcome-apply.log')
+            wait(lambda: guide().get('step') == 'finish' and (s := state()).get('loaded') and not s['dirty'] and not s['busy'],
+                 'Apply, then Ready', 30)
+            stored = json.loads((home / '.config/cybexos/keybindings.json').read_text())
+            assert stored['actions']['apps.terminal'] == {'keys': ['F9']}, stored
             assert ipc('welcome', 'open', 'shortcuts') == 'ok'
             wait(lambda: guide().get('step') == 'shortcuts', 'shortcuts step for the last Escape')
             ipc('shortcut-test', 'welcomeEdit', 'apps.terminal')

@@ -9,8 +9,9 @@ import "../Settings" as SettingsUi
 // Shortcuts: the Super keys as a keyboard on the left, the essentials in the
 // installer's summary rows on the right. Both read the live Keybindings
 // model, as Settings does, and edits use the same recorder and the same
-// pending draft; the footer becomes the Apply bar while changes wait. A
-// rejected keybindings.json leaves only Reset all.
+// pending draft. Nothing is applied here: leaving the step with changes
+// waiting asks to apply or discard them (ShortcutChangesSheet). A rejected
+// keybindings.json leaves only Reset all.
 Item {
     id: root
     objectName: "welcomeShortcutsStep"
@@ -210,7 +211,7 @@ Item {
                     KioskText {
                         width: parent.width
                         text: root.recovering
-                            ? I18n.tr("Reset pending. Apply to replace keybindings.json with the defaults; the broken file is kept beside it as keybindings.json.invalid-<time>.")
+                            ? I18n.tr("Reset pending. Continue asks whether to apply it, which replaces keybindings.json with the defaults and keeps the broken file beside it as keybindings.json.invalid-<time>.")
                             : I18n.tr("The default shortcuts are in effect and cannot be changed until the file is fixed. Reset all replaces it with the defaults when you apply, and keeps the broken file beside it as keybindings.json.invalid-<time>.")
                         size: 13.5
                         tone: "fog"
@@ -358,50 +359,32 @@ Item {
         anchors.bottom: parent.bottom
         width: parent.width
         onNext: Welcome.move(1)
-        // The Apply bar while a draft waits, otherwise a note.
+        // A link to Settings, or a note while changes wait for Continue.
         Row {
+            id: footerNote
             anchors.verticalCenter: parent.verticalCenter
             spacing: Kiosk.px(8)
-            visible: !Keybindings.dirty
-            KioskIcon { anchors.verticalCenter: parent.verticalCenter; name: "keyboard"; designSize: 16; color: Kiosk.faint }
+            KioskIcon {
+                anchors.verticalCenter: parent.verticalCenter
+                name: Keybindings.dirty ? "pending" : "keyboard"
+                designSize: 16
+                color: Keybindings.dirty ? Kiosk.amber : Kiosk.faint
+            }
             KioskLink {
                 anchors.verticalCenter: parent.verticalCenter
+                visible: !Keybindings.dirty
                 text: I18n.tr("All shortcuts in Settings")
                 onClicked: root.openSettings()
             }
-        }
-        Item {
-            anchors.fill: parent
-            visible: Keybindings.dirty
             KioskText {
-                anchors.left: parent.left
-                anchors.right: applyActions.left
-                anchors.rightMargin: Kiosk.px(12)
+                objectName: "welcomeShortcutsPending"
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.recovering ? I18n.tr("Apply replaces keybindings.json with the defaults.")
-                    : I18n.tr("Shortcut changes not applied yet")
+                width: Math.min(implicitWidth, footerNote.parent.width - Kiosk.px(24))
+                visible: Keybindings.dirty
+                text: I18n.tr("Not applied yet. Continue asks whether to apply or discard your changes.")
                 size: 14
                 tone: "amber"
                 elide: Text.ElideRight
-            }
-            Row {
-                id: applyActions
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: Kiosk.px(8)
-                KioskButton {
-                    small: true
-                    text: I18n.tr("Discard")
-                    enabled: !Keybindings.backend.busy
-                    onClicked: { root.problem = ""; Keybindings.discard(); }
-                }
-                KioskButton {
-                    small: true
-                    kind: "primary"
-                    text: Keybindings.backend.busy ? I18n.tr("Applying…") : I18n.tr("Apply")
-                    enabled: Keybindings.loaded && !Keybindings.backend.busy
-                    onClicked: { root.problem = ""; Keybindings.apply(); }
-                }
             }
         }
     }

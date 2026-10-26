@@ -26,6 +26,7 @@ KioskToggle KioskToggle.qml
 KioskTopBar KioskTopBar.qml
 LanguageSheet LanguageSheet.qml
 ResumePill ResumePill.qml
+ShortcutChangesSheet ShortcutChangesSheet.qml
 ShortcutsStep ShortcutsStep.qml
 StyleStep StyleStep.qml
 ThemeSheet ThemeSheet.qml

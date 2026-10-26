@@ -39,8 +39,11 @@ Singleton {
     property bool aside: false
     property bool asideTransient: false
     // The installer-style sheet over the guide: "", language, keyboard,
-    // timezone or theme.
+    // timezone, theme, or shortcuts: leaving the Shortcuts step with
+    // unapplied shortcut changes asks to apply or discard them first, then
+    // goes on to `leaving` (a step, or "dismiss").
     property string sheet: ""
+    property string leaving: ""
     readonly property var checklist: Helpers.checklist({
         assistantAvailable: Assistant.available, assistant: Assistant.agentReady,
         reader: (SystemSettings.security.snapshot.reader || {}).state === "ready",
@@ -87,12 +90,29 @@ Singleton {
     }
     function go(id) {
         if (!Helpers.STEPS.includes(id)) return;
-        sheet = "";
+        closeSheet();
         changed(Helpers.visit(document, id));
+    }
+    // The guide's own ways out: Continue, Back, their keys and Close.
+    function leave(target) {
+        if (open && !aside && step === "shortcuts" && target !== step && Keybindings.dirty) {
+            leaving = target;
+            sheet = "shortcuts";
+        } else if (target === "dismiss") {
+            dismiss();
+        } else {
+            go(target);
+        }
+    }
+    // The shortcut changes were applied or discarded: go where the person was going.
+    function proceed() {
+        const target = leaving;
+        closeSheet();
+        if (target !== "") leave(target);
     }
     function stepAside(transient) {
         if (!open) return;
-        sheet = "";
+        closeSheet();
         asideTransient = aside ? asideTransient && transient === true : transient === true;
         aside = true;
     }
@@ -105,15 +125,18 @@ Singleton {
     function openSheet(id) {
         if (open && !aside && ["language", "keyboard", "timezone", "theme"].includes(id)) sheet = id;
     }
-    function closeSheet() { sheet = ""; }
+    function closeSheet() {
+        sheet = "";
+        leaving = "";
+    }
     function move(delta) {
-        go(Helpers.STEPS[Math.max(0, Math.min(Helpers.STEPS.length - 1, Helpers.STEPS.indexOf(step) + delta))]);
+        leave(Helpers.STEPS[Math.max(0, Math.min(Helpers.STEPS.length - 1, Helpers.STEPS.indexOf(step) + delta))]);
     }
     function dismiss() {
         if (!open) return;
         open = false;
         aside = false;
-        sheet = "";
+        closeSheet();
         const notify = !document.notified;
         changed(Object.assign({}, document, {status: "dismissed", notified: true}));
         saveNow();
@@ -124,16 +147,17 @@ Singleton {
         changed(Object.assign({}, document, {status: "completed"}));
         open = false;
         aside = false;
-        sheet = "";
+        closeSheet();
         saveNow();
     }
     function status() {
-        return JSON.stringify({open: open, aside: aside, sheet: sheet, status: document.status, step: step, checklist: checklist});
+        return JSON.stringify({open: open, aside: aside, sheet: sheet, leaving: leaving, status: document.status, step: step,
+            checklist: checklist});
     }
     function reset() {
         open = false;
         aside = false;
-        sheet = "";
+        closeSheet();
         autoAttempted = true;
         saveTimer.stop();
         resetPending = true;
