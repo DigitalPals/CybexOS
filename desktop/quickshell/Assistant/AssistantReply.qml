@@ -205,15 +205,11 @@ AssistantSurface {
                     topPadding: Theme.scaled(4)
 
                     AssistantButton {
-                        label: I18n.tr("Apply…")
+                        label: I18n.tr("Review change…")
                         primary: true
-                        onTriggered: Updates.apply()
-                    }
-
-                    AssistantButton {
-                        label: I18n.tr("Details")
                         onTriggered: Popouts.openPanel("updates", undefined, undefined, Assistant.screenName)
                     }
+
                 }
             }
         }

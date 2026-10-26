@@ -56,10 +56,7 @@ in {
       "d /var/lib/cybexos/request-status 0755 root root -"
     ];
     systemd.services = {
-      "cybexos-stage@" = worker "stage %i";
-      "cybexos-apply@" = worker "apply %i";
-      cybexos-rollback = worker "rollback";
-      cybexos-confirm = worker "confirm";
+      "cybexos-update@" = worker "update %i";
       cybexos-region = worker "region";
       "cybexos-software@" = worker "software %i";
       "cybexos-maintenance-policy@" = worker "maintenance-policy %i";

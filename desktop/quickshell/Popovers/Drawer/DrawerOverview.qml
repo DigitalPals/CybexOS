@@ -3,7 +3,6 @@ import QtQuick
 import Quickshell
 import Quickshell.Services.Mpris
 import "../../Common"
-import "../../Common/UpdatesHelpers.js" as UpdatesHelpers
 import ".."
 
 // The drawer's Overview tab: system identity and health, the top processes,
@@ -15,6 +14,7 @@ Column {
     id: root
 
     property bool highlightUpdates: false
+    property var updateService: Updates
 
     width: parent ? parent.width : 0
     spacing: Theme.scaled(14)
@@ -246,19 +246,20 @@ Column {
 
     // ---- updates ---------------------------------------------------------
     Column {
-        visible: Settings.drawerOverview.updates === true
+        objectName: "overviewUpdates"
+        visible: Settings.drawerOverview.updates === true && root.updateService.overviewVisible
         width: parent.width
         spacing: 6
 
         SectionLabel {
             width: parent.width
-            text: I18n.tr("UPDATES")
-            detail: Updates.checkedLabel()
+            text: I18n.tr("SYSTEM UPDATES")
+            detail: root.updateService.checkedLabel
         }
 
         Rectangle {
             width: parent.width
-            height: 48
+            height: Math.max(56, updateCopy.implicitHeight + 16)
             radius: Theme.rowRadius
             color: root.highlightUpdates ? Theme.chip : "transparent"
 
@@ -267,87 +268,55 @@ Column {
                 anchors.left: parent.left
                 anchors.leftMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
-                name: Updates.total === 0 && Updates.error === ""
-                    && Updates.runState === "idle" && !Updates.rebootRecommended
-                    ? "check_circle" : "deployed_code_update"
+                name: root.updateService.hasUpdates ? "deployed_code_update" : "info"
                 size: 18
-                color: Updates.total === 0 && Updates.error === ""
-                    && Updates.runState === "idle" && !Updates.rebootRecommended
-                    ? Theme.ok : Theme.textMid
+                color: root.updateService.error !== "" ? Theme.amber : Theme.textMid
             }
 
             Column {
+                id: updateCopy
                 anchors.left: updatesGlyph.right
                 anchors.leftMargin: 12
                 anchors.right: updateAction.left
                 anchors.rightMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 1
+                spacing: 3
 
                 Text {
                     width: parent.width
-                    text: Updates.runActive
-                        ? "Updating · " + (Updates.runPercent >= 0
-                            ? Updates.runPercent + "%" : "…")
-                        : Updates.runState === "failed"
-                        ? (Updates.runCancelled ? "Update cancelled" : "Update didn’t finish")
-                        : Updates.rebootRecommended
-                        ? UpdatesHelpers.rebootLabel(Updates.rebootRecommendation,
-                            Updates.kernelPending)
-                        : Updates.total === 0 ? Updates.summary
-                        : Updates.total + (Updates.total === 1
-                            ? " update" : " updates")
+                    text: root.updateService.summary
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.primary
                     font.weight: Theme.weightMedium
-                    color: Updates.runState === "failed" ? Theme.redText : Theme.textHi
-                    elide: Text.ElideRight
+                    color: Theme.textHi
+                    wrapMode: Text.Wrap
+                    textFormat: Text.PlainText
                 }
 
                 Text {
                     width: parent.width
-                    // Only a second line when it adds something: what a
-                    // run is doing, a failure's reason, or where the
-                    // pending updates are.
-                    visible: text !== ""
-                    text: Updates.runActive ? Updates.runPhaseLabel
-                        : Updates.runState === "failed" ? Updates.failMessage
-                        : Updates.total > 0
-                        ? UpdatesHelpers.pendingSummary(Updates.upstreamCount,
-                            0, 0,
-                            Updates.projectAvailable, Updates.projectVersion)
-                        : ""
+                    visible: root.updateService.hasUpdates || root.updateService.ready
+                    text: root.updateService.scopeLabel
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.metadata
                     color: Theme.textFaint
-                    elide: Text.ElideRight
+                    wrapMode: Text.Wrap
+                    textFormat: Text.PlainText
                 }
             }
 
             ActionButton {
                 id: updateAction
+                objectName: "overviewUpdateReview"
                 anchors.right: parent.right
                 anchors.rightMargin: 4
                 anchors.verticalCenter: parent.verticalCenter
-                visible: Updates.total > 0 && !Updates.runActive
-                label: I18n.tr("Update")
-                // The one primary action this panel carries.
-                fill: Theme.accent
-                tint: Theme.accentFg
+                label: root.updateService.hasUpdates || root.updateService.ready
+                    ? I18n.tr("Review") : I18n.tr("Details")
+                fill: root.updateService.hasUpdates ? Theme.accent : Theme.chip
+                tint: root.updateService.hasUpdates ? Theme.accentFg : Theme.textHi
                 hPadding: 20
-                onTriggered: Updates.run()
-            }
-
-            DrawerIconButton {
-                visible: Updates.total === 0 && !Updates.runActive && !Updates.busy
-                anchors.right: parent.right
-                anchors.rightMargin: 4
-                anchors.verticalCenter: parent.verticalCenter
-                glyph: "refresh"
-                glyphSize: 16
-                tint: Theme.textFaint
-                accessibleName: "Check for updates"
-                onClicked: Updates.check()
+                onTriggered: root.updateService.show()
             }
         }
     }

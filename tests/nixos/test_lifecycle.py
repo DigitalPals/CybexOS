@@ -35,8 +35,8 @@ def lock():
         'nixpkgs': {'original': {'type':'github','owner':'NixOS','repo':'nixpkgs','ref':'nixos-26.05'},
                     'locked': {'type':'github','owner':'NixOS','repo':'nixpkgs','rev':REV_OLD,'narHash':NAR_OLD}},
         'cybexos': {'inputs': {'nixpkgs':['nixpkgs'], 'lanzaboote':'lanzaboote'},
-                   'original':{'type':'github','owner':'DigitalPals','repo':'Cybex OS','rev':REV_OLD},
-                   'locked':{'type':'github','owner':'DigitalPals','repo':'Cybex OS','rev':REV_OLD,'narHash':NAR_OLD}},
+                   'original':{'type':'github','owner':'DigitalPals','repo':'CybexOS','rev':REV_OLD},
+                   'locked':{'type':'github','owner':'DigitalPals','repo':'CybexOS','rev':REV_OLD,'narHash':NAR_OLD}},
         'lanzaboote': {'inputs':{'nixpkgs':['nixpkgs']},'locked':{'type':'github','repo':'lanzaboote','rev':REV_OLD}},
         'personal': {'inputs':{'nixpkgs':['nixpkgs']},'locked':{'type':'github','repo':'personal','rev':REV_OLD}}
     }}
@@ -178,6 +178,15 @@ class TrustTests(unittest.TestCase):
 
 
 class InputTests(unittest.TestCase):
+    def test_canonical_release_repository_and_locked_identity(self):
+        inputs.validate_machine(lock())
+        for part in ('original', 'locked'):
+            for field, value in (('owner', 'another-publisher'), ('repo', 'Cybex OS')):
+                data = lock()
+                data['nodes']['cybexos'][part][field] = value
+                with self.subTest(part=part, field=field), self.assertRaises(Failure):
+                    inputs.validate_machine(data)
+
     def test_independent_scopes_and_vendor_dependencies(self):
         for scope in ('upstream','cybexos','both','local'):
             old=lock();new=copy.deepcopy(old)
@@ -234,6 +243,12 @@ class FakeRunner:
             return json.dumps({'hash': NAR_NEW, 'storePath': '/nix/store/' + 'e'*32 + '-source'})
         if args[:2]==('nix','build'):return json.dumps([{'outputs':{'out':NEW_SYSTEM}}])
         if args[:3]==('nix','store','diff-closures'):return 'hello: 1 → 2\n'
+        if args[0] == 'cat' and args[1].endswith('/etc/cybexos/software.json'):
+            newer = args[1].startswith(NEW_SYSTEM)
+            return json.dumps({'schema': 1, 'packages': [
+                {'name': 'hello', 'version': '2' if newer else '1',
+                 'path': '/nix/store/' + ('f' if newer else 'e') * 32 + '-hello',
+                 'description': 'A friendly application'}]})
         if args[:3]==('nix','flake','metadata'):return json.dumps({'locked':{'rev':REV_NEW}})
         if args[:2]==('systemctl','list-units'):
             if args != ('systemctl','list-units','--state=failed,auto-restart','--all','--output=json','--no-pager'):
@@ -727,7 +742,7 @@ class EngineTests(unittest.TestCase):
         script.chmod(0o644)
         record = self.engine.stage('local')
         script.chmod(0o755)
-        with self.assertRaisesRegex(Failure, 'Personal configuration changed after staging'):
+        with self.assertRaisesRegex(Failure, 'configuration changed after preparation'):
             self.engine.apply(record['id'], record['reviewToken'])
         self.assertFalse(self.engine.pending_path.exists())
         self.assertEqual(script.stat().st_mode & 0o777, 0o755)

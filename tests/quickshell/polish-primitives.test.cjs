@@ -170,9 +170,8 @@ test("menubar icons keep bright system ink and shared monochrome brands", () => 
     assert.match(control, /BarBrandIcon\s*\{[\s\S]{0,180}?name:\s*"cybexos"/);
     assert.match(control,
         /highlighted:\s*controlButton\.held \|\| controlButton\.hovered/);
-    assert.match(updates,
-        /idleColor:\s*chip\.rebootRecommended \? Theme\.barAmber : Theme\.barIcon/,
-        "a reboot recommendation uses the contrast-safe amber bar ink");
+    assert.doesNotMatch(updates, /idleColor:|rebootRecommended/,
+        "the available-update icon uses the shared system ink");
     assert.match(media, /name:\s*root\.playing[\s\S]{0,180}?color:\s*mediaChip\.fg/);
     assert.match(media, /highlighted:\s*mediaChip\.held \|\| mediaChip\.hovered/);
     assert.match(media, /tintAmount:\s*mediaChip\.held \|\| mediaChip\.hovered \? 1 : 0/);

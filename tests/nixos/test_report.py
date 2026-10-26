@@ -89,8 +89,8 @@ STUBS = {
         esac
     ''',
     'journalctl': '''
-        for unit in cybexos-stage@local.service cybexos-apply@0123456789abcdef.service \\
-                    cybexos-rollback.service cybexos-confirm.service \\
+        for unit in cybexos-update@0123456789abcdef0123456789abcdef.service cybexos-software@0123456789abcdef0123456789abcdef.service \\
+                    cybexos-maintenance-policy@0123456789abcdef0123456789abcdef.service cybexos-maintenance@0123456789abcdef0123456789abcdef.service \\
                     cybexos-recover.service cybexos-region.service; do
           for pattern in "$@"; do
             if [[ $unit == $pattern ]]; then
@@ -241,8 +241,8 @@ class Bundle(unittest.TestCase):
             self.assertGreater(summary['redactions']['token'], 0)
             json.loads(content['health.json'])
             self.assertIn('/home/[user]', content['shell-health.json'])
-            for unit in ('cybexos-stage@local.service', 'cybexos-apply@0123456789abcdef.service',
-                         'cybexos-rollback.service', 'cybexos-confirm.service',
+            for unit in ('cybexos-update@0123456789abcdef0123456789abcdef.service', 'cybexos-software@0123456789abcdef0123456789abcdef.service',
+                         'cybexos-maintenance-policy@0123456789abcdef0123456789abcdef.service', 'cybexos-maintenance@0123456789abcdef0123456789abcdef.service',
                          'cybexos-recover.service', 'cybexos-region.service'):
                 self.assertIn('LIFECYCLE_UNIT:' + unit, content['journal/update-worker.txt'])
             self.assertFalse((fixture.fixture / 'opened').exists(), '--json never opens a browser')

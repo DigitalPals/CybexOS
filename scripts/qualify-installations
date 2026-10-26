@@ -961,7 +961,11 @@ cybexos-health desktop-required
     edit_import(vm, 'qualification-fault.nix', '{ pkgs, ... }: { environment.systemPackages = [ (pkgs.runCommand "cybexos-qualification-interruption" {} "sleep 300; touch $out") ]; }')
     previous = stage_request(vm)
     wait_state(vm, ('building',), timeout=180, previous=previous)
-    vm.command('systemctl kill --kill-whom=all --signal=KILL cybexos-stage@local.service')
+    worker = json.loads(vm.command('cybex update status').strip())['request']['unit']
+    if not re.fullmatch(r'cybexos-update@[a-f0-9]{32}\.service', worker):
+        raise AssertionError('Invalid update worker: ' + worker)
+    vm.command('systemctl kill --kill-whom=all --signal=KILL ' + worker)
+    wait_state(vm, ('interrupted',), timeout=60)
     vm.reboot(encrypted)
     wait_state(vm, ('interrupted',), timeout=180)
     vm.login_desktop()

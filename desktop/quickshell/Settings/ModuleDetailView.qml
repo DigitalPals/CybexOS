@@ -1586,7 +1586,7 @@ SettingsPage {
 
             SettingsHint {
                 width: parent.width
-                text: I18n.tr("Preview upstream packages, Cybex OS, or both in Updates. Review the complete build before applying. Personal inputs and Flatpak applications are managed separately.")
+                text: I18n.tr("The indicator appears when system updates are available. Open it to review the available sources and prepare the exact package changes before updating. Personal inputs and Flatpak apps are managed separately.")
             }
 
         }

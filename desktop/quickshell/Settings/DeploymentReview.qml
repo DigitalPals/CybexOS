@@ -18,7 +18,7 @@ SettingsGroup {
     ValueRow {
         width: parent.width; label: Updates.ready ? I18n.tr("Built changes") : I18n.tr("Deployment")
         SettingsAction { text: I18n.tr("View log"); onTriggered: Updates.openLog() }
-        SettingsAction { text: I18n.tr("Apply reviewed change"); primary: true; visible: Updates.ready; onTriggered: Updates.apply() }
-        SettingsAction { text: I18n.tr("Confirm this boot"); visible: Updates.deployment.state === "awaiting-login"; onTriggered: Updates.confirm() }
+        SettingsAction { text: I18n.tr("Review change…"); primary: true; visible: Updates.ready; onTriggered: Updates.show() }
+        SettingsAction { text: I18n.tr("Confirm this boot"); visible: Updates.deployment.state === "awaiting-login"; enabled: Updates.actions.confirm; onTriggered: Updates.confirm() }
     }
 }

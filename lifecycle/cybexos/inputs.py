@@ -25,7 +25,8 @@ def validate_machine(lock, branch='nixos-26.05'):
     origin = vendor.get('original', {})
     if selected.get('type') == 'github':
         if (origin.get('type') != 'github' or origin.get('owner') != 'DigitalPals'
-                or origin.get('repo') != 'Cybex OS' or set(origin) != {'type', 'owner', 'repo', 'rev'}
+                or origin.get('repo') != 'CybexOS' or set(origin) != {'type', 'owner', 'repo', 'rev'}
+                or selected.get('owner') != 'DigitalPals' or selected.get('repo') != 'CybexOS'
                 or not re.fullmatch('[0-9a-f]{40}', origin.get('rev', ''))
                 or selected.get('rev') != origin['rev']
                 or not re.fullmatch(r'sha256-[A-Za-z0-9+/]{43}=', selected.get('narHash', ''))):

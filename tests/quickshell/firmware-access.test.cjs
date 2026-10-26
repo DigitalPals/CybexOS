@@ -3,20 +3,11 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const vm = require("node:vm");
 const { load, shellDir } = require("./shell.cjs");
 
-test("desktop firmware action opens the confirmation flow without applying a Nix update", () => {
-    const source = fs.readFileSync(path.join(shellDir, "Common/Updates.qml"), "utf8");
-    const method = source.match(/function openFirmware\(\) \{[^\n]+\}/)[0];
-    const calls = [];
-    vm.runInNewContext(method + "; openFirmware();", {
-        Quickshell: { execDetached: command => calls.push(Array.from(command)) }
-    });
-    assert.deepEqual(calls, [["cybexos-apps", "terminal", "--hold", "--", "cybexos-firmware-update", "interactive"]]);
+test("system update review keeps firmware outside its install action", () => {
     const panel = fs.readFileSync(path.join(shellDir, "Popovers/UpdatesPopover.qml"), "utf8");
-    assert.match(panel, /onTriggered:\s*Updates\.openFirmware\(\)/);
-    assert.match(panel, /Firmware changes are not reverted by a system rollback/);
+    assert.doesNotMatch(panel, /firmware-update|openFirmware/);
 });
 
 test("launcher routes firmware to explicit review and describes Nix source checking accurately", () => {

@@ -268,12 +268,11 @@ test("the tray and the updates chip use the reorderable widget pipeline", () => 
     assert.match(bar, /updates:\s*"Modules\/Updates\.qml"/);
     assert.match(bar, /tray:\s*"Modules\/Tray\.qml"/);
     assert.match(read("Bar/Modules/Updates.qml"), /panelName:\s*"updates"/);
-    // A routine check is not itself a reason to show the module. Errors and
-    // install outcomes remain reachable even after the pending count clears.
-    assert.match(bar, /case "updates": return Updates\.total > 0 \|\| Updates\.error !== ""/);
+    // Only confirmed available updates show a menubar indicator.
+    assert.match(bar, /case "updates": return Updates\.showIndicator/);
     assert.doesNotMatch(bar, /Updates\.ran && Updates\.busy/);
     const updates = read("Bar/Modules/Updates.qml");
-    assert.match(updates, /Updates\.runState === "done"\s*\? "check"/);
+    assert.match(updates, /label: ""/);
     assert.doesNotMatch(updates, /Theme\.barGreen|"check_circle"/);
     assert.match(bar, /case "tray": return SystemTray\.items\.values\.length > 0;/);
 });

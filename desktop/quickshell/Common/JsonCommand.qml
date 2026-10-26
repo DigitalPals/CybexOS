@@ -29,7 +29,10 @@ Scope {
                 let failure = null;
                 try { failure = JSON.parse(diagnostics); } catch (_) {}
                 root.error = (failure && failure.error) || (value && value.error)
-                    || (code === -1 ? "The helper could not be started." : "The request failed. Retry or inspect its private log.");
+                    || (code === -1 ? "The helper could not be started."
+                        : code === 126 || code === 127 ? "Authorization was cancelled or denied. No system change was requested."
+                        : code === 124 ? "The helper timed out. Check the operation status before retrying."
+                        : "The request failed. Retry or inspect its private log.");
                 root.failed(root.error);
                 return;
             }

@@ -270,7 +270,7 @@ ShellRoot {
     // The launcher's "Check for updates" and scripts. `check` refreshes every
     // source, as the panel's refresh button does (a run in progress is left
     // alone); `open` shows the Updates panel on the focused output, which
-    // also brings a stale count up to date.
+    // refreshes stale discovery when the review opens.
     IpcHandler {
         target: "updates"
 
@@ -436,7 +436,7 @@ ShellRoot {
         void Calendar.enabled;
         void Settings.loaded;
         void SystemTheme.settled;
-        void Updates.total;
+        void Updates.hasUpdates;
         void Recorder.active;
         void Dictation.state;
         void Assistant.available;

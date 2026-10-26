@@ -344,8 +344,8 @@ def collect():
     sections['journal/quickshell.txt'] = journal(['-u', 'quickshell.service'], user=True) + '\n'
     sections['journal/sddm.txt'] = journal(['-u', 'sddm.service']) + '\n'
     rc, update = run([cybex, 'update', 'status'])
-    update_units = ('cybexos-stage@*.service', 'cybexos-apply@*.service',
-                    'cybexos-rollback.service', 'cybexos-confirm.service',
+    update_units = ('cybexos-update@*.service', 'cybexos-software@*.service',
+                    'cybexos-maintenance-policy@*.service', 'cybexos-maintenance@*.service',
                     'cybexos-recover.service', 'cybexos-region.service')
     sections['journal/update-worker.txt'] = (f'## cybex update status\n{update}\n\n## system units\n'
                                              f"{journal([arg for unit in update_units for arg in ('-u', unit)])}\n")

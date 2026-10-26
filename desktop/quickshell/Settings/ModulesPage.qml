@@ -54,7 +54,7 @@ Item {
     readonly property var runtimeState: ({ media: Media.hasTrack,
         weather: Weather.ready || Weather.offline || !Weather.locationSet,
         weatherLocation: Weather.locationSet, bluetooth: BluetoothState.connected, battery: Battery.isLaptop,
-        updates: Updates.total > 0 || Updates.error !== "" || Updates.runState !== "idle" || Updates.rebootRecommended,
+        updates: Updates.showIndicator,
         tray: SystemTray.items.values.length > 0 })
 
     function openSubPage(id) {

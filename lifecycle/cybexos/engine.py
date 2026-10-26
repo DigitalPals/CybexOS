@@ -10,9 +10,10 @@ import time
 import uuid
 from urllib.parse import urlencode
 
-from .common import CommandFailure, Failure, Runner, atomic, digest, link, locked, parse, read, syncdir
+from .common import CommandFailure, Failure, Runner, atomic, link, locked, parse, read, syncdir
 from . import inputs
 from .trust import Fetcher, discover, version
+from . import review
 
 SCOPES = ('upstream', 'cybexos', 'both', 'local')
 BUSY = ('discovering', 'building', 'validating', 'activating', 'recovering')
@@ -117,7 +118,18 @@ class Engine:
         (self.state / 'transactions').mkdir(exist_ok=True, mode=0o700)
 
     def status(self, **values):
-        record = read(self.status_path, {}) | values | {'updatedAt': int(time.time())}
+        previous = read(self.status_path, {})
+        now = time.time()
+        if 'transaction' in values and values['transaction'] != previous.get('transaction'):
+            previous = {'schema': 1, 'startedAt': now, 'phase': '', 'error': '', 'notes': '',
+                        'changes': '', 'packageChanges': [], 'reviewToken': None, 'inputs': {},
+                        'recovery': '', 'retry': '', 'restart': '', 'requestId': None,
+                        'workerUnit': None, 'software': None}
+        if (values.get('state', previous.get('state')) != previous.get('state')
+                or values.get('phase', previous.get('phase')) != previous.get('phase')):
+            previous['phaseStartedAt'] = now
+        context = getattr(self, 'request_context', {})
+        record = previous | values | context | {'updatedAt': now}
         atomic(self.status_path, record, 0o644)
         return record
 
@@ -140,9 +152,16 @@ class Engine:
         return candidate, sequence
 
     def check(self):
-        result = {'upstream': {}, 'cybexos': {}}
-        old = read(self.working / 'flake.lock')
-        inputs.validate_machine(old)
+        result = {'upstream': {}, 'cybexos': {}, 'checkedAt': int(time.time())}
+        try:
+            lock_body = (self.working / 'flake.lock').read_bytes()
+            old = parse(lock_body)
+            inputs.validate_machine(old)
+        except (Failure, KeyError, TypeError, ValueError, OSError):
+            message = 'The machine update configuration is invalid or unavailable. Check /etc/nixos/flake.nix and flake.lock; no inputs were changed.'
+            return result | {'upstream': {'state': 'unavailable', 'error': message},
+                             'cybexos': {'state': 'unavailable'}, 'error': message}
+        result['installedIdentity'] = hashlib.sha256(lock_body).hexdigest()
         problem = None
         try:
             # Discovery has no deployment log. Suppress output logging even if
@@ -212,8 +231,9 @@ class Engine:
             identifier = uuid.uuid4().hex
             tx = self.tx(identifier)
             tx.mkdir(mode=0o700)
-            kind = 'software' if software is not None else 'maintenance' if maintenance is not None else 'region' if region is not None else 'configuration'
+            kind = 'software' if software is not None else 'maintenance' if maintenance is not None else 'region' if region is not None else 'update' if scope != 'local' else 'configuration'
             self.status(transaction=identifier, state='discovering', scope=scope, error='', progress=None,
+                        phase='Checking selected sources and preparing your configuration',
                         changeKind=kind, requestId=request_id, software=None)
             self.run.log = tx / 'build.log'
             try:
@@ -297,15 +317,20 @@ class Engine:
                 self.status(state='validating', phase='Checking desktop and plugin compatibility')
                 self.run(system + '/sw/bin/cybexos-desktop-check', '--system', system, timeout=180)
                 changes = self.run('nix', 'store', 'diff-closures', previous_system, system)
+                package_changes = review.compare(
+                    self.run('cat', previous_system + '/etc/cybexos/software.json', sensitive=True),
+                    self.run('cat', system + '/etc/cybexos/software.json', sensitive=True))
                 atomic(tx / 'changes.txt', changes.encode())
                 record = {'id': identifier, 'scope': scope, 'system': system, 'previousSystem': previous_system,
                           'baseline': baseline, 'configDigest': config_digest(config), 'createdAt': int(time.time()),
                           'inputs': {name: inputs.identity(new, name) for name in ('nixpkgs', 'cybexos')},
-                          'changeKind': kind, 'requestId': request_id, 'software': selections}
-                record['reviewToken'] = hashlib.sha256((record['configDigest'] + changes).encode()).hexdigest()
+                          'changeKind': kind, 'requestId': request_id, 'software': selections,
+                          'packageChanges': package_changes}
+                record['reviewToken'] = hashlib.sha256((record['configDigest'] + changes + review.identity(package_changes)).encode()).hexdigest()
                 atomic(tx / 'deployment.json', record)
                 self.status(state='ready', phase='Built and checked; review changes before applying',
-                            changes=changes, reviewToken=record['reviewToken'], inputs=record['inputs'],
+                            changes=changes, packageChanges=package_changes,
+                            reviewToken=record['reviewToken'], inputs=record['inputs'],
                             installedVersion=read(self.release)['version'], availableVersion=candidate['version'] if candidate else read(self.release)['version'],
                             notes=candidate['notes'] if candidate else '', software=selections,
                             restart='Reboot may be required; no reboot is automatic.')
@@ -430,10 +455,22 @@ class Engine:
             record = read(tx / 'deployment.json')
             if not record or read(self.status_path).get('state') != 'ready' or read(self.status_path).get('transaction') != identifier:
                 raise Failure('This deployment is not ready for application')
-            if token != record['reviewToken'] or config_digest(tx / 'config') != record['configDigest']:
+            if token != record['reviewToken']:
                 raise Failure('Staged configuration changed after review; stage and review again')
-            if config_digest(self.working) != record['baseline']:
-                raise Failure('Personal configuration changed after staging. Stage again to preserve those edits.')
+            reason = ''
+            try:
+                unchanged = (config_digest(tx / 'config') == record['configDigest']
+                             and config_digest(self.working) == record['baseline']
+                             and str(self.current_system.resolve()) == record['previousSystem'])
+            except Failure as error:
+                reason = str(error) + ' '
+                unchanged = False
+            except OSError:
+                unchanged = False
+            if not unchanged:
+                message = reason + 'The system or personal configuration changed after preparation. Prepare again to preserve those changes.'
+                self.status(state='stale', phase=message, error=message, reviewToken=None)
+                raise Failure(message)
             self.git_metadata(self.working)
             atomic(self.pending_path, record | {'phase': 'activation', 'bootId': self.boot_id()})
             self.status(state='activating', phase='Activating under supervision')
@@ -593,3 +630,13 @@ class Engine:
             if not record:
                 raise Failure('Select a retained deployment from cybex update history')
             self.restore(record, 'Explicit rollback requested')
+
+    def discard(self, identifier):
+        with locked(self.state / 'operation.lock'):
+            status = read(self.status_path, {})
+            self.tx(identifier)
+            if (self.pending_path.exists() or status.get('transaction') != identifier
+                    or status.get('state') not in ('ready', 'stale')):
+                raise Failure('Only the current unapplied preview can be discarded. Refresh its status.')
+            self.status(transaction=None, state='idle', phase='Preview discarded. No update was applied.',
+                        changeKind=None, scope=None)

@@ -32,6 +32,7 @@ let
     };
     titlebars = toString c.environment.etc."cybexos/titlebars.so".source;
     updater = toString c.cybexos.updaterPackage;
+    updateWorker = c.systemd.services."cybexos-update@".serviceConfig;
     bootBrand = {
       inherit (c.boot.plymouth) enable theme;
       packages = map toString c.boot.plymouth.themePackages;

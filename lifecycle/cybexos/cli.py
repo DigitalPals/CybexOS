@@ -2,12 +2,13 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
 import uuid
 
-from .common import Failure, atomic, locked, read
+from .common import Failure, atomic, digest, locked, read
 from .engine import Engine
 
 LIVE_MARKER = Path('/etc/cybexos/installer')
@@ -28,11 +29,16 @@ def request_status(identifier, state='/var/lib/cybexos'):
         raise Failure('No supervised request found. Refresh and submit again.')
     if value.get('state') in ('queued', 'running') and time.time() - value.get('createdAt', 0) > 10:
         unit = value.get('unit', '')
-        if not re.fullmatch(r'cybexos-(?:software|maintenance-policy|maintenance)@[a-f0-9]{32}\.service', unit):
+        if not re.fullmatch(r'cybexos-(?:update|software|maintenance-policy|maintenance)@[a-f0-9]{32}\.service', unit):
             raise Failure('Invalid supervised request record')
-        result = subprocess.run(['systemctl', 'show', unit, '-p', 'ActiveState', '-p', 'Result'],
-                                text=True, capture_output=True, timeout=10)
+        try:
+            result = subprocess.run(['systemctl', 'show', unit, '-p', 'ActiveState', '-p', 'Result'],
+                                    text=True, capture_output=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            return value | {'state':'unknown', 'error':'Cannot check the supervised worker. Retry checking its status before submitting another operation.'}
         properties = dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
+        if result.returncode != 0 or 'ActiveState' not in properties:
+            return value | {'state':'unknown', 'error':'Cannot check the supervised worker. Retry checking its status before submitting another operation.'}
         if result.returncode == 0 and properties.get('ActiveState') in ('inactive', 'failed'):
             return value | {'state':'failed', 'error':'The supervised request stopped before reporting completion. Review its system service log and retry.'}
     return value
@@ -44,7 +50,7 @@ def enqueue(state, action, payload):
     worker = action if action in ('software', 'maintenance-policy') else 'maintenance'
     unit = f'cybexos-{worker}@{identifier}.service'
     status = state / 'request-status' / (identifier + '.json')
-    atomic(status, {'state':'queued', 'unit':unit, 'createdAt':int(time.time())}, 0o644)
+    atomic(status, {'state':'queued', 'unit':unit, 'createdAt':time.time()}, 0o644)
     try:
         subprocess.run(['systemctl', 'start', '--no-block', unit], check=True)
     except BaseException:
@@ -52,6 +58,101 @@ def enqueue(state, action, payload):
         (state / 'requests' / (identifier + '.json')).unlink(missing_ok=True)
         raise
     return {'accepted':True, 'requestId':identifier, 'unit':unit}
+
+
+def update_arguments(action, values):
+    identifier = lambda value: isinstance(value, str) and re.fullmatch('[0-9a-f]{32}', value)
+    valid = ((action == 'stage' and len(values) == 1 and values[0] in ('upstream', 'cybexos', 'both', 'local'))
+             or (action == 'apply' and len(values) == 2 and identifier(values[0])
+                 and isinstance(values[1], str) and re.fullmatch('[0-9a-f]{64}', values[1]))
+             or (action == 'confirm' and not values)
+             or (action == 'rollback' and len(values) <= 1 and (not values or identifier(values[0])))
+             or (action == 'discard' and len(values) == 1 and identifier(values[0])))
+    if not valid:
+        raise Failure('Invalid lifecycle request')
+
+
+def enqueue_update(state, action, values):
+    update_arguments(action, values)
+    with locked(state / 'update-request.lock'):
+        latest = read(state / 'update-request.json', {})
+        if latest.get('id'):
+            previous = request_status(latest['id'], state)
+            if previous.get('state') in ('queued', 'running', 'unknown'):
+                raise Failure('An update request is already running. Open Updates to review its progress.')
+        identifier = uuid.uuid4().hex
+        unit = f'cybexos-update@{identifier}.service'
+        payload = state / 'requests' / (identifier + '.json')
+        status = state / 'request-status' / (identifier + '.json')
+        atomic(payload, {'action': action, 'arguments': values})
+        atomic(status, {'id': identifier, 'action': action, 'state': 'queued', 'unit': unit,
+                        'createdAt': time.time(), 'error': ''}, 0o644)
+        atomic(state / 'update-request.json', {'id': identifier}, 0o644)
+        try:
+            subprocess.run(['systemctl', 'start', '--no-block', unit], check=True)
+        except BaseException:
+            atomic(status, read(status) | {'state': 'failed', 'finishedAt': time.time(),
+                                          'error': 'The supervised update service could not be started. Retry or inspect its system service log.'}, 0o644)
+            payload.unlink(missing_ok=True)
+            raise Failure('The supervised update service could not be started. No update was applied.')
+        return {'accepted': True, 'requestId': identifier, 'unit': unit}
+
+
+def update_status(state=Path('/var/lib/cybexos'), working=Path('/etc/nixos')):
+    """Read-only reconciliation; worker failure must survive polls and reloads."""
+    state, working = Path(state), Path(working)
+    status = read(state / 'status.json', {'state': 'idle'})
+    now = time.time()
+    status['phaseElapsedSeconds'] = max(0, int(now - status.get('phaseStartedAt', status.get('updatedAt', now))))
+    status['elapsedSeconds'] = max(0, int(now - status.get('startedAt', now)))
+    status['installedIdentity'] = digest(working / 'flake.lock') if (working / 'flake.lock').is_file() else ''
+    identifiers = {read(state / 'update-request.json', {}).get('id'), status.get('requestId')} - {None, ''}
+    requests = [request_status(identifier, state) | {'id': identifier} for identifier in identifiers]
+    latest = max(requests, key=lambda value: value.get('createdAt', 0)) if requests else {}
+    # An older failed update must not obscure a later local configuration change.
+    if (latest and latest.get('id') != status.get('requestId')
+            and latest.get('createdAt', 0) < status.get('startedAt', 0)):
+        latest = {}
+    status['request'] = latest
+    if (latest.get('id') == status.get('requestId') and latest.get('state') == 'failed'
+            and status.get('state') in ('discovering', 'building', 'validating', 'activating', 'recovering')):
+        recovery = status['state'] in ('activating', 'recovering')
+        status |= {'state': 'recovery-failed' if recovery else 'interrupted',
+                   'phase': 'The update worker stopped. Restore the previous generation before continuing.' if recovery
+                            else 'Preparation stopped before applying changes. You can prepare again.',
+                   'error': latest['error'], 'reviewToken': None}
+    return status
+
+
+def run_update(engine, identifier):
+    if not re.fullmatch('[0-9a-f]{32}', identifier):
+        raise Failure('Invalid request identifier')
+    payload_path = engine.state / 'requests' / (identifier + '.json')
+    status_path = engine.state / 'request-status' / (identifier + '.json')
+    status = read(status_path)
+    if not status or status.get('state') != 'queued':
+        raise Failure('This update request has already run or is unavailable')
+    atomic(status_path, status | {'state': 'running', 'updatedAt': time.time()}, 0o644)
+    engine.request_context = {'requestId': identifier, 'workerUnit': f'cybexos-update@{identifier}.service'}
+    try:
+        payload = read(payload_path)
+        if not isinstance(payload, dict) or set(payload) != {'action', 'arguments'} or not isinstance(payload['arguments'], list):
+            raise Failure('Invalid supervised update payload')
+        action, values = payload['action'], payload['arguments']
+        update_arguments(action, values)
+        if action == 'stage': engine.stage(values[0], request_id=identifier)
+        elif action == 'apply': engine.apply(*values)
+        elif action == 'rollback': engine.rollback(values[0] if values else None)
+        elif action == 'confirm': engine.confirm()
+        elif action == 'discard': engine.discard(values[0])
+        atomic(status_path, read(status_path) | {'state': 'done', 'finishedAt': time.time(), 'error': ''}, 0o644)
+    except BaseException as error:
+        message = str(error) if isinstance(error, Failure) else 'The update request failed. Inspect its private system service log.'
+        atomic(status_path, read(status_path) | {'state': 'failed', 'finishedAt': time.time(), 'error': message}, 0o644)
+        raise
+    finally:
+        payload_path.unlink(missing_ok=True)
+        engine.request_context = {}
 
 
 def main():
@@ -89,12 +190,14 @@ def main():
     sub.add_parser('check')
     sub.add_parser('status')
     sub.add_parser('history')
+    update_request = sub.add_parser('request'); update_request.add_argument('identifier')
     log = sub.add_parser('log'); log.add_argument('transaction')
     stage = sub.add_parser('stage'); stage.add_argument('scope', choices=('upstream', 'cybexos', 'both', 'local'))
     apply = sub.add_parser('apply'); apply.add_argument('transaction'); apply.add_argument('review_token')
     rollback = sub.add_parser('rollback'); rollback.add_argument('transaction', nargs='?')
     sub.add_parser('confirm')
     retry = sub.add_parser('retry-failed'); retry.add_argument('transaction')
+    discard = sub.add_parser('discard'); discard.add_argument('transaction')
     args = parser.parse_args()
     if args.command == 'version':
         print(read('/etc/cybexos/release.json')['version']); return
@@ -142,9 +245,9 @@ def main():
             return
         raise Failure(LIVE_UPDATE_REASON)
     if args.action == 'status':
-        status = read('/var/lib/cybexos/status.json', {'state': 'idle'})
-        status['phaseElapsedSeconds'] = max(0, int(__import__('time').time()) - status.get('updatedAt', int(__import__('time').time())))
-        print(json.dumps(status))
+        print(json.dumps(update_status()))
+    elif args.action == 'request':
+        print(json.dumps(request_status(args.identifier)))
     elif args.action == 'check':
         # Root-owned configuration is readable; cache/network work uses the caller's cache.
         engine = object.__new__(Engine)
@@ -163,7 +266,7 @@ def main():
     else:
         extra = ([args.scope] if args.action == 'stage' else
                  [args.transaction, args.review_token] if args.action == 'apply' else
-                 [args.transaction] if args.action in ('rollback', 'retry-failed', 'log') and args.transaction else [])
+                 [args.transaction] if args.action in ('rollback', 'retry-failed', 'log', 'discard') and args.transaction else [])
         os.execvp('pkexec', ['pkexec', '/run/current-system/sw/bin/cybexos-request', args.action, *extra])
 
 
@@ -236,21 +339,7 @@ def request():
                 records.append(read(tx / 'deployment.json') | {'good': (tx / 'good.json').exists(), 'failed': read(tx / 'failed.json'),
                                                                'retired': (tx / 'retired.json').exists()})
         print(json.dumps(records)); return
-    import re
-    if action == 'stage' and len(values) == 1 and values[0] in ('upstream', 'cybexos', 'both', 'local'):
-        unit = f'cybexos-stage@{values[0]}.service'
-    elif action == 'apply' and len(values) == 2 and re.fullmatch('[0-9a-f]{32}', values[0]) and re.fullmatch('[0-9a-f]{64}', values[1]):
-        atomic(state / ('apply-' + values[0] + '.json'), {'token': values[1]})
-        unit = f'cybexos-apply@{values[0]}.service'
-    elif action == 'confirm' and not values:
-        unit = 'cybexos-confirm.service'
-    elif action == 'rollback' and len(values) <= 1 and (not values or re.fullmatch('[0-9a-f]{32}', values[0])):
-        atomic(state / 'rollback-request.json', {'id': values[0] if values else None})
-        unit = 'cybexos-rollback.service'
-    else:
-        raise Failure('Invalid lifecycle request')
-    subprocess.run(['systemctl', 'start', '--no-block', unit], check=True)
-    print(json.dumps({'accepted': True, 'unit': unit}))
+    print(json.dumps(enqueue_update(state, action, values)))
 
 
 def admin():
@@ -259,7 +348,9 @@ def admin():
     require_installed()
     engine = Engine()
     action, *values = sys.argv[1:]
-    if action in ('software', 'maintenance-policy', 'maintenance') and len(values) == 1:
+    if action == 'update' and len(values) == 1:
+        run_update(engine, values[0])
+    elif action in ('software', 'maintenance-policy', 'maintenance') and len(values) == 1:
         import re
         if not re.fullmatch('[a-f0-9]{32}', values[0]):
             raise Failure('Invalid request identifier')
@@ -287,27 +378,19 @@ def admin():
                 except BaseException as error:
                     service.publish(state='failed', error=str(error) if isinstance(error, Failure) else 'Storage cleanup failed. Inspect the private maintenance log.', reviewToken=None)
                     raise
-            atomic(request_status, {'state':'done'}, 0o644)
+            atomic(request_status, read(request_status) | {'state':'done', 'finishedAt':time.time()}, 0o644)
         except BaseException as error:
-            atomic(request_status, {'state':'failed', 'error':str(error) if isinstance(error, Failure) else 'The request failed. Inspect its private system service log.'}, 0o644)
+            atomic(request_status, read(request_status) | {'state':'failed', 'finishedAt':time.time(), 'error':str(error) if isinstance(error, Failure) else 'The request failed. Inspect its private system service log.'}, 0o644)
             raise
         finally:
             path.unlink(missing_ok=True)
     elif action == 'maintenance-auto' and not values:
         from .maintenance import Maintenance
         Maintenance(engine).clean(automatic=True)
-    elif action == 'stage' and len(values) == 1:
-        engine.stage(values[0])
     elif action == 'region' and not values:
         engine.stage('local', region=read(engine.state / 'region-request.json'))
-    elif action == 'apply' and len(values) == 1:
-        engine.apply(values[0], read(engine.state / ('apply-' + values[0] + '.json'))['token'])
     elif action == 'recover' and not values:
         engine.recover()
-    elif action == 'confirm' and not values:
-        engine.confirm()
-    elif action == 'rollback' and not values:
-        engine.rollback(read(engine.state / 'rollback-request.json', {}).get('id'))
     else:
         raise Failure('Invalid worker action')
 

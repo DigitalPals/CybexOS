@@ -238,8 +238,7 @@ PanelWindow {
         case "weather": return Weather.ready || Weather.offline || !Weather.locationSet;
         case "bt": return BluetoothState.connected;
         case "batt": return Battery.isLaptop;
-        case "updates": return Updates.total > 0 || Updates.error !== ""
-            || Updates.runState !== "idle" || Updates.rebootRecommended;
+        case "updates": return Updates.showIndicator;
         case "tray": return SystemTray.items.values.length > 0;
         case "assistant": return Settings.assistantConfigured;
         default: return true;
