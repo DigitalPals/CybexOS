@@ -274,6 +274,14 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
         self.service.handle_event({'event': 'disk-writing'})
         self.assertTrue(self.service.state['diskTouched'])
 
+    async def test_completion_preserves_the_actual_elapsed_installation_time(self):
+        await self.setup_phase()
+        self.service.started_at = 100.0
+        with patch.object(daemon.time, 'monotonic', return_value=142.9):
+            self.service.handle_event({'event': 'complete', 'username': 'ada', 'encrypted': True})
+        with patch.object(daemon.time, 'monotonic', return_value=500.0):
+            self.assertEqual(self.service.snapshot()['elapsed'], 42)
+
     async def test_slow_details_do_not_block_edits_and_refreshes_are_coalesced(self):
         await self.setup_phase()
         entered, release = asyncio.Event(), asyncio.Event()

@@ -387,7 +387,8 @@ class Daemon:
         elif kind == 'complete':
             self.password = ''
             result = {key: value.get(key) for key in ('username', 'hostname', 'encrypted')}
-            self.update(phase='complete', result=result, error='', stage=STAGES)
+            elapsed = int(time.monotonic() - self.started_at) if self.started_at is not None else self.state['elapsed']
+            self.update(phase='complete', result=result, error='', stage=STAGES, elapsed=elapsed)
         elif kind == 'error':
             self.password = ''
             message = str(value.get('message', ''))[:600]

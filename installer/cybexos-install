@@ -276,6 +276,39 @@ def copy_initial_inputs(archived, target, run):
     atomic(target / 'var/lib/cybexos/initial-inputs.json', archived)
 
 
+def seed_prebuilt(config, target, run):
+    """Reuse the medium's already-built outputs, including runCommandLocal.
+
+    nixos-install builds in the target store. Its live-store substituter cannot
+    reuse outputs whose recipes set allowSubstitutes=false, even when the ISO
+    already carries their exact bytes. An explicit Nix copy can. Query the
+    actual machine's derivation graph so disabled application groups are not
+    copied merely because the medium carries them. --include-outputs includes
+    only outputs valid in the live store; missing packages still build/download
+    normally through nixos-install.
+    """
+    started = time.monotonic()
+    derivation = download(run, 'nix', 'eval', '--raw', '--no-update-lock-file',
+                          f'path:{config}#nixosConfigurations.cybexos.config.system.build.toplevel.drvPath').strip()
+    store_path = r'/nix/store/[0-9a-z]{32}-[^/\s]+'
+    if not re.fullmatch(store_path + r'\.drv', derivation):
+        raise Failure('The machine configuration has no valid system derivation')
+    closure = run('nix-store', '--query', '--requisites', '--include-outputs', derivation)
+    paths = set(closure.splitlines())
+    if not paths or any(not re.fullmatch(store_path, path) for path in paths):
+        raise Failure('The prebuilt machine dependency list contains an invalid store path')
+    paths = sorted(path for path in paths if not path.endswith('.drv'))
+    if paths:
+        # The only signature exemption is this verified Nix transfer from the
+        # trusted live store to our freshly formatted local target. Remote
+        # caches and the installed trust policy retain signature verification.
+        run('nix', 'copy', '--no-check-sigs', '--to', 'local?root=' + str(target), '--stdin',
+            input=('\n'.join(paths) + '\n').encode(), timeout=10800)
+    elapsed = round(time.monotonic() - started, 3)
+    event('activity', message=f'Reused {len(paths)} prebuilt store paths from the installation medium in {elapsed:.1f}s.')
+    return {'paths': len(paths), 'seconds': elapsed}
+
+
 def detect(sysroot=Path('/sys'), cpuinfo=Path('/proc/cpuinfo')):
     def text(path):
         try:
@@ -666,6 +699,8 @@ def install(plan, secrets, source, revision, nar_hash, run=Runner(), *, channel)
             print('  Keep power and internet connected. Downloads and builds may take a while.\n'
                   '  Private build log: sudo tail -f /run/cybexos-installer.log', flush=True)
             with build_progress():
+                event('activity', message='Copying prebuilt packages from the installation medium…')
+                prebuilt = seed_prebuilt(config, target, run)
                 download(run, 'nixos-install', '--root', target, '--flake', f'path:{config}#cybexos', '--no-root-passwd', '--no-channel-copy', timeout=10800)
             stage(5, 'Setting up your account and keyboard preferences…')
             # Set the initial mutable account credential once. A declarative
@@ -685,7 +720,7 @@ def install(plan, secrets, source, revision, nar_hash, run=Runner(), *, channel)
             for path in (user_config.parent, user_config, input_preferences):
                 os.chown(path, int(passwd[2]), int(passwd[3]))
             atomic(target / 'var/lib/cybexos/installation.json', {'revision': revision, 'narHash': nar_hash, 'channel': channel, 'hardware': hardware,
-                   'username': plan['username'], 'encrypted': plan['encrypted'], 'sharedPassword': True})
+                   'username': plan['username'], 'encrypted': plan['encrypted'], 'sharedPassword': True, 'prebuilt': prebuilt})
             deployed = target / 'var/lib/cybexos/initial-deployed'
             copy_config(config, deployed)
             (target / 'var/lib/cybexos/deployed').symlink_to('/var/lib/cybexos/initial-deployed')

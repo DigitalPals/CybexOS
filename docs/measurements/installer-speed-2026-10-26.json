@@ -1,0 +1,1350 @@
+{
+  "kind": "installer-performance-and-lifecycle-evidence",
+  "date": "2026-10-26",
+  "source": {
+    "path": "/nix/store/19fk3kkaxm7r9cj2mdm78zz8idz33gx4-source",
+    "narHash": "sha256-472b7XdZ/7605zmLSqCBaaEeKwTT/DKudiGaW3aXxuI=",
+    "revision": "uncommitted",
+    "version": "1.0.0-beta.6"
+  },
+  "environment": {
+    "host": "thebeast",
+    "cpu": "AMD Ryzen Threadripper 9970X",
+    "vcpus": 4,
+    "memoryMiB": 12288,
+    "diskGiB": 80,
+    "firmware": "UEFI OVMF",
+    "acceleration": "KVM",
+    "graphics": "virtio-vga",
+    "network": "QEMU user NAT"
+  },
+  "timingScope": {
+    "start": "first installing observation",
+    "stop": "first complete observation before diagnostic log transfer",
+    "pollingIntervalSeconds": 20,
+    "repetitions": 1,
+    "order": [
+      "beta.5 baseline",
+      "beta.6"
+    ],
+    "hostCachesAndDownloadServersControlled": false
+  },
+  "measurements": {
+    "beta5EncryptedStandard": {
+      "observedSeconds": 263.192,
+      "actualDerivationsBuilt": 851,
+      "fishCompletionDerivationsBuilt": 290,
+      "unitDerivationsBuilt": 201
+    },
+    "beta6-encrypted-standard": {
+      "observedSeconds": 182.045,
+      "workerElapsedSeconds": 168,
+      "prebuilt": {
+        "paths": 3376,
+        "seconds": 68.834
+      },
+      "actualDerivationsBuilt": 375,
+      "fishCompletionDerivationsBuilt": 192,
+      "unitDerivationsBuilt": 52
+    },
+    "beta6-plain-minimal": {
+      "observedSeconds": 121.441,
+      "workerElapsedSeconds": 106,
+      "prebuilt": {
+        "paths": 3292,
+        "seconds": 56.176
+      },
+      "actualDerivationsBuilt": 268,
+      "fishCompletionDerivationsBuilt": 158,
+      "unitDerivationsBuilt": 46
+    },
+    "encryptedStandardObservedReductionPercent": 30.832
+  },
+  "regressions": {
+    "installerPython": 55,
+    "daemonPython": 17,
+    "imageAndQualificationPython": 18,
+    "networkPython": 16,
+    "nativeInstallerRust": 32,
+    "result": "passed",
+    "sharedInstallationContract": "passed",
+    "actualLocalStoreRegression": {
+      "paths": 2,
+      "seconds": 0.083,
+      "result": "passed",
+      "allowSubstitutes": false,
+      "offlineTargetBuildMaxJobs": 0,
+      "output": "/nix/store/sqipl6h95gfzr6i8xmrdx75xd39i7zp9-cybexos-installer-prebuilt-regression"
+    }
+  },
+  "baseline": {
+    "kind": "iso-installation-baseline",
+    "isoSha256": "9a50fb4c0df8a9eb001ee5afe9754656a955d2575d8b933e8cb24f7b5664b7d7",
+    "milestones": {
+      "isoSourceIdentity": {
+        "result": "passed"
+      },
+      "nativeGuiAssertions": {
+        "result": "passed",
+        "installerOnlyRuntime": "tty1 kiosk as cybexos-installer; no live account, compositor or display manager",
+        "display": [
+          1280,
+          800
+        ],
+        "developmentConsent": "Enter on the screen",
+        "lowercaseUsername": "typed CybexQA; the screen kept cybexqa",
+        "reviewedPlan": {
+          "username": "cybexqa",
+          "fullName": "Cybex QA",
+          "hostname": "cybexqa-cybexos",
+          "timezone": "Europe/Amsterdam",
+          "keyboard": "us",
+          "encrypted": true,
+          "autoLogin": true,
+          "features": {
+            "developer": true,
+            "proprietary": true,
+            "steam": true,
+            "docker": true,
+            "podman": true,
+            "tailscale": true,
+            "connectedWidgets": true,
+            "assistant": true,
+            "localNetworkServices": true
+          }
+        },
+        "completed": {
+          "username": "cybexqa",
+          "hostname": "cybexqa-cybexos",
+          "encrypted": true
+        }
+      },
+      "installerCompleted": {
+        "result": "passed",
+        "interface": "tty1 Slint screen with real QMP keyboard and pointer input",
+        "applications": "standard"
+      },
+      "installedBootAndSerialPasswordLogin": {
+        "result": "passed"
+      },
+      "quietBoot": {
+        "result": "passed",
+        "linesOnConsole": {
+          "kernel": 0,
+          "efiStub": 0
+        },
+        "plymouthTextViewStatusLines": 158,
+        "scope": "serial console of the installed boot until the login prompt"
+      },
+      "installedBootMenu": {
+        "result": "passed",
+        "checks": [
+          "GRUB with the installer theme",
+          "labelled exact-system generations",
+          "removable fallback loader",
+          "firmware boot entry",
+          "quiet kernel command line"
+        ]
+      },
+      "installedSourceIdentity": {
+        "result": "passed",
+        "isoRelease": {
+          "architecture": "x86_64-linux",
+          "configurationApi": 1,
+          "narHash": "sha256-VxpQKP12RU1OXMN89Njo3Jg+MVBehoUzbv4EapmJ+yo=",
+          "nixos": "26.05",
+          "pluginApi": 1,
+          "revision": "uncommitted",
+          "updaterApi": 1,
+          "version": "1.0.0-beta.5"
+        },
+        "installedRelease": {
+          "architecture": "x86_64-linux",
+          "configurationApi": 1,
+          "narHash": "sha256-VxpQKP12RU1OXMN89Njo3Jg+MVBehoUzbv4EapmJ+yo=",
+          "nixos": "26.05",
+          "pluginApi": 1,
+          "revision": "uncommitted",
+          "updaterApi": 1,
+          "version": "1.0.0-beta.5"
+        },
+        "installedSource": {
+          "lastModified": 0,
+          "narHash": "sha256-VxpQKP12RU1OXMN89Njo3Jg+MVBehoUzbv4EapmJ+yo=",
+          "path": "/nix/store/25fqp5c1hs3r2ypdnwkam4wjww9rxdwd-source",
+          "type": "path"
+        },
+        "scope": "same exact source NAR; bundled path inputs have no Git revision metadata"
+      },
+      "runtimeEncryption": {
+        "result": "passed",
+        "encrypted": true
+      },
+      "desktopConfigurationCheck": {
+        "result": "passed"
+      },
+      "welcomeFirstLogin": {
+        "result": "passed",
+        "opened": true,
+        "fullScreenLayer": "qs-welcome",
+        "steppedAsideForWindow": true,
+        "resumed": true,
+        "dismissed": true,
+        "unmapped": true,
+        "helloSummaryServices": {
+          "region": {
+            "loaded": true,
+            "failed": false
+          },
+          "input": {
+            "loaded": true,
+            "failed": false
+          }
+        }
+      },
+      "keyboardShortcutsRuntime": {
+        "userLuaBefore": "absent",
+        "defaults": {
+          "actions": 99,
+          "binds": 107,
+          "describedBinds": 107,
+          "requiredActions": 40,
+          "stateError": null,
+          "evalErrorNil": true,
+          "browser": [
+            "SUPER + B"
+          ]
+        },
+        "keymap": {
+          "entries": 478,
+          "keycode10": "1",
+          "layout": [
+            [
+              "us",
+              "English (US)"
+            ]
+          ]
+        },
+        "applied": {
+          "browser": [
+            "SUPER + ALT + B"
+          ],
+          "custom": [
+            {
+              "group": "Web",
+              "id": "custom.qa-docs",
+              "keys": [
+                "SUPER + ALT + D"
+              ],
+              "label": "QA docs",
+              "run": {
+                "type": "url",
+                "url": "https://example.org"
+              }
+            }
+          ],
+          "diagnostics": [],
+          "customBind": [
+            {
+              "locked": false,
+              "mouse": false,
+              "release": false,
+              "repeat": false,
+              "longPress": false,
+              "non_consuming": false,
+              "auto_consuming": false,
+              "has_description": true,
+              "modmask": 72,
+              "submap": "",
+              "submap_universal": "false",
+              "key": "D",
+              "keycode": 0,
+              "catch_all": false,
+              "description": "Web: QA docs",
+              "allow_input_capture": false,
+              "dispatcher": "__lua",
+              "arg": "186"
+            }
+          ]
+        },
+        "reset": {
+          "browser": [
+            "SUPER + B"
+          ],
+          "custom": [],
+          "changedRows": 0
+        },
+        "userLuaAfter": "absent",
+        "settingsPage": {
+          "opened": "cybexos-runtime ipc settings open shortcuts",
+          "page": "shortcuts"
+        },
+        "journal": {
+          "lines": 10,
+          "onboardingQmlErrors": [],
+          "otherQmlErrors": 0,
+          "otherQmlErrorSamples": []
+        },
+        "result": "passed"
+      },
+      "authenticatedDesktopHealth": {
+        "result": "passed",
+        "login": "SDDM automatic login after disk unlock, keyring unlocked"
+      },
+      "sharedPasswordChanges": {
+        "result": "passed",
+        "encrypted": true,
+        "roundTrips": 2,
+        "keyringStored": true,
+        "accountChanges": 2,
+        "checks": [
+          "real packaged worker and PAM",
+          "old disk key rejected",
+          "reboot and automatic desktop login after disk unlock",
+          "login keyring unlocked with changed password"
+        ]
+      }
+    },
+    "isoReleaseIdentity": {
+      "architecture": "x86_64-linux",
+      "configurationApi": 1,
+      "narHash": "sha256-VxpQKP12RU1OXMN89Njo3Jg+MVBehoUzbv4EapmJ+yo=",
+      "nixos": "26.05",
+      "pluginApi": 1,
+      "revision": "uncommitted",
+      "updaterApi": 1,
+      "version": "1.0.0-beta.5"
+    },
+    "result": "passed",
+    "scope": "actual ISO install, installed boot/login, encryption; no update application",
+    "observations": [
+      {
+        "key": [
+          "loading",
+          0
+        ],
+        "observedAt": 1793045436.6779766,
+        "elapsed": 0,
+        "message": "Checking this installation medium\u2026"
+      },
+      {
+        "key": [
+          "development",
+          0
+        ],
+        "observedAt": 1793045438.852118,
+        "elapsed": 0,
+        "message": "This is an unreleased development build. Use it only for testing on a backed-up or disposable disk."
+      },
+      {
+        "key": [
+          "setup",
+          0
+        ],
+        "observedAt": 1793045439.1560607,
+        "elapsed": 0,
+        "message": "Preparing the bundled test build\u2026"
+      },
+      {
+        "key": [
+          "review",
+          0
+        ],
+        "observedAt": 1793045444.7001445,
+        "elapsed": 0,
+        "message": "Preparing the bundled test build\u2026"
+      },
+      {
+        "key": [
+          "installing",
+          1
+        ],
+        "observedAt": 1793045445.4928339,
+        "elapsed": 0,
+        "message": "Preparing the selected disk\u2026"
+      },
+      {
+        "key": [
+          "installing",
+          4
+        ],
+        "observedAt": 1793045465.866623,
+        "elapsed": 20,
+        "message": "Building and installing your complete desktop\u2026"
+      },
+      {
+        "key": [
+          "complete",
+          6
+        ],
+        "observedAt": 1793045708.6850429,
+        "elapsed": 0,
+        "message": "Retaining the tested sources and finishing installation\u2026"
+      }
+    ]
+  },
+  "beta6": {
+    "kind": "iso-installation-performance-qualification",
+    "isoSha256": "74d07ff07ed9d05498801ce957bf837bce7ce2b16b41aeca9dfa934c1cb39d22",
+    "checks": {
+      "encrypted-standard": {
+        "milestones": {
+          "isoSourceIdentity": {
+            "result": "passed"
+          },
+          "nativeGuiAssertions": {
+            "result": "passed",
+            "installerOnlyRuntime": "tty1 kiosk as cybexos-installer; no live account, compositor or display manager",
+            "display": [
+              1280,
+              800
+            ],
+            "developmentConsent": "Enter on the screen",
+            "lowercaseUsername": "typed CybexQA; the screen kept cybexqa",
+            "reviewedPlan": {
+              "username": "cybexqa",
+              "fullName": "Cybex QA",
+              "hostname": "cybexqa-cybexos",
+              "timezone": "Europe/Amsterdam",
+              "keyboard": "us",
+              "encrypted": true,
+              "autoLogin": true,
+              "features": {
+                "developer": true,
+                "proprietary": true,
+                "steam": true,
+                "docker": true,
+                "podman": true,
+                "tailscale": true,
+                "connectedWidgets": true,
+                "assistant": true,
+                "localNetworkServices": true
+              }
+            },
+            "completed": {
+              "username": "cybexqa",
+              "hostname": "cybexqa-cybexos",
+              "encrypted": true
+            },
+            "observedElapsedSeconds": 204.326,
+            "workerElapsedSeconds": 168,
+            "pollingIntervalSeconds": 20
+          },
+          "installerCompleted": {
+            "result": "passed",
+            "interface": "tty1 Slint screen with real QMP keyboard and pointer input",
+            "applications": "standard"
+          },
+          "installedBootAndSerialPasswordLogin": {
+            "result": "passed"
+          },
+          "quietBoot": {
+            "result": "passed",
+            "linesOnConsole": {
+              "kernel": 0,
+              "efiStub": 0
+            },
+            "plymouthTextViewStatusLines": 156,
+            "scope": "serial console of the installed boot until the login prompt"
+          },
+          "installedBootMenu": {
+            "result": "passed",
+            "checks": [
+              "GRUB with the installer theme",
+              "labelled exact-system generations",
+              "removable fallback loader",
+              "firmware boot entry",
+              "quiet kernel command line"
+            ]
+          },
+          "prebuiltStoreTransfer": {
+            "paths": 3376,
+            "seconds": 68.834
+          },
+          "installedSourceIdentity": {
+            "result": "passed",
+            "isoRelease": {
+              "architecture": "x86_64-linux",
+              "configurationApi": 1,
+              "narHash": "sha256-472b7XdZ/7605zmLSqCBaaEeKwTT/DKudiGaW3aXxuI=",
+              "nixos": "26.05",
+              "pluginApi": 1,
+              "revision": "uncommitted",
+              "updaterApi": 1,
+              "version": "1.0.0-beta.6"
+            },
+            "installedRelease": {
+              "architecture": "x86_64-linux",
+              "configurationApi": 1,
+              "narHash": "sha256-472b7XdZ/7605zmLSqCBaaEeKwTT/DKudiGaW3aXxuI=",
+              "nixos": "26.05",
+              "pluginApi": 1,
+              "revision": "uncommitted",
+              "updaterApi": 1,
+              "version": "1.0.0-beta.6"
+            },
+            "installedSource": {
+              "lastModified": 0,
+              "narHash": "sha256-472b7XdZ/7605zmLSqCBaaEeKwTT/DKudiGaW3aXxuI=",
+              "path": "/nix/store/19fk3kkaxm7r9cj2mdm78zz8idz33gx4-source",
+              "type": "path"
+            },
+            "scope": "same exact source NAR; bundled path inputs have no Git revision metadata"
+          },
+          "runtimeEncryption": {
+            "result": "passed",
+            "encrypted": true
+          },
+          "desktopConfigurationCheck": {
+            "result": "passed"
+          },
+          "welcomeFirstLogin": {
+            "result": "passed",
+            "opened": true,
+            "fullScreenLayer": "qs-welcome",
+            "steppedAsideForWindow": true,
+            "resumed": true,
+            "dismissed": true,
+            "unmapped": true,
+            "helloSummaryServices": {
+              "region": {
+                "loaded": true,
+                "failed": false
+              },
+              "input": {
+                "loaded": true,
+                "failed": false
+              }
+            }
+          },
+          "keyboardShortcutsRuntime": {
+            "userLuaBefore": "absent",
+            "defaults": {
+              "actions": 99,
+              "binds": 107,
+              "describedBinds": 107,
+              "requiredActions": 40,
+              "stateError": null,
+              "evalErrorNil": true,
+              "browser": [
+                "SUPER + B"
+              ]
+            },
+            "keymap": {
+              "entries": 478,
+              "keycode10": "1",
+              "layout": [
+                [
+                  "us",
+                  "English (US)"
+                ]
+              ]
+            },
+            "applied": {
+              "browser": [
+                "SUPER + ALT + B"
+              ],
+              "custom": [
+                {
+                  "group": "Web",
+                  "id": "custom.qa-docs",
+                  "keys": [
+                    "SUPER + ALT + D"
+                  ],
+                  "label": "QA docs",
+                  "run": {
+                    "type": "url",
+                    "url": "https://example.org"
+                  }
+                }
+              ],
+              "diagnostics": [],
+              "customBind": [
+                {
+                  "locked": false,
+                  "mouse": false,
+                  "release": false,
+                  "repeat": false,
+                  "longPress": false,
+                  "non_consuming": false,
+                  "auto_consuming": false,
+                  "has_description": true,
+                  "modmask": 72,
+                  "submap": "",
+                  "submap_universal": "false",
+                  "key": "D",
+                  "keycode": 0,
+                  "catch_all": false,
+                  "description": "Web: QA docs",
+                  "allow_input_capture": false,
+                  "dispatcher": "__lua",
+                  "arg": "186"
+                }
+              ]
+            },
+            "reset": {
+              "browser": [
+                "SUPER + B"
+              ],
+              "custom": [],
+              "changedRows": 0
+            },
+            "userLuaAfter": "absent",
+            "settingsPage": {
+              "opened": "cybexos-runtime ipc settings open shortcuts",
+              "page": "shortcuts"
+            },
+            "journal": {
+              "lines": 10,
+              "onboardingQmlErrors": [],
+              "otherQmlErrors": 0,
+              "otherQmlErrorSamples": []
+            },
+            "result": "passed"
+          },
+          "authenticatedDesktopHealth": {
+            "result": "passed",
+            "login": "SDDM automatic login after disk unlock, keyring unlocked"
+          },
+          "sharedPasswordChanges": {
+            "result": "passed",
+            "encrypted": true,
+            "roundTrips": 2,
+            "keyringStored": true,
+            "accountChanges": 2,
+            "checks": [
+              "real packaged worker and PAM",
+              "old disk key rejected",
+              "reboot and automatic desktop login after disk unlock",
+              "login keyring unlocked with changed password"
+            ]
+          }
+        },
+        "isoReleaseIdentity": {
+          "architecture": "x86_64-linux",
+          "configurationApi": 1,
+          "narHash": "sha256-472b7XdZ/7605zmLSqCBaaEeKwTT/DKudiGaW3aXxuI=",
+          "nixos": "26.05",
+          "pluginApi": 1,
+          "revision": "uncommitted",
+          "updaterApi": 1,
+          "version": "1.0.0-beta.6"
+        },
+        "lifecycle": {
+          "upstreamWithUnavailableVendor": {
+            "result": "passed",
+            "discovery": {
+              "upstream": {
+                "state": "available",
+                "installed": "da6dc0e7b26060f2f71ce3ef7088fb56ee44fa36",
+                "available": "1f607aa79b6356ed45d3cd3c8079c196e79efa2c",
+                "detail": "Stage upstream to build and review actual package changes."
+              },
+              "cybexos": {
+                "state": "unavailable",
+                "installed": "1.0.0-beta.6",
+                "error": "Release endpoint unavailable (HTTP 404); its status is unknown."
+              },
+              "checkedAt": 1793047300,
+              "installedIdentity": "6e23d9963e4818b3a0922e12e18fe7bf5f6b46ae6f31f64aff3c5182a6c95a04"
+            },
+            "transaction": "42e34f371c5d4842abe58a60688bdda0",
+            "upstreamBefore": {
+              "lastModified": 1792615934,
+              "narHash": "sha256-MlvRfa1O5Cqc2/a+gG+l9TSuowEoCKCmrJ1d9oAVm0I=",
+              "owner": "NixOS",
+              "repo": "nixpkgs",
+              "rev": "da6dc0e7b26060f2f71ce3ef7088fb56ee44fa36",
+              "type": "github"
+            },
+            "upstreamAfter": {
+              "lastModified": 1792898606,
+              "narHash": "sha256-Mg3rRjsbMqhSMxop5PYMXos8SwAjejrxSgVThTvP9eg=",
+              "owner": "NixOS",
+              "repo": "nixpkgs",
+              "rev": "1f607aa79b6356ed45d3cd3c8079c196e79efa2c",
+              "type": "github"
+            },
+            "upstreamChanged": true,
+            "applied": false,
+            "scope": "actual independent discovery and complete upstream worker build/validation; candidate remains unapplied; unchanged identity is not changed-package update qualification"
+          },
+          "personalBaseline": {
+            "result": "passed",
+            "transaction": "ffff14b862d34afe8c93ce10c461b076"
+          },
+          "evaluationFailure": {
+            "result": "passed"
+          },
+          "buildFailure": {
+            "result": "passed"
+          },
+          "interruptedStageRecovery": {
+            "result": "passed"
+          },
+          "unconfirmedTrialFallback": {
+            "result": "passed",
+            "transaction": "29afe4d36ae14c398225749d9b7029b4"
+          },
+          "localApplyBootConfirm": {
+            "result": "passed",
+            "transaction": "4872151a4774483d97c186135ae026ea"
+          },
+          "rollbackAndPersonalPersistence": {
+            "result": "passed"
+          }
+        },
+        "result": "passed",
+        "scope": "actual ISO installation, boot/login, local updater failure/interruption, staged application, GRUB trial boot, unconfirmed-trial fallback, confirmation and rollback; no signed channel or physical qualification",
+        "observations": [
+          {
+            "case": "encrypted-standard",
+            "key": [
+              "loading",
+              0
+            ],
+            "observedAt": 1793046939.2254114,
+            "elapsed": 0,
+            "message": "Checking this installation medium\u2026"
+          },
+          {
+            "case": "encrypted-standard",
+            "key": [
+              "development",
+              0
+            ],
+            "observedAt": 1793046941.397421,
+            "elapsed": 0,
+            "message": "This is an unreleased development build. Use it only for testing on a backed-up or disposable disk."
+          },
+          {
+            "case": "encrypted-standard",
+            "key": [
+              "setup",
+              0
+            ],
+            "observedAt": 1793046941.6981316,
+            "elapsed": 0,
+            "message": "Preparing the bundled test build\u2026"
+          },
+          {
+            "case": "encrypted-standard",
+            "key": [
+              "review",
+              0
+            ],
+            "observedAt": 1793046947.2384355,
+            "elapsed": 0,
+            "message": "Preparing the bundled test build\u2026"
+          },
+          {
+            "case": "encrypted-standard",
+            "key": [
+              "installing",
+              1
+            ],
+            "observedAt": 1793046948.0288234,
+            "elapsed": 0,
+            "message": "Preparing the selected disk\u2026"
+          },
+          {
+            "case": "encrypted-standard",
+            "key": [
+              "installing",
+              4
+            ],
+            "observedAt": 1793046968.4058886,
+            "elapsed": 20,
+            "message": "Copying prebuilt packages from the installation medium\u2026"
+          },
+          {
+            "case": "encrypted-standard",
+            "key": [
+              "complete",
+              6
+            ],
+            "observedAt": 1793047130.0735617,
+            "elapsed": 168,
+            "message": "Retaining the tested sources and finishing installation\u2026"
+          }
+        ]
+      },
+      "plain-minimal": {
+        "milestones": {
+          "isoSourceIdentity": {
+            "result": "passed"
+          },
+          "nativeGuiAssertions": {
+            "result": "passed",
+            "installerOnlyRuntime": "tty1 kiosk as cybexos-installer; no live account, compositor or display manager",
+            "display": [
+              1280,
+              800
+            ],
+            "developmentConsent": "Enter on the screen",
+            "encryptionSwitch": "pointer click turned encryption off",
+            "lowercaseUsername": "typed CybexQA; the screen kept cybexqa",
+            "reviewedPlan": {
+              "username": "cybexqa",
+              "fullName": "Cybex QA",
+              "hostname": "cybexqa-cybexos",
+              "timezone": "Europe/Amsterdam",
+              "keyboard": "us",
+              "encrypted": false,
+              "autoLogin": false,
+              "features": {
+                "developer": false,
+                "proprietary": false,
+                "steam": false,
+                "docker": false,
+                "podman": true,
+                "tailscale": true,
+                "connectedWidgets": false,
+                "assistant": true,
+                "localNetworkServices": true
+              }
+            },
+            "completed": {
+              "username": "cybexqa",
+              "hostname": "cybexqa-cybexos",
+              "encrypted": false
+            },
+            "observedElapsedSeconds": 142.165,
+            "workerElapsedSeconds": 106,
+            "pollingIntervalSeconds": 20
+          },
+          "installerCompleted": {
+            "result": "passed",
+            "interface": "tty1 Slint screen with real QMP keyboard and pointer input",
+            "applications": "minimal"
+          },
+          "installedBootAndSerialPasswordLogin": {
+            "result": "passed"
+          },
+          "quietBoot": {
+            "result": "passed",
+            "linesOnConsole": {
+              "kernel": 0,
+              "efiStub": 0
+            },
+            "plymouthTextViewStatusLines": 152,
+            "scope": "serial console of the installed boot until the login prompt"
+          },
+          "installedBootMenu": {
+            "result": "passed",
+            "checks": [
+              "GRUB with the installer theme",
+              "labelled exact-system generations",
+              "removable fallback loader",
+              "firmware boot entry",
+              "quiet kernel command line"
+            ]
+          },
+          "prebuiltStoreTransfer": {
+            "paths": 3292,
+            "seconds": 56.176
+          },
+          "installedSourceIdentity": {
+            "result": "passed",
+            "isoRelease": {
+              "architecture": "x86_64-linux",
+              "configurationApi": 1,
+              "narHash": "sha256-472b7XdZ/7605zmLSqCBaaEeKwTT/DKudiGaW3aXxuI=",
+              "nixos": "26.05",
+              "pluginApi": 1,
+              "revision": "uncommitted",
+              "updaterApi": 1,
+              "version": "1.0.0-beta.6"
+            },
+            "installedRelease": {
+              "architecture": "x86_64-linux",
+              "configurationApi": 1,
+              "narHash": "sha256-472b7XdZ/7605zmLSqCBaaEeKwTT/DKudiGaW3aXxuI=",
+              "nixos": "26.05",
+              "pluginApi": 1,
+              "revision": "uncommitted",
+              "updaterApi": 1,
+              "version": "1.0.0-beta.6"
+            },
+            "installedSource": {
+              "lastModified": 0,
+              "narHash": "sha256-472b7XdZ/7605zmLSqCBaaEeKwTT/DKudiGaW3aXxuI=",
+              "path": "/nix/store/19fk3kkaxm7r9cj2mdm78zz8idz33gx4-source",
+              "type": "path"
+            },
+            "scope": "same exact source NAR; bundled path inputs have no Git revision metadata"
+          },
+          "runtimeEncryption": {
+            "result": "passed",
+            "encrypted": false
+          },
+          "desktopConfigurationCheck": {
+            "result": "passed"
+          },
+          "welcomeFirstLogin": {
+            "result": "passed",
+            "opened": true,
+            "fullScreenLayer": "qs-welcome",
+            "steppedAsideForWindow": true,
+            "resumed": true,
+            "dismissed": true,
+            "unmapped": true,
+            "helloSummaryServices": {
+              "region": {
+                "loaded": true,
+                "failed": false
+              },
+              "input": {
+                "loaded": true,
+                "failed": false
+              }
+            }
+          },
+          "keyboardShortcutsRuntime": {
+            "userLuaBefore": "absent",
+            "defaults": {
+              "actions": 95,
+              "binds": 100,
+              "describedBinds": 100,
+              "requiredActions": 40,
+              "stateError": null,
+              "evalErrorNil": true,
+              "browser": [
+                "SUPER + B"
+              ]
+            },
+            "keymap": {
+              "entries": 478,
+              "keycode10": "1",
+              "layout": [
+                [
+                  "us",
+                  "English (US)"
+                ]
+              ]
+            },
+            "applied": {
+              "browser": [
+                "SUPER + ALT + B"
+              ],
+              "custom": [
+                {
+                  "group": "Web",
+                  "id": "custom.qa-docs",
+                  "keys": [
+                    "SUPER + ALT + D"
+                  ],
+                  "label": "QA docs",
+                  "run": {
+                    "type": "url",
+                    "url": "https://example.org"
+                  }
+                }
+              ],
+              "diagnostics": [],
+              "customBind": [
+                {
+                  "locked": false,
+                  "mouse": false,
+                  "release": false,
+                  "repeat": false,
+                  "longPress": false,
+                  "non_consuming": false,
+                  "auto_consuming": false,
+                  "has_description": true,
+                  "modmask": 72,
+                  "submap": "",
+                  "submap_universal": "false",
+                  "key": "D",
+                  "keycode": 0,
+                  "catch_all": false,
+                  "description": "Web: QA docs",
+                  "allow_input_capture": false,
+                  "dispatcher": "__lua",
+                  "arg": "172"
+                }
+              ]
+            },
+            "reset": {
+              "browser": [
+                "SUPER + B"
+              ],
+              "custom": [],
+              "changedRows": 0
+            },
+            "userLuaAfter": "absent",
+            "settingsPage": {
+              "opened": "cybexos-runtime ipc settings open shortcuts",
+              "page": "shortcuts"
+            },
+            "journal": {
+              "lines": 10,
+              "onboardingQmlErrors": [],
+              "otherQmlErrors": 0,
+              "otherQmlErrorSamples": []
+            },
+            "result": "passed"
+          },
+          "authenticatedDesktopHealth": {
+            "result": "passed",
+            "login": "SDDM password login"
+          },
+          "sharedPasswordChanges": {
+            "result": "passed",
+            "encrypted": false,
+            "roundTrips": 2,
+            "keyringStored": true,
+            "accountChanges": 2,
+            "checks": [
+              "real packaged worker and PAM",
+              "no disk change",
+              "reboot and password desktop login",
+              "login keyring unlocked with changed password"
+            ]
+          }
+        },
+        "isoReleaseIdentity": {
+          "architecture": "x86_64-linux",
+          "configurationApi": 1,
+          "narHash": "sha256-472b7XdZ/7605zmLSqCBaaEeKwTT/DKudiGaW3aXxuI=",
+          "nixos": "26.05",
+          "pluginApi": 1,
+          "revision": "uncommitted",
+          "updaterApi": 1,
+          "version": "1.0.0-beta.6"
+        },
+        "result": "passed",
+        "scope": "actual ISO install, installed boot/login, encryption; no update application",
+        "observations": [
+          {
+            "case": "plain-minimal",
+            "key": [
+              "loading",
+              0
+            ],
+            "observedAt": 1793048080.2639747,
+            "elapsed": 0,
+            "message": "Checking this installation medium\u2026"
+          },
+          {
+            "case": "plain-minimal",
+            "key": [
+              "development",
+              0
+            ],
+            "observedAt": 1793048082.450279,
+            "elapsed": 0,
+            "message": "This is an unreleased development build. Use it only for testing on a backed-up or disposable disk."
+          },
+          {
+            "case": "plain-minimal",
+            "key": [
+              "setup",
+              0
+            ],
+            "observedAt": 1793048082.7491233,
+            "elapsed": 0,
+            "message": "Preparing the bundled test build\u2026"
+          },
+          {
+            "case": "plain-minimal",
+            "key": [
+              "review",
+              0
+            ],
+            "observedAt": 1793048089.264349,
+            "elapsed": 0,
+            "message": "Preparing the bundled test build\u2026"
+          },
+          {
+            "case": "plain-minimal",
+            "key": [
+              "installing",
+              1
+            ],
+            "observedAt": 1793048090.0524457,
+            "elapsed": 0,
+            "message": "Preparing the selected disk\u2026"
+          },
+          {
+            "case": "plain-minimal",
+            "key": [
+              "installing",
+              4
+            ],
+            "observedAt": 1793048110.4932227,
+            "elapsed": 20,
+            "message": "Copying prebuilt packages from the installation medium\u2026"
+          },
+          {
+            "case": "plain-minimal",
+            "key": [
+              "complete",
+              6
+            ],
+            "observedAt": 1793048211.4932916,
+            "elapsed": 106,
+            "message": "Retaining the tested sources and finishing installation\u2026"
+          }
+        ]
+      }
+    }
+  },
+  "parity": {
+    "kind": "image-source-parity-evidence",
+    "result": "passed",
+    "isoSha256": "74d07ff07ed9d05498801ce957bf837bce7ce2b16b41aeca9dfa934c1cb39d22",
+    "sourceNarHash": "sha256-472b7XdZ/7605zmLSqCBaaEeKwTT/DKudiGaW3aXxuI=",
+    "sourceRevision": "uncommitted",
+    "release": {
+      "architecture": "x86_64-linux",
+      "configurationApi": 1,
+      "narHash": "sha256-472b7XdZ/7605zmLSqCBaaEeKwTT/DKudiGaW3aXxuI=",
+      "nixos": "26.05",
+      "pluginApi": 1,
+      "revision": "uncommitted",
+      "updaterApi": 1,
+      "version": "1.0.0-beta.6"
+    },
+    "checks": {
+      "source": {
+        "files": 1396,
+        "sha256": "1aa8b1dc36764ed84cf705d5b154482f43f6c97969a13a9010e7e6806a76d16d"
+      },
+      "desktop": {
+        "files": 769,
+        "sha256": "1351ce8ba70329dec86995b39b702060e1aeb452e07b6ff041eb40ed338f2196"
+      },
+      "updater": {
+        "files": 83,
+        "sha256": "435a8d1c6c7b8b3937b80a2929c44a17b8269c36a8e25f3d2d52b202cc5eee65"
+      },
+      "installerUi": {
+        "files": 4,
+        "sha256": "1beb4a7395d09d818625269354031360ffce7be67d3c0b54f3c3b4d5c44ec6ca"
+      },
+      "installerScreen": {
+        "files": 1,
+        "sha256": "bce583d9aff7191716b3a8f3e7796200034a721f5afdcbf63bad01be9496621b"
+      },
+      "payloadSystemPath": {
+        "files": 929,
+        "sha256": "6f05f616b1954ad55bf124458433d6871fe5ea5a4460053d9c74502be7967dca"
+      },
+      "payloadEtc": {
+        "files": 12,
+        "sha256": "eef28f514193538ec9acb41ce3ef68a04674eb6bdee6ef7da9d290684e40068c"
+      },
+      "system": {
+        "files": 10,
+        "sha256": "af8683effc7fc65d7f7704d8318b6ba5383e25942311948af295f99a0f22516c"
+      },
+      "etc": {
+        "files": 6,
+        "sha256": "b21603a46eeef31076de1632116cdf3e2cafb93a6277b15f604ab776c04dff60"
+      },
+      "releaseFile": {
+        "files": 1,
+        "sha256": "22a0b7229040fd899757e17f4f3dc87262499eeb50c29434d5e831cab3136856"
+      },
+      "installerSourceFile": {
+        "files": 1,
+        "sha256": "b719180141aaf857d8ec1e08f196b962f6f6926052f6f7d009cc039842932cae"
+      },
+      "installerInputsFile": {
+        "files": 1,
+        "sha256": "5ae614bc4765b97585858db4c33da52bdcca9a034d1b75e96ba842da3fd99b83"
+      },
+      "inputSource:0": {
+        "files": 92,
+        "sha256": "3b906e5ef19206b26c7dd6a27bf1c2bb4b95d144c9ab8cccd457637d0e5c1c19"
+      },
+      "inputSource:1": {
+        "files": 52926,
+        "sha256": "7ecff51d0af685a538f07a26b1c3a749fbe74758aec40bde9b6d182b3a9a7f0d"
+      },
+      "inputSource:2": {
+        "files": 669,
+        "sha256": "ac16267ad0dc4dfb43e5d887588da649d309df5f7375376f3f773da98e360046"
+      },
+      "inputSource:3": {
+        "files": 5,
+        "sha256": "61cc1022d5187e2dd48d294334f9d711418283d362b725e3774bacfd9ca9cd24"
+      },
+      "inputSource:4": {
+        "files": 56,
+        "sha256": "e166c809e0f33fe979d6643976e7183124cba81b29172ffe5e2fdbdc351fe2b7"
+      },
+      "inputSource:5": {
+        "files": 35,
+        "sha256": "0783f834cf11613b628dacb18313aa6639478f02164af1f1c8626c8b1b89850d"
+      },
+      "inputSource:6": {
+        "files": 934,
+        "sha256": "462679237e67879418e1c4e092e34453312916c748295752646df271d1abbb46"
+      },
+      "inputSource:7": {
+        "files": 24,
+        "sha256": "76237c4886edab782e8b7d44ff726c27080bc3a006e2d8c9ba5ca5b121189d7c"
+      },
+      "quickshell": {
+        "files": 621,
+        "sha256": "b42c7ca7c6949c8d770ca5c71fa858e8074fea280109aa9146ab365ebbbd5c3d"
+      },
+      "hyprlandConfiguration": {
+        "files": 19,
+        "sha256": "2451d151476c5300edc7240b00eda8533ad87e189105894b38798f356d4dc1e0"
+      },
+      "wallpapers": {
+        "files": 7,
+        "sha256": "3280a4ab2f4cda733e6012bb85efe64fabd4b7e7b225df921ed0c7a9fe28dd23"
+      },
+      "desktopSkill": {
+        "files": 5,
+        "sha256": "167d562fff4f6c29730cefbc0c50b1780ffe2f776995b0df0613c707f2e43bcd"
+      },
+      "updaterSkill": {
+        "files": 5,
+        "sha256": "167d562fff4f6c29730cefbc0c50b1780ffe2f776995b0df0613c707f2e43bcd"
+      },
+      "machineTemplate": {
+        "files": 8,
+        "sha256": "de4565e2718fdd2565120b7540246ab244a448a27a12ac0b762d7b21fab8d4de"
+      },
+      "updaterCode": {
+        "files": 17,
+        "sha256": "c19eb69b06de3787a1c6af77823c8799ffae4a67a7d0d82561b9e088cb7fc44c"
+      },
+      "installerService": {
+        "files": 1,
+        "sha256": "3cff6a95427b4d378e8797d5db27d7383a44ea6e8e42b74c5f1dc5727f79a4c1"
+      },
+      "installerNetworkHelper": {
+        "files": 1,
+        "sha256": "11e20249bb07b8b5fb642900b6d624be1fa696631fa1bb2a6d4a4172e2503695"
+      },
+      "updaterExecutable:cybexos-verify-encryption": {
+        "files": 1,
+        "sha256": "a1e9a50041170ad3a5e9fca95939050b1b64bf01f0ab437599e42fddec4b1870"
+      },
+      "updaterExecutable:cybexos-desktop-check": {
+        "files": 1,
+        "sha256": "0b6d1307d7af28b3fbbd9191c4576a9dbce7ca2378e2eb5f653f8b39eb1862dd"
+      },
+      "updaterExecutable:cybexos-boot-trial": {
+        "files": 1,
+        "sha256": "c51762ea9f7d92cdee673526832fc536489ccb92381377c78d275c6c0bcc69db"
+      },
+      "updaterExecutable:cybexos-personal-init": {
+        "files": 1,
+        "sha256": "a6531401986e3d2175ff573c08ac34767b9fa15967658b506caeec22c1b4bb12"
+      },
+      "updaterExecutable:cybexos-health": {
+        "files": 1,
+        "sha256": "1077581b4d977d2b0b550c45697f74eb88580f5cb0e18d4eea10447a942a952b"
+      },
+      "updaterExecutable:cybex": {
+        "files": 1,
+        "sha256": "dc04583bedbed5d622984582c77db08293b1419b13e9940a5de350517f132319"
+      },
+      "updaterExecutable:cybexos-request": {
+        "files": 1,
+        "sha256": "14b9b6bc3a0af50f11784a18ff6fe5668d1e181f9febd7ca1c091596c3e8d296"
+      },
+      "updaterExecutable:cybexos-boot-menu": {
+        "files": 1,
+        "sha256": "f90eb27b636237064ed2dd2c67e361259d130916d0b496f1e5a7d12192bf8ff3"
+      },
+      "updaterExecutable:cybexos-password-worker": {
+        "files": 1,
+        "sha256": "5fa1de4e00bb8557e48ff2a9a59ae07ae45285aeeb7f5f9ed5ad6f372dd740fd"
+      },
+      "updaterExecutable:cybexos-admin": {
+        "files": 1,
+        "sha256": "a6ddcf8792dd6a969ba20908569c1f951bbd99e1bbb1fde612b0d8b1a3e3f220"
+      },
+      "updaterExecutable:cybexos-install": {
+        "files": 1,
+        "sha256": "e9ed5e68811a4dd7dc7a510b5ce54bca1b8970ee6905185a229583de1656d594"
+      }
+    },
+    "scope": "static source/image/package identity, installer screen/service and offline payload parity; no installation/runtime qualification"
+  },
+  "pxe": {
+    "filename": "cybexos-1.0.0-beta.6.iso",
+    "sha256": "74d07ff07ed9d05498801ce957bf837bce7ce2b16b41aeca9dfa934c1cb39d22",
+    "size": 7120576512,
+    "checksumBytes": 91,
+    "httpSha256": "74d07ff07ed9d05498801ce957bf837bce7ce2b16b41aeca9dfa934c1cb39d22",
+    "refresh": {
+      "result": "success"
+    },
+    "status": {
+      "status": "running"
+    },
+    "imagePresent": true,
+    "service": "active"
+  },
+  "notQualified": [
+    "physical hardware",
+    "physical PXE",
+    "BIOS runtime boot",
+    "Secure Boot hardware",
+    "signed vendor channel delivery"
+  ],
+  "cleanup": {
+    "leases": [
+      {
+        "lease": "419ce0d3f38d46d6a51e1a5611838739",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "a928fd64be094c8782858f0d7b134f46",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "84f7439b4c384f59909c6d3807fa1393",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      },
+      {
+        "lease": "71a6e8cd25f34a35bfd4df76764ec2f8",
+        "status": "closed",
+        "remaining": [],
+        "preserved_volumes": [],
+        "errors": []
+      }
+    ],
+    "managedWorkspacesAbsent": true,
+    "taskDirectory": "/var/tmp/cybexos-installer-speed-KuoJWD",
+    "taskDirectoryAbsent": true,
+    "removedTemporaryFileBytes": 4053740,
+    "duplicateIsoBuildOutput": "/nix/store/ca36rmiz3sg3gd87j585j7sgzw460f1l-cybexos-1.0.0-beta.6-x86_64-linux.iso",
+    "duplicateIsoBuildOutputAbsent": true,
+    "pxeStagingDirectoryAbsent": true,
+    "taskOwnedProcessesAbsent": true,
+    "taskOwnedMountsAbsent": true,
+    "qmpTemporaryDirectoriesAbsent": true,
+    "normalSharedNixBuildCacheRetained": true
+  },
+  "retainedArtifacts": [
+    {
+      "path": "/data/pxe/iso/cybexos-1.0.0-beta.6.iso",
+      "bytes": 7120576512,
+      "reason": "requested testing ISO"
+    },
+    {
+      "path": "/data/pxe/iso/cybexos-1.0.0-beta.6.iso.sha256",
+      "bytes": 91,
+      "reason": "testing ISO checksum"
+    }
+  ]
+}

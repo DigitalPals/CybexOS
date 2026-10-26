@@ -280,6 +280,46 @@ class GraphicalProtocolTests(unittest.TestCase):
             self.assertEqual(self.installs, [])
 
 
+class PrebuiltStoreTests(unittest.TestCase):
+    derivation = '/nix/store/' + 'a' * 32 + '-machine.drv'
+    package = '/nix/store/' + 'b' * 32 + '-prebuilt-completions'
+    source = '/nix/store/' + 'c' * 32 + '-source'
+
+    def test_copies_only_available_dependencies_of_the_chosen_machine(self):
+        run = Mock(side_effect=[self.derivation, '\n'.join((self.derivation, self.package, self.source, self.package)), ''])
+        with patch.object(installer.time, 'monotonic', side_effect=[100.0, 102.5]):
+            result = installer.seed_prebuilt(Path('/run/new-machine'), Path('/run/fresh-target'), run)
+        self.assertEqual(result, {'paths': 2, 'seconds': 2.5})
+        self.assertEqual(run.call_args_list[0].args,
+                         ('nix', 'eval', '--raw', '--no-update-lock-file',
+                          'path:/run/new-machine#nixosConfigurations.cybexos.config.system.build.toplevel.drvPath'))
+        self.assertEqual(run.call_args_list[1].args,
+                         ('nix-store', '--query', '--requisites', '--include-outputs', self.derivation))
+        # An explicit copy reuses allowSubstitutes=false outputs too. No
+        # derivations or packages outside this machine's graph are requested.
+        copied = run.call_args_list[2]
+        self.assertEqual(copied.args, ('nix', 'copy', '--no-check-sigs', '--to', 'local?root=/run/fresh-target', '--stdin'))
+        self.assertEqual(copied.kwargs['input'], (self.package + '\n' + self.source + '\n').encode())
+
+    def test_rejects_invalid_dependency_metadata_before_copying(self):
+        for derivation, closure in (('/tmp/unsafe.drv', self.package),
+                                    (self.derivation, self.package + '\n--all'),
+                                    (self.derivation, self.package + '/../../etc'),
+                                    (self.derivation, '')):
+            run = Mock(side_effect=[derivation, closure])
+            with self.subTest(derivation=derivation, closure=closure), self.assertRaises(installer.Failure):
+                installer.seed_prebuilt(Path('/run/config'), Path('/run/target'), run)
+            self.assertFalse(any(call.args[:2] == ('nix', 'copy') for call in run.call_args_list))
+
+    def test_failed_local_copy_stops_without_a_network_retry_or_reformat(self):
+        error = installer.CommandFailure('nix', 1, 'local store copy failed')
+        run = Mock(side_effect=[self.derivation, self.package, error])
+        with patch.object(installer, 'ensure_network') as network, self.assertRaises(installer.CommandFailure):
+            installer.seed_prebuilt(Path('/run/config'), Path('/run/target'), run)
+        self.assertEqual(run.call_count, 3)
+        network.assert_not_called()
+
+
 class HardwareTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory(prefix='cybexos-installer-fixture-')
@@ -331,6 +371,8 @@ class DiskSafetyTests(unittest.TestCase):
         return patch.object(installer.tempfile, 'TemporaryDirectory', side_effect=temporary)
 
     def setUp(self):
+        prebuilt = patch.object(installer, 'seed_prebuilt', return_value={'paths': 12, 'seconds': 0.1})
+        self.prebuilt = prebuilt.start(); self.addCleanup(prebuilt.stop)
         network = patch.object(installer, 'ensure_network')
         network.start(); self.addCleanup(network.stop)
         timezone = patch.object(installer, 'known_timezone', return_value=True)
@@ -561,6 +603,8 @@ class FullNameMachineTests(DiskSafetyTests):
 
 class TestedNixpkgsTests(unittest.TestCase):
     def setUp(self):
+        prebuilt = patch.object(installer, 'seed_prebuilt', return_value={'paths': 12, 'seconds': 0.1})
+        prebuilt.start(); self.addCleanup(prebuilt.stop)
         timezone = patch.object(installer, 'known_timezone', return_value=True)
         timezone.start(); self.addCleanup(timezone.stop)
         layout = patch.object(installer, 'layout', return_value={'minimumDiskGiB': 64, 'espGiB': 16})

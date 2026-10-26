@@ -69,6 +69,18 @@ The flow is **Welcome → Disk → You → Review → Installing → Done**:
   log belongs to this boot only.
 - **Done** offers restart or power off; installation never reboots by itself.
 
+Before building the desktop, the installer explicitly copies already-built
+dependencies from the medium into the fresh machine's Nix store. This also
+reuses outputs such as shell completions that prohibit cache substitution and
+would otherwise be rebuilt by `nixos-install`. The dependency graph comes from
+the reviewed machine configuration, so an application group is not copied just
+because it is bundled on the medium. Nix verifies the transferred contents;
+only this trusted local copy waives signatures, as with the installer’s existing
+source transfer. Remote cache verification remains enabled. Hardware and account
+configuration still build through the normal NixOS installer. The installation
+record at `/var/lib/cybexos/installation.json` records the number of seeded paths
+and transfer time, and the completion status retains the elapsed time.
+
 A stop before any disk change explains the cause and the next steps: Secure Boot
 (with **Restart into firmware settings**; the installer never turns Secure Boot
 off), a legacy BIOS boot, an unauthenticated medium or a missing network. A

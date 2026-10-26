@@ -719,12 +719,15 @@ QA_DEFAULTS''', timeout=60)
             raise RuntimeError('Reviewed plan differs from the screen input: ' + json.dumps(plan))
         evidence['reviewedPlan'] = {key: plan.get(key) for key in ('username', 'fullName', 'hostname', 'timezone', 'keyboard', 'encrypted', 'autoLogin', 'features')}
         shot('review.png')
+        install_started = time.monotonic()
         self.click(1024, 755, size)
         self.wait_installer(lambda s: s.get('phase') in ('installing', 'complete'), 'the erase confirmation', timeout=120)
         shot('installing.png')
         state = self.wait_installer(lambda s: s.get('phase') == 'complete', 'installation', timeout=10800, interval=20)
         shot('installation-complete.png')
-        evidence.update(result='passed', completed=state.get('result'))
+        evidence.update(result='passed', completed=state.get('result'),
+                        observedElapsedSeconds=round(time.monotonic() - install_started, 3),
+                        workerElapsedSeconds=state.get('elapsed'), pollingIntervalSeconds=20)
         return evidence
 
     def stop(self):
@@ -1063,6 +1066,9 @@ grep -qw quiet /proc/cmdline && test "$(cut -f1 /proc/sys/kernel/printk)" = 3'''
             'GRUB with the installer theme', 'labelled exact-system generations', 'removable fallback loader',
             'firmware boot entry', 'quiet kernel command line']}
         vm.command('test -L /etc/nixos && test -e /etc/cybexos/runtime/quickshell/shell.qml')
+        installation = json.loads(vm.command('cat /var/lib/cybexos/installation.json').strip())
+        if 'prebuilt' in installation:
+            milestones['prebuiltStoreTransfer'] = installation['prebuilt']
         installed_identity=json.loads(vm.command('cat /etc/cybexos/release.json').strip())
         installed_source=json.loads(vm.command('''python3 - <<'QA_SOURCE'
 import json
