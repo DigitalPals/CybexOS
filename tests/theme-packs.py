@@ -106,12 +106,14 @@ class Schema(Scratch):
             # Stored canonically, so a re-save never churns the vendor files.
             self.assertEqual((directory / 'theme.json').read_text(), packs.canonical(theme))
 
-    def test_the_default_theme_is_a_fresh_install(self):
+    def test_the_cybexos_preset_keeps_default_colours_as_an_explicit_fixed_choice(self):
         cybexos = packs.find('cybexos')
         patch = packs.settings_patch(cybexos)
         defaults = packs.APPEARANCE_DEFAULTS
-        for key in ('themeMode', 'paletteMode', 'accent', 'barColorMode', 'themePalette'):
+        for key in ('themeMode', 'accent', 'barColorMode', 'themePalette'):
             self.assertEqual(patch[key], defaults[key], key)
+        self.assertEqual(defaults['paletteMode'], 'wallpaper')
+        self.assertEqual(patch['paletteMode'], 'fixed')
         self.assertNotIn('font', patch, 'the default theme leaves the font alone')
 
     def test_settings_patch(self):

@@ -2,9 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import Quickshell.Hyprland
 import "WelcomeHelpers.js" as Helpers
-import "KeybindEditor.js" as KeybindEditor
 
 Singleton {
     id: root
@@ -30,13 +28,7 @@ Singleton {
     property bool directoryReady: false
     property bool resetPending: false
     readonly property string step: document.step
-    readonly property var practice: document.practice
-    readonly property bool practicing: open && step === "keys"
     readonly property bool hasHyprland: Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") !== ""
-    readonly property var windows: Hyprland.toplevels.values.filter(win => win.title !== "Welcome to Cybex OS").map(win => win.address)
-    readonly property var workspace: Hyprland.focusedMonitor && Hyprland.focusedMonitor.activeWorkspace
-        ? Hyprland.focusedMonitor.activeWorkspace.id : null
-    property var tracker: Helpers.sequence(null, [])
     property string firstName: Quickshell.env("USER") || ""
     readonly property var checklist: Helpers.checklist({
         assistantAvailable: Assistant.available, assistant: Assistant.agentReady,
@@ -101,7 +93,7 @@ Singleton {
         changed(Object.assign({}, document, {checklist: items}));
     }
     function status() {
-        return JSON.stringify({open: open, status: document.status, step: step, practice: practice, checklist: checklist});
+        return JSON.stringify({open: open, status: document.status, step: step, checklist: checklist});
     }
     function reset() {
         open = false;
@@ -109,20 +101,6 @@ Singleton {
         saveTimer.stop();
         resetPending = true;
         if (!writeInFlight) resetRequest.running = true;
-    }
-    function observe(event) {
-        if (!practicing) return;
-        const result = Helpers.reduce(practice, tracker, event);
-        tracker = result.tracker;
-        if (JSON.stringify(practice) !== JSON.stringify(result.practice))
-            changed(Object.assign({}, document, {practice: result.practice}));
-    }
-    // Effective keys from Keybindings (defaults, keybindings.json and live
-    // user.lua changes), as keycap labels: [["Super", "Space"], ...]. An
-    // empty list means the action is unbound, or not loaded yet. Data is
-    // read only while WelcomeWindow holds its Keybindings claim.
-    function keysFor(id) {
-        return Keybindings.keysFor(id).map(keys => KeybindEditor.display(keys)).filter(caps => caps.length > 0);
     }
     function refreshWebapps() { if (!webappList.running) webappList.running = true; }
     function removeWebapp(id) {
@@ -172,16 +150,8 @@ Singleton {
         if (resetPending) resetRequest.running = true;
         else if (success) saveTimer.restart();
     }
-    onPracticingChanged: {
-        if (practicing) tracker = Helpers.sequence(workspace, windows);
-    }
-    onWindowsChanged: observe({type: "windows", ids: windows})
-    onWorkspaceChanged: observe({type: "workspace", id: workspace})
     Connections { target: Backup; function onStatusChanged() { root.backupRead = true; } }
     Connections { target: Settings; function onLoadedChanged() { root.maybeOpen(); } }
-    Connections { target: Launcher; function onOpenChanged() { root.observe({type: "launcher", open: Launcher.open}); } }
-    Connections { target: Overview; function onOpenChanged() { root.observe({type: "overview", open: Overview.open}); } }
-    Connections { target: Session; function onKeysOpenChanged() { root.observe({type: "shortcuts", open: Session.keysOpen}); } }
     Timer { id: saveTimer; interval: 120; onTriggered: root.saveNow() }
     Timer {
         interval: 10000; repeat: true; running: root.open && root.step === "finish"

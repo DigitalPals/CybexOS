@@ -44,8 +44,8 @@ function colorIn(value) {
         ? value.toLowerCase() : "";
 }
 
-// Matugen emits { colors: { role: { dark, default, light } } }. Unknown roles
-// are ignored and all required light/dark values must be present.
+// Matugen 4 emits { colors: { role: { dark: { color }, light: { color } } } }.
+// Unknown roles are ignored; all required light/dark values must be present.
 function sanitizeMatugen(value) {
     var parsed = parseObject(value);
     var colors = parsed && parsed.colors;
@@ -58,8 +58,8 @@ function sanitizeMatugen(value) {
         var role = colors[inputName];
         if (!role || typeof role !== "object")
             return null;
-        var dark = colorIn(role.dark);
-        var light = colorIn(role.light);
+        var dark = colorIn(role.dark && role.dark.color);
+        var light = colorIn(role.light && role.light.color);
         if (dark === "" || light === "")
             return null;
         palette.dark[outputName] = dark;

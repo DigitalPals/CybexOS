@@ -3,8 +3,8 @@ import QtQuick
 import Quickshell
 import "../Common"
 
-// One virtualized, preview-only grid for local files and Wallhaven results.
-// Enter selects; applying always belongs to the preview's explicit action.
+// One virtualized grid for local files and Wallhaven results. Enter selects;
+// the containing picker decides whether to preview or immediately apply it.
 GridView {
     id: root
     property var items: []
@@ -43,7 +43,7 @@ GridView {
         height: root.cellHeight
         activeFocusOnTab: index === root.currentIndex
         Accessible.role: Accessible.Button
-        Accessible.name: I18n.format("Preview wallpaper %1", [modelData.label || modelData.fileName])
+        Accessible.name: I18n.format("Select wallpaper %1", [modelData.label || modelData.fileName])
         Accessible.selected: chosen
         Accessible.onPressAction: activate()
         function activate() {

@@ -5,6 +5,7 @@ import io
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 import dbus
 import gi
@@ -16,7 +17,7 @@ from websockets.sync.client import connect
 # preserved capture, clipboard, network, audio, night-light and assistant flows.
 required_commands = (
     'satty', 'wayfreeze', 'tesseract', 'zbarimg', 'qrencode', 'hyprpicker', 'hyprsunset',
-    'magick', 'notify-send', 'wtype', 'pactl', 'wpctl', 'wl-copy', 'wl-paste', 'cliphist',
+    'magick', 'matugen', 'notify-send', 'wtype', 'pactl', 'wpctl', 'wl-copy', 'wl-paste', 'cliphist',
     'grim', 'slurp', 'wf-recorder', 'ffmpeg', 'vainfo', 'jq', 'pgrep', 'find', 'grep', 'sed', 'awk',
     'xdg-open', 'curl', 'node', 'iw', 'ip', 'brightnessctl', 'playerctl', 'nmcli',
     'bluetoothctl', 'upower', 'powerprofilesctl', 'restic', 'ssh', 'age', 'tar', 'zstd',
@@ -35,6 +36,17 @@ assert Image.open(io.BytesIO(png)).size == (2, 2)
 qr = subprocess.check_output(['qrencode', '-t', 'ASCII', '-m', '2', '-o', '-'], input=b'Cybex OS dependency check')
 assert b'##' in qr and len(qr.splitlines()) > 10
 assert subprocess.check_output(['node', '-p', 'JSON.stringify({runtime:"ok"})'], text=True).strip() == '{"runtime":"ok"}'
+# Exercise the exact palette command and the shell's parser, in the wrapped
+# package environment: a developer's PATH must not hide a missing generator
+# or a change in Matugen's JSON format.
+runtime = Path(__file__).resolve().parents[1] / 'share/cybexos/runtime'
+palette = subprocess.check_output(['timeout', '20s', 'matugen', 'image',
+    str(runtime / 'wallpapers/moon-mountains.png'), '--type', 'scheme-tonal-spot',
+    '--source-color-index', '0', '--dry-run', '--json', 'hex', '--quiet'])
+subprocess.run(['node', '-e',
+    'const helpers = require(process.argv[1]); '
+    'if (!helpers.sanitizeMatugen(require("node:fs").readFileSync(0, "utf8"))) process.exit(1);',
+    str(runtime / 'quickshell/Common/PaletteHelpers.js')], input=palette, check=True)
 
 versions = {
     'Gio': '2.0', 'GLibUnix': '2.0', 'NM': '1.0', 'Secret': '1',
@@ -72,4 +84,4 @@ subprocess.run(['python3', '-I', '-c',
                 'import gi, dbus; from PIL import Image; from websockets.sync.client import connect; '
                 'gi.require_version("Fwupd", "2.0"); from gi.repository import Fwupd; assert Fwupd.Client.new()'],
                check=True)
-print('Desktop executable, OCR, image, QR, Node, Python, GI, schema and GIO TLS dependency checks passed')
+print('Desktop executable, palette, OCR, image, QR, Node, Python, GI, schema and GIO TLS dependency checks passed')

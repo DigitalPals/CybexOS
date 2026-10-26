@@ -1,8 +1,9 @@
 # Wallpapers
 
-Open **Settings → Wallpaper** or the welcome guide's wallpaper step. The same
-picker offers **Cybex OS collection**, **Wallhaven** and **My pictures**.
-Selecting a tile previews it. **Use this wallpaper** applies the selection.
+Open **Settings → Wallpaper** for **Cybex OS collection**, **Wallhaven** and
+**My pictures**. Selecting a tile previews it; **Use this wallpaper** applies it.
+The welcome guide embeds the same picker directly in Wallhaven, without source
+tabs, and selecting a tile there downloads and applies it immediately.
 Arrow keys move around the grid, Enter selects, Tab reaches the filters and
 preview actions, and Escape returns to the containing window.
 
@@ -15,9 +16,9 @@ names never change.
 The collection contains seven original procedural landscapes under the
 repository's MIT licence; `assets/PROVENANCE.json` records their origin. A
 fresh desktop shows `moon-mountains.png` without saving a wallpaper preference
-or deriving a new colour palette. The overview, bar preview and lock screen
-use that same default. The fixed theme remains active until you choose an
-image and enable wallpaper colours.
+or copying the image to your picture folder. The overview, bar preview and
+lock screen use that same default. Wallpaper colours are enabled by default, including for this
+initial image; an explicitly selected fixed palette remains fixed.
 
 Applying a collection image copies it into the configured wallpaper folder
 (default `~/Pictures/Wallpapers`) with a `cybexos-` prefix. Existing files are
@@ -63,9 +64,9 @@ swatches also come with listings and do not need a detail request. Attribution
 strings are bounded and displayed as plain text; navigation links accept only
 HTTP(S). Image and download URLs must match Wallhaven's known hosts and paths.
 
-Full Wallhaven images are never bundled or downloaded in advance. **Use this
-wallpaper** explicitly downloads into your own wallpaper folder, then applies
-the file. Only one download runs at a time; choosing another image to apply
+Full Wallhaven images are never bundled or downloaded in advance. Selecting a
+wallpaper in the welcome guide, or choosing **Use this wallpaper** in Settings,
+downloads into your own wallpaper folder and then applies the file. Only one download runs at a time; choosing another image to apply
 cancels the older download and the latest choice wins. Errors and progress
 appear in the preview, with progress also on the tile. The uploader and source
 help identify the creator; Wallhaven's listing does not grant a reuse licence.
@@ -87,7 +88,10 @@ import "../Settings" as SettingsUi
 SettingsUi.WallpaperPicker {
     anchors.fill: parent
     embedded: true
+    tab: "online"
+    showSources: false
     automaticOnlineLoad: true
+    applyOnSelect: true
     onApplied: fileName => welcomeStep.wallpaperApplied(fileName)
     onEscapeRequested: welcomeWindow.finishLater()
 }
@@ -101,7 +105,10 @@ Public properties and signals:
   capped at 36% of the picker width.
 - `tab: string = "collection"`: `collection`, `online` or `library`.
   Settings synchronizes it with `OnlineWallpapers.view`; the welcome step
-  can keep its own tab state.
+  opens in `online`.
+- `showSources: bool = true`: show the source tabs. The welcome step hides them.
+- `applyOnSelect: bool = false`: apply an online tile when explicitly selected.
+  The welcome step enables this; Settings retains preview-then-apply.
 - `automaticOnlineLoad: bool = false`: gate the initial online listing on
   `OnlineWallpapers.autoLoadAllowed()`. Set **true in the welcome guide**.
   An unknown answer waits for the local probe; metered/unknown users can

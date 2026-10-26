@@ -92,7 +92,7 @@ URL_MAX = 512
 APPEARANCE_DEFAULTS = {
     'theme': '',
     'themeMode': 'dark',
-    'paletteMode': 'fixed',
+    'paletteMode': 'wallpaper',
     'accent': '#60a5fa',
     'font': 'mono',
     'barColorMode': 'default',

@@ -20,15 +20,14 @@ Rectangle {
     readonly property bool shortHeight: root.height - footer.height - Theme.scaled(28) < Theme.scaled(520)
     readonly property int stepIndex: Helpers.STEPS.indexOf(Welcome.step)
     readonly property var titles: [I18n.format("Welcome, %1", [Welcome.firstName]), I18n.tr("Find your view."),
-        I18n.tr("Make it feel like home."), I18n.tr("A little practice goes a long way."),
+        I18n.tr("Make it feel like home."),
         I18n.tr("Your keyboard has superpowers."), I18n.tr("You are all set.")]
     readonly property var leads: [I18n.tr("Let’s make Cybex OS yours. Start with what is already in place."),
-        I18n.tr("Pick something you love looking at. Hold Space to peek at your desktop."),
+        I18n.tr("Choose a Wallhaven wallpaper to apply it. Hold Space to peek at your desktop."),
         I18n.tr("Choose your colours and comfort. This is your desktop, live."),
-        I18n.tr("Try five small moves. We will notice each one as you do it."),
         I18n.tr("A few familiar shortcuts, and room to make your own."),
         I18n.tr("The essentials are ready. The rest can happen whenever you like.")]
-    readonly property var labels: [I18n.tr("Hello"), I18n.tr("Wallpaper"), I18n.tr("Style"), I18n.tr("Practice"), I18n.tr("Shortcuts")]
+    readonly property var labels: [I18n.tr("Hello"), I18n.tr("Wallpaper"), I18n.tr("Style"), I18n.tr("Shortcuts")]
     readonly property var optionalLabels: ({webapps: I18n.tr("Web apps"), assistant: I18n.tr("AI assistant"),
         fingerprint: I18n.tr("Fingerprint"), security: I18n.tr("Security keys"), backup: I18n.tr("Backups"), accounts: I18n.tr("Online accounts")})
     color: Theme.panelSurface
@@ -221,7 +220,7 @@ Rectangle {
             width: parent.width - closeAction.width; spacing: Theme.scaled(10)
             GuideText {
                 width: parent.width
-                text: root.stepIndex < 5 ? I18n.format("Step %1 of 5 · Make it yours", [root.stepIndex + 1]).toUpperCase() : I18n.tr("Ready when you are").toUpperCase()
+                text: root.stepIndex < root.labels.length ? I18n.format("Step %1 of %2 · Make it yours", [root.stepIndex + 1, root.labels.length]).toUpperCase() : I18n.tr("Ready when you are").toUpperCase()
                 tone: "accent"; font.pixelSize: Theme.typography.metadata; font.weight: Theme.weightSemibold; font.letterSpacing: 1
             }
             GuideText { width: parent.width; text: root.titles[root.stepIndex]; font.pixelSize: Theme.typography.display; font.weight: Theme.weightSemibold }
@@ -247,7 +246,7 @@ Rectangle {
                 height: !stepItem ? 0 : Welcome.step === "wallpaper"
                     ? Math.max(scroller.height, stepItem.implicitHeight) : stepItem.implicitHeight
                 source: ({hello: "HelloStep.qml", wallpaper: "WallpaperStep.qml", style: "StyleStep.qml",
-                    keys: "KeysStep.qml", shortcuts: "ShortcutsStep.qml", finish: "FinishStep.qml"})[Welcome.step]
+                    shortcuts: "ShortcutsStep.qml", finish: "FinishStep.qml"})[Welcome.step]
             }
             NumberAnimation { id: transition; target: content; property: "opacity"; from: 0; to: 1; duration: Theme.popoutContentFadeDuration }
 

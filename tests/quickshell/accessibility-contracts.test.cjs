@@ -148,7 +148,7 @@ test("reduced-motion mode stops infinite activity loops instead of busy-looping 
     }
 });
 
-test("the reusable wallpaper picker separates accessible preview and apply actions", () => {
+test("the reusable wallpaper picker exposes accessible selection and apply actions", () => {
     const picker = read("Settings/WallpaperPicker.qml");
     const grid = read("Settings/WallpaperGrid.qml");
     const preview = read("Settings/WallpaperPreviewPanel.qml");
@@ -158,7 +158,7 @@ test("the reusable wallpaper picker separates accessible preview and apply actio
     assert.match(picker, /Keys.onEscapePressed/);
     assert.match(grid, /activeFocusOnTab: index === root.currentIndex/);
     assert.match(grid, /Accessible.role: Accessible.Button/);
-    assert.match(grid, /Accessible.name:.*Preview wallpaper %1/);
+    assert.match(grid, /Accessible.name:.*Select wallpaper %1/);
     assert.match(grid, /Accessible.selected: chosen/);
     for (const key of ["Left", "Right", "Up", "Down", "Return", "Enter"])
         assert.match(grid, new RegExp(`Qt.Key_${key}`));

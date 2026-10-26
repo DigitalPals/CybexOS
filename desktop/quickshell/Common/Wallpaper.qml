@@ -46,7 +46,7 @@ Singleton {
     property var activeThumbnailBatch: []
     property int thumbnailAnswered: 0
     readonly property int thumbnailBatchLimit: 24
-    readonly property string currentIdentity: dir + "/" + Settings.wall
+    readonly property string currentIdentity: Settings.wall !== "" ? dir + "/" + Settings.wall : defaultPath
 
     readonly property string current:
         Settings.wall !== "" ? url(dir + "/" + Settings.wall) : url(defaultPath)

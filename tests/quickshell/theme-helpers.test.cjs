@@ -57,7 +57,7 @@ test("every built-in theme maps to values the settings schema stores unchanged",
     }
 });
 
-test("the theme keys default-fill for existing settings, so nobody's look changes", () => {
+test("theme keys fill missing settings and preserve explicit palettes", () => {
     const d = H.defaults();
     assert.equal(d.theme, "");
     assert.deepEqual(d.themePalette, H.defaultThemePalette());
@@ -78,8 +78,12 @@ test("the theme keys default-fill for existing settings, so nobody's look change
     // A stored palette is an explicit choice, like every other key.
     assert.deepEqual(H.overrideKeys({ v: H.VERSION, themePalette: byId("nord").patch.themePalette }),
         ["themePalette"]);
-    // A fresh install shows the default theme, unmodified, with no dirty mark.
-    assert.deepEqual(T.current(entries, d), { value: "cybexos", label: "Cybex OS", modified: false });
+    // Wallpaper colours are the fresh default; a fixed palette is still an
+    // explicit choice and can match the built-in Cybex OS preset.
+    assert.deepEqual(T.current(entries, d), { value: "", label: "Custom", modified: false });
+    const fixed = H.merge({v: H.VERSION, paletteMode: "fixed"});
+    assert.equal(fixed.paletteMode, "fixed");
+    assert.deepEqual(T.current(entries, fixed), { value: "cybexos", label: "Cybex OS", modified: false });
     assert.equal(T.differsFromDefault(d, d), false);
 });
 

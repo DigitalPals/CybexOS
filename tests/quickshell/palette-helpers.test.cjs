@@ -28,7 +28,7 @@ const light = {
 function output() {
     const colors = { ignored_role: { dark: "#000000", light: "#ffffff" } };
     for (const input of P.ROLE_KEYS)
-        colors[input] = { dark: dark[input], default: dark[input], light: light[input] };
+        colors[input] = { dark: {color: dark[input]}, default: {color: dark[input]}, light: {color: light[input]} };
     return { colors };
 }
 
@@ -50,7 +50,7 @@ test("malformed and incomplete Matugen output is rejected", () => {
     delete missing.colors.primary.light;
     assert.equal(P.sanitizeMatugen(missing), null);
     const badColor = output();
-    badColor.colors.surface.dark = "rgb(0,0,0)";
+    badColor.colors.surface.dark.color = "rgb(0,0,0)";
     assert.equal(P.sanitizeMatugen(badColor), null);
 });
 

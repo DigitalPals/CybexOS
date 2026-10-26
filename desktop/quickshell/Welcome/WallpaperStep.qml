@@ -10,7 +10,10 @@ Item {
     SettingsUi.WallpaperPicker {
         anchors.fill: parent
         embedded: true
+        tab: "online"
+        showSources: false
         automaticOnlineLoad: true
+        applyOnSelect: true
         onEscapeRequested: Welcome.dismiss()
     }
 }

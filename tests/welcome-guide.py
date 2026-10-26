@@ -73,9 +73,23 @@ TEST_IPC = '''
     }
     IpcHandler {
         target: "welcome-test"
-        function tab(value: string): void { shell.testItem("wallpaperPicker").tab = value; }
+        function seedWallhaven(): void {
+            const items = ["aaa111", "bbb222"].map((id, index) => ({id: id,
+                fileName: "wallhaven-" + id + ".png", label: "Wallpaper " + id,
+                image: "https://w.wallhaven.cc/full/" + id.slice(0, 2) + "/wallhaven-" + id + ".png",
+                thumb: Wallpaper.url(Quickshell.shellDir + "/../../assets/wallpapers/"
+                    + (index === 0 ? "moon-mountains.png" : "quiet-fjord.png")),
+                page: "https://wallhaven.cc/w/" + id,
+                width: 2560, height: 1440, size: 0, colors: []}));
+            const details = {};
+            for (const item of items)
+                details[item.id] = Object.assign({}, item, {uploader: "", source: "", tags: []});
+            OnlineWallpapers.detailsCache = details;
+            OnlineWallpapers.results = items;
+            OnlineWallpapers.searched = true;
+        }
         function focusGrid(): void {
-            const grid = shell.testFind(shell.testItem("wallpaperPicker"), item => item.focusItem !== undefined && item.selectedKey !== undefined);
+            const grid = shell.testFind(shell.testItem("wallpaperPicker"), item => item.visible && item.online === true && item.focusItem !== undefined);
             grid.focusItem(grid.currentIndex);
         }
         function focusSearch(): void { shell.testItem("wallhavenSearch").forceActiveFocus(); }
@@ -87,22 +101,25 @@ TEST_IPC = '''
         }
         function colourOpen(): string { const filter = shell.testItem("wallhavenColour"); return String(!!filter && filter.opened); }
         function focusRoot(): void { shell.testItem("welcomeView").focusInitial(); }
-        function task(id: string): void {
-            shell.testFind(welcomeWindow.contentItem, item => item.tasks !== undefined && item.selected !== undefined).selected = id;
-        }
         function state(): string {
             const picker = shell.testItem("wallpaperPicker");
             const view = shell.testItem("welcomeView");
             const search = shell.testItem("wallhavenSearch");
             const keys = {};
-            for (const id of ACTION_IDS) keys[id] = Welcome.keysFor(id);
+            for (const id of ACTION_IDS) keys[id] = Keybindings.keysFor(id);
             return JSON.stringify({picker: picker !== null, tab: picker ? picker.tab : "",
+                showSources: picker ? picker.showSources : true,
+                applyOnSelect: picker ? picker.applyOnSelect : false,
                 selected: picker && picker.selected ? picker.selected.fileName || "" : "",
                 wall: Settings.wall, current: Wallpaper.current, peeking: view ? view.peeking : false,
                 shortHeight: view ? view.shortHeight : null, footer: Theme.scaled(76), margins: [Theme.scaled(16), Theme.scaled(28)], step: Theme.scaled(520),
                 railShown: view ? view.railShown : null,
                 search: search ? search.text : null, searchFocus: search ? search.activeFocus : false,
                 keysLoaded: Keybindings.loaded, watchers: SystemSettings.keybindings.watchers, keys: keys,
+                paletteMode: Settings.paletteMode, paletteReady: TestCommon.Palette.ready, paletteBusy: TestCommon.Palette.busy,
+                paletteError: TestCommon.Palette.error, paletteActive: Theme.paletteActive,
+                paletteIdentity: TestCommon.Palette.wallpaperIdentity, primary: TestCommon.Palette.primary.toString(),
+                themeMode: Settings.themeMode,
                 requests: OnlineWallpapers.requestTimes.length});
         }
     }
@@ -149,7 +166,7 @@ class Session:
         config.mkdir(parents=True)
         (config / 'dev-source').write_text(str(self.source) + '\n')
         # A fresh installation: no wallpaper chosen and no wallpaper folder.
-        self.write_settings({'v': 30, 'assistantShown': False, 'paletteMode': 'fixed'})
+        self.write_settings({'v': 30, 'assistantShown': False})
         self.env = {**os.environ, 'HOME': str(self.home), 'XDG_RUNTIME_DIR': str(self.runtime),
             'XDG_CONFIG_HOME': str(self.home / '.config'), 'XDG_DATA_HOME': str(self.home / '.local/share'),
             'XDG_STATE_HOME': str(self.home / '.local/state'), 'XDG_CACHE_HOME': str(self.home / '.cache'),
@@ -179,7 +196,7 @@ class Session:
         shell = self.source / 'desktop/quickshell'
         ids = 'const ACTION_IDS = ' + json.dumps(list(ACTIONS)) + ';'
         entry = shell / 'shell.qml'
-        text = entry.read_text()
+        text = entry.read_text().replace('import "Common"\n', 'import "Common"\nimport "Common" as TestCommon\n')
         assert text.count('    WelcomeWindow {}\n') == 1
         entry.write_text(text.replace('    WelcomeWindow {}\n', '    WelcomeWindow { id: welcomeWindow }\n'
             + TEST_IPC.replace('const keys = {};', ids + '\n            const keys = {};'), 1))
@@ -188,6 +205,18 @@ class Session:
             text = path.read_text()
             assert '    id: root\n' in text, name
             path.write_text(text.replace('    id: root\n', f'    id: root\n    objectName: "{owner}"\n', 1))
+        # Scripted download boundary: no Wallhaven traffic in a UI regression.
+        # The real singleton still runs its helper, saves, applies and emits
+        # completion; Matugen and the QML palette path run unchanged.
+        (shell / 'scripts/wallpaper-download.py').write_text('''import pathlib, shutil, sys
+image, directory, size = sys.argv[1:]
+destination = pathlib.Path(directory)
+destination.mkdir(parents=True, exist_ok=True)
+name = image.rsplit('/', 1)[-1]
+source = pathlib.Path(__file__).resolve().parents[3] / 'assets/wallpapers'
+shutil.copyfile(source / ('quiet-fjord.png' if 'bbb222' in name else 'moon-mountains.png'), destination / name)
+print('done ' + name, flush=True)
+''')
 
     @property
     def settings_path(self):
@@ -351,7 +380,9 @@ def main():
     from PIL import Image, ImageOps
     shots = args.screenshots
     shots.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='cybexos-welcome-', dir=shots) as temporary:
+    # Keep XDG_RUNTIME_DIR short enough for Quickshell's Unix IPC socket,
+    # even when requested screenshots live under a long task output path.
+    with tempfile.TemporaryDirectory(prefix='cxw-') as temporary:
         base = Path(temporary)
         native = base / 'native'
         subprocess.run(['cmake', '-S', str(ROOT / 'desktop/notification-images'), '-B', str(native),
@@ -395,28 +426,31 @@ def main():
             other_diff = region_difference(first, expected['quiet-fjord.png'], strip)
             assert default_diff < 6 and other_diff > default_diff * 3, (default_diff, other_diff)
 
+            session.wait(lambda: session.probe().get('paletteActive'), 'default wallpaper palette')
+            assert session.probe()['paletteError'] == ''
+            assert session.ipc('open', 'keys') == 'unknown'
             assert session.ipc('open', 'unknown') == 'unknown'
-            for step in ('hello', 'wallpaper', 'style', 'keys', 'shortcuts', 'finish'):
+            for step in ('hello', 'wallpaper', 'style', 'shortcuts', 'finish'):
                 assert session.ipc('open', step) == 'ok'
                 session.wait(lambda: session.state().get('step') == step, step)
                 if step == 'wallpaper':
-                    session.wait(lambda: (p := session.probe()).get('picker') and p.get('selected'), 'picker preview')
-                if step == 'keys':
+                    session.wait(lambda: (p := session.probe()).get('picker') and p.get('tab') == 'online', 'Wallhaven picker')
+                if step == 'shortcuts':
                     session.wait(lambda: session.probe().get('keysLoaded'), 'Keybindings loaded')
                 session.capture(shots, 'welcome-' + step + '-en.png')
 
             # Keycaps come from Keybindings: the remapped launcher, a
             # disabled action, and Close window marked "Not bound".
+            session.ipc('open', 'shortcuts')
+            session.wait(lambda: session.probe().get('watchers') == 1, 'shortcut claim')
             probe = session.probe()
             assert probe['watchers'] == 1, probe
             keys = probe['keys']
-            assert keys['shell.launcher'] == [['Super', 'Alt', 'L']], keys
+            assert keys['shell.launcher'] == ['SUPER + ALT + L'], keys
             assert keys['windows.close'] == [], keys
-            assert keys['apps.terminal'] == [['Super', 'Enter']], keys
-            assert keys['workspaces.switch.2'] == [['Super', '2']], keys
-            session.ipc('open', 'keys')
-            session.call('welcome-test', 'task', 'terminal')
-            session.capture(shots, 'welcome-keys-unbound-en.png')
+            assert keys['apps.terminal'] == ['SUPER + Return'], keys
+            assert keys['workspaces.switch.2'] == ['SUPER + 2'], keys
+            session.capture(shots, 'welcome-shortcuts-unbound-en.png')
 
             # Enter activates the primary action with initial page focus.
             session.ipc('open', 'finish')
@@ -428,26 +462,53 @@ def main():
             session.ipc('open', '')
             assert session.state()['step'] == 'hello'
 
-            # The shared picker in the guide: choose and apply a bundled
-            # wallpaper by keyboard. Enter selects, it never continues.
+            # Selecting an online tile applies immediately, without visiting
+            # the preview's Apply action. The scripted download saves a real
+            # image; the real Matugen must drive the next step's palette.
             session.ipc('open', 'wallpaper')
-            session.wait(lambda: session.probe().get('tab') == 'collection', 'collection tab')
+            session.wait(lambda: session.probe().get('tab') == 'online', 'Wallhaven tab')
+            probe = session.probe()
+            assert not probe['showSources'] and probe['applyOnSelect'], probe
+            assert probe['selected'] == '' and probe['wall'] == '', probe
+            assert probe['requests'] == 0, 'unknown metering must not contact Wallhaven'
+            session.call('welcome-test', 'seedWallhaven')
             keyboard = session.start(['wtype', '-s', '800', '-d', '100', '-k', 'Right', '-k', 'Return',
-                                      '-s', '1200', '-k', 'Tab', '-k', 'Return', '-s', '200'], 'keyboard.log')
+                                      '-s', '200'], 'keyboard.log')
             time.sleep(.25)
             session.focus()
             session.call('welcome-test', 'focusGrid')
-            session.wait(lambda: session.probe().get('selected') == 'quiet-fjord.png', 'keyboard selection')
+            session.wait(lambda: session.probe().get('selected') == 'wallhaven-bbb222.png', 'keyboard selection')
             assert keyboard.wait(timeout=10) == 0, 'wtype failed'
-            applied = session.wait(lambda: (p := session.probe()).get('wall') == 'cybexos-quiet-fjord.png' and p,
-                                   'bundled wallpaper applied')
+            applied = session.wait(lambda: (p := session.probe()).get('wall') == 'wallhaven-bbb222.png' and p,
+                                   'online wallpaper automatically applied')
             assert session.state()['step'] == 'wallpaper', 'Enter in the picker must not continue'
-            assert json.loads(session.call('wallpaper', 'list'))['current'] == 'cybexos-quiet-fjord.png'
+            assert json.loads(session.call('wallpaper', 'list'))['current'] == 'wallhaven-bbb222.png'
+            session.ipc('open', 'style')
+            generated = session.wait(lambda: (p := session.probe()).get('paletteReady')
+                and not p['paletteBusy'] and p['paletteIdentity'].endswith('/wallhaven-bbb222.png') and p,
+                'selected wallpaper palette')
+            assert generated['paletteMode'] == 'wallpaper' and generated['paletteActive'], generated
+            assert generated['paletteError'] == '', generated
+            expected_palette = json.loads(subprocess.check_output(['matugen', 'image',
+                str(ROOT / 'assets/wallpapers/quiet-fjord.png'), '--type', 'scheme-tonal-spot',
+                '--source-color-index', '0', '--dry-run', '--json', 'hex', '--quiet'], env=session.env))
+            assert generated['primary'] == expected_palette['colors']['primary']['dark']['color'], generated
+            session.patch_settings(themeMode='light')
+            session.wait(lambda: session.probe().get('primary') == expected_palette['colors']['primary']['light']['color'],
+                         'light wallpaper palette')
+            session.patch_settings(themeMode='dark', paletteMode='fixed')
+            session.ipc('open', 'wallpaper')
+            session.ipc('open', 'style')
+            session.wait(lambda: session.probe().get('paletteMode') == 'fixed', 'explicit fixed colours preserved')
+            session.call('welcome-test', 'focusRoot')
+            session.key('-k', 'Return')
+            session.wait(lambda: session.state().get('step') == 'shortcuts', 'Style continues directly to Shortcuts')
+            session.patch_settings(paletteMode='wallpaper')
+            session.ipc('open', 'wallpaper')
             session.capture(shots, 'welcome-wallpaper-applied-en.png')
 
             # Space types in Wallhaven search and does not peek. Metering is
             # unknown in this private session, so no request is made.
-            session.call('welcome-test', 'tab', 'online')
             session.wait(lambda: session.probe().get('search') is not None, 'Wallhaven view')
             # Attach the virtual keyboard first: a new one moves seat focus.
             typing = session.start(['wtype', '-s', '1000', 'sea', '-P', 'space', '-s', '1200', '-p', 'space',
@@ -465,8 +526,6 @@ def main():
             assert re.fullmatch(r'sea +side', searched['search']), searched['search']
             assert searched['requests'] == 0, 'typing must not contact Wallhaven'
             session.capture(shots, 'welcome-wallpaper-search-en.png')
-            session.call('welcome-test', 'tab', 'collection')
-            session.wait(lambda: session.probe().get('tab') == 'collection', 'collection tab again')
 
             # Hold Space: the window fades and the actual desktop shows.
             session.ipc('close')
@@ -541,7 +600,7 @@ def main():
                 session.stop_process(session.shell)
                 session.patch_settings(textScale=scale, interfaceDensity=density)
                 session.start_shell(f'qs-{scale}.log')
-                for step in ('wallpaper', 'keys'):
+                for step in ('wallpaper', 'shortcuts'):
                     session.ipc('open', step)
                     session.wait(session.guide_rect, 'guide')
                     session.sway(f'[title="{TITLE}"] resize set 640 480')
@@ -556,7 +615,7 @@ def main():
                 session.env['CYBEXOS_LANG'] = language
                 session.start_shell(f'qs-tour-{language}.log')
                 for size, (width, height) in (('normal', (1080, 800)), ('minimum', (640, 480))):
-                    for step in ('hello', 'wallpaper', 'style', 'keys', 'shortcuts', 'finish'):
+                    for step in ('hello', 'wallpaper', 'style', 'shortcuts', 'finish'):
                         assert session.ipc('open', step) == 'ok'
                         session.wait(lambda: session.state().get('step') == step and session.guide_rect(), step)
                         session.sway(f'[title="{TITLE}"] resize set {width} {height}')
@@ -567,7 +626,6 @@ def main():
                     # Escape closes only the grid. Metering is unknown here,
                     # so nothing is requested.
                     session.ipc('open', 'wallpaper')
-                    session.call('welcome-test', 'tab', 'online')
                     session.wait(lambda: session.call('welcome-test', 'colour') == 'ok', 'colour filter')
                     session.wait(lambda: session.call('welcome-test', 'colourOpen') == 'true', 'colour grid open')
                     session.capture_guide(shots, f'tour-{language}-{size}-colours.png')
@@ -575,7 +633,6 @@ def main():
                     session.wait(lambda: session.call('welcome-test', 'colourOpen') == 'false', 'Escape closes the grid')
                     assert session.state()['open'], 'Escape in the colour grid must not dismiss the guide'
                     assert session.probe()['requests'] == 0, 'the colour grid must not contact Wallhaven'
-                    session.call('welcome-test', 'tab', 'collection')
             session.ipc('open', 'hello')
             session.capture(shots, 'welcome-hello-nl.png')
             session.ipc('close')
@@ -603,7 +660,7 @@ def main():
             print(json.dumps({'defaultWallpaperDifference': round(default_diff, 2),
                               'otherWallpaperDifference': round(other_diff, 2),
                               'peekDifference': round(peek_diff, 2), 'applied': applied['wall']}))
-            print('PASS: fresh-install default wallpaper, first login, all six steps, Keybindings keycaps '
+            print('PASS: fresh-install default wallpaper, first login, all five steps, Keybindings keycaps '
                   '(remapped/unbound) and claim lifecycle, picker apply, Space typing in search, Space peek '
                   'versus the desktop-only frame, minimum size and text extremes, Finish, keyboard navigation, '
                   'dismissal/resume across restart, Dutch, protected invalid state, reset and environment suppression')

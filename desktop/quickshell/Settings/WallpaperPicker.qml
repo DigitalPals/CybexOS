@@ -12,7 +12,9 @@ Item {
     property bool embedded: false
     property bool compact: embedded
     property string tab: "collection" // collection | online | library
+    property bool showSources: true
     property bool automaticOnlineLoad: false
+    property bool applyOnSelect: false
     property real previewWidth: compact ? 180 : 200
     readonly property var selected: tab === "online" ? OnlineWallpapers.selected : localSelection
     property var localSelection: null
@@ -62,6 +64,8 @@ Item {
 
     PillRow {
         id: tabs
+        visible: root.showSources
+        height: visible ? implicitHeight : 0
         width: parent.width
         model: [
             { value: "collection", label: I18n.tr("Cybex OS collection") },
@@ -74,7 +78,7 @@ Item {
     Item {
         id: listing
         anchors.top: tabs.bottom
-        anchors.topMargin: 12
+        anchors.topMargin: tabs.visible ? 12 : 0
         anchors.left: parent.left
         anchors.right: preview.left
         anchors.rightMargin: 16
@@ -100,7 +104,10 @@ Item {
             anchors.fill: parent
             active: root.tab === "online"
             visible: active
-            sourceComponent: WallpaperOnlineView { automatic: root.automaticOnlineLoad }
+            sourceComponent: WallpaperOnlineView {
+                automatic: root.automaticOnlineLoad
+                onSelected: item => { if (root.applyOnSelect) OnlineWallpapers.apply(item); }
+            }
         }
     }
     WallpaperPreviewPanel {

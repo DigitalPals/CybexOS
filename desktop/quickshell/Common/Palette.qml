@@ -79,7 +79,7 @@ Singleton {
             queuedIdentity = "";
             return;
         }
-        if (identity === "" || Settings.wall === "") {
+        if (identity === "") {
             variants = null;
             ready = false;
             busy = false;
@@ -151,7 +151,8 @@ Singleton {
         activeStamp = stamp;
         // Bounded so an image Matugen chokes on cannot leave `busy` stuck.
         paletteProc.command = ["timeout", "20s"].concat(["matugen", "image", activeIdentity,
-            "--type", "scheme-tonal-spot", "--dry-run", "--json", "hex", "--quiet"]);
+            "--type", "scheme-tonal-spot", "--source-color-index", "0",
+            "--dry-run", "--json", "hex", "--quiet"]);
         paletteProc.running = true;
     }
 

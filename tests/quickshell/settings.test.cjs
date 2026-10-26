@@ -359,7 +359,7 @@ test("schema twenty-three keeps safe defaults and exposes accessibility preferen
     assert.match(helpers, /barRadius:\s*11/);
     assert.match(helpers, /glassEnabled:\s*false/);
     assert.match(helpers, /barColorMode:\s*"default"/);
-    assert.match(helpers, /paletteMode:\s*"fixed"/);
+    assert.match(helpers, /paletteMode:\s*"wallpaper"/);
     assert.match(helpers, /barStyle:\s*"hug"/);
     assert.match(helpers, /function migrateBarStyle\(parsed, defaultsValue\)/);
     assert.match(helpers, /function migratePaletteMode\(parsed, defaultsValue\)/);

@@ -16,9 +16,9 @@ file in the same change and say why.
   The Super+K sheet, the new **Settings → Keyboard shortcuts** page and the
   welcome guide all show the same live data.
 - **Wallpaper picker.** Choosing a wallpaper is the welcome guide's main
-  step. The picker offers the bundled Cybex OS wallpapers offline, Wallhaven
-  online and the user's own folder. The same components are used by
-  Settings.
+  step. The guide opens directly in Wallhaven and applies a tile when selected.
+  Settings uses the same picker with the bundled collection, Wallhaven and
+  the user's own folder, and previews before applying.
 
 Ownership rules, which apply everywhere:
 
@@ -323,7 +323,7 @@ As built:
 ### 2.1 Pieces
 
 - **`Common/Welcome.qml` (singleton).** Holds state, decides when to open,
-  tracks practice tasks and the checklist.
+  tracks progress and the optional checklist.
 - **`Common/WelcomeHelpers.js`.** Pure logic, tested under Node.
 - **`WelcomeWindow.qml`.** A `FloatingWindow` titled exactly
   `Welcome to Cybex OS`; `desktop/hypr/looknfeel.lua` already floats and
@@ -335,7 +335,7 @@ As built:
 
 ```json
 { "v": 1, "status": "new|open|completed|dismissed", "step": "wallpaper",
-  "seen": ["hello", "wallpaper"], "practice": { "launcher": true },
+  "seen": ["hello", "wallpaper"],
   "checklist": { "backup": "later" }, "version": "1.0.0-beta.3", "notified": false }
 ```
 
@@ -365,26 +365,15 @@ As built:
 1. **`hello`.** Greets the user by full name. Shows the installer's choices
    (language, keyboard layout, time zone) with Change links into Settings.
    Shows the network state and offers Connect when offline.
-2. **`wallpaper`.** The wallpaper picker (§3), with tabs: Cybex OS
-   collection, Wallhaven, My pictures. Holding Space fades the window so the
-   desktop shows through.
-3. **`style`.** Dark or light; accent from the wallpaper or a theme preset;
+2. **`wallpaper`.** The wallpaper picker (§3), directly in Wallhaven without
+   source tabs. A selection downloads and applies immediately. Holding Space
+   fades the window so the desktop shows through.
+3. **`style`.** Dark or light; wallpaper colours by default or a theme preset;
    glass; text size and density. It writes the same `Settings` keys as the
    Appearance page.
-4. **`keys`.** Practice. Each task is ticked only when the shell observes it
-   happen:
-   - `launcher`: the launcher opened.
-   - `terminal`: a new toplevel window appeared and then closed.
-   - `workspace`: the focused workspace changed away and came back.
-   - `overview`: the overview opened.
-   - `shortcuts`: the Super+K sheet opened.
-
-   The keycaps come from `Keybindings.keysFor(id)`, so remapped keys are
-   shown. The window is pinned during this step, so it follows workspace
-   switches.
-5. **`shortcuts`.** The keyboard map (§1.7), the main shortcuts with Edit, and
+4. **`shortcuts`.** The keyboard map (§1.7), the main shortcuts with Edit, and
    a link to Settings → Keyboard shortcuts.
-6. **`finish`.** A summary plus an optional checklist. Each item reads its
+5. **`finish`.** A summary plus an optional checklist. Each item reads its
    real state and is never ticked by a click:
    - web apps: keep or remove the seeded ones, add others; Open Software;
    - AI assistant: choose an agent and sign in;
@@ -406,39 +395,31 @@ on Hello); Escape dismisses, preserving progress as specified above.
 Integration notes (as implemented):
 
 - **Wallpaper step.** `Welcome/WallpaperStep.qml` embeds
-  `WallpaperPicker { embedded: true; automaticOnlineLoad: true }` with its own
-  tab state; `escapeRequested` dismisses the guide like Escape elsewhere.
+  `WallpaperPicker { embedded: true; tab: "online"; showSources: false;
+  automaticOnlineLoad: true; applyOnSelect: true }`; `escapeRequested` dismisses the guide like Escape elsewhere.
   `applied` needs no handler: the guide stores no wallpaper progress, and
   Finish reads `Settings.wall`. Holding Space peeks from anywhere on the step,
   including a focused thumbnail or button (Enter activates those), except
   while a `TextInput`/`TextEdit` such as Wallhaven search has focus, where
   Space types. Qt Wayland repeats a held key as release/press pairs, so only
   a non-repeat release ends the peek; losing window activation ends it too.
-- **Keycaps.** `Welcome.keysFor(id)` returns
-  `Keybindings.keysFor(id).map(KeybindEditor.display)`, the keycap-label
-  arrays `Welcome/Keycaps.qml` renders; it starts no process and `[]` means
-  unbound or not loaded. `WelcomeWindow` holds a Keybindings `Claim` while it
-  is visible (`acquire` on show, `release` on hide or destruction), so a
-  closed guide runs nothing. The practice step shows "Not bound" for a loaded
-  action without keys, names each shortcut of a two-shortcut task, and keeps
-  "No live binding is available" for an unavailable model. The workspace
-  pair follows the observed start: `WelcomeHelpers.workspaceActions(start)`
-  returns `["workspaces.switch.<away>", "workspaces.switch.<start>"]`
-  (2 → 1 when unknown; only the way out when the start has no number key).
-  A Node test checks every action ID in the guide against the ungated Lua
-  catalog.
+- **Keycaps.** The Shortcuts step reads `Keybindings.keysFor(id)` and renders
+  them through `KeybindEditor.display`. Its own `Claim` acquires the backend
+  while the step is visible and releases it when the step is hidden or
+  destroyed. Other steps do not watch shortcuts. A Node test checks every
+  action ID in the guide against the ungated Lua catalog.
 - **Small windows.** At the 640 × 480 minimum, or with large text, the step
   rail hides (its optional section hides first when only height is short),
   a short window drops the lead line (the window height decides, never the
-  step area whose margin the choice changes: that was a binding loop), and the practice task list stacks
-  under its card. The wallpaper step fills the viewport, with a
+  step area whose margin the choice changes: that was a binding loop).
+  The wallpaper step fills the viewport, with a
   `Theme.scaled(240)` floor; below it the step scrolls rather than clipping.
 
 ### 2.4 IPC target `welcome`
 
 `open(step: string): string` takes `""` for the saved step and returns `ok`
 or `unknown`. The other calls are `close(): void` and `status(): string`,
-which returns JSON `{ open, status, step, practice, checklist }`.
+which returns JSON `{ open, status, step, checklist }`.
 `reset(): void` exists for tests and qualification; it deletes only
 `welcome.json`.
 

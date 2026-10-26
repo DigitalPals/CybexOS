@@ -16,6 +16,7 @@ Item {
     signal useRequested()
     signal moreLikeRequested()
     readonly property var info: details || item
+    readonly property bool applied: item !== null && online && Settings.wall === item.fileName
     readonly property bool fits: item && item.width > 0 && OnlineWallpapers.screenSizes.every(screen =>
         item.width >= screen.width && item.height >= screen.height)
     function reveal(action) {
@@ -181,10 +182,11 @@ Item {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         primary: true
-        enabled: root.item !== null && !root.busy
+        enabled: root.item !== null && !root.busy && !root.applied
         text: root.busy ? I18n.format("Downloading %1%", [root.progress])
+            : root.applied ? I18n.tr("Applied")
             : useLabel.advanceWidth + 24 <= width ? useLabel.text : I18n.tr("Apply")
-        Accessible.name: root.busy ? text : useLabel.text
+        Accessible.name: root.busy || root.applied ? text : useLabel.text
         onTriggered: root.useRequested()
     }
     TextMetrics {

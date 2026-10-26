@@ -407,7 +407,7 @@ function defaults() {
         barRadius: 11,
         font: "mono",
         accent: "#60a5fa",
-        paletteMode: "fixed",
+        paletteMode: "wallpaper",
         // The named theme applied last ("" for none) and its explicit
         // palette, copied in when it was applied (ThemeHelpers.js).
         theme: "",

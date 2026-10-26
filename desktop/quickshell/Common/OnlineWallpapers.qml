@@ -10,7 +10,7 @@ import "WallhavenHelpers.js" as WallhavenHelpers
 // Creating the singleton never contacts Wallhaven. The chosen view asks for
 // its first listing; welcome first checks metering. Searches and details share
 // one request budget, and cached details survive the Settings view's lifetime.
-// A download starts only from Apply, saves into the user's wallpaper folder,
+// A download starts from an explicit selection/apply, saves into the user's wallpaper folder,
 // and joins the same Matugen/rotation flow as a local file.
 Singleton {
     id: root

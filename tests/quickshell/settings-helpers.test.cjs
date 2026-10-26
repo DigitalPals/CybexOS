@@ -28,7 +28,7 @@ test("defaults carry the design values", () => {
     assert.equal(d.barRadius, 11);
     assert.equal(d.font, "mono");
     assert.equal(d.accent, "#60a5fa");
-    assert.equal(d.paletteMode, "fixed");
+    assert.equal(d.paletteMode, "wallpaper");
     assert.equal(d.position, "top");
     assert.equal(d.barStyle, "hug");
     assert.equal(d.gap, 8);
@@ -493,7 +493,7 @@ test("merge falls back on invalid enums, colors and names", () => {
         "the previous menu face stays selectable");
     assert.equal(H.merge({ themeMode: "sepia" }).themeMode, "dark");
     assert.equal(H.merge({ v: H.VERSION, paletteMode: "auto" }).paletteMode,
-        "fixed");
+        "wallpaper");
     assert.equal(H.merge({ v: H.VERSION, barStyle: "island" }).barStyle, "hug");
     assert.equal(H.merge({ position: "left" }).position, "top");
     const invalidAccessibility = H.merge({

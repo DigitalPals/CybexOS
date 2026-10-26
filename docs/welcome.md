@@ -8,11 +8,14 @@ real desktop immediately. Hold Space on the wallpaper step to peek behind the
 guide; release it to return. While you type in the Wallhaven search field,
 Space types a space instead.
 
-The wallpaper step is the same picker as **Settings → Wallpaper**: the Cybex OS
-collection, Wallhaven and your own pictures. Wallhaven lists wallpapers
-automatically only on a known unmetered connection; nothing is downloaded until
-you choose **Use this wallpaper**. A fresh installation shows the bundled
-*Moon Mountains* wallpaper until you pick another.
+The wallpaper step opens directly in Wallhaven. Selecting a wallpaper downloads
+and applies it immediately; progress and errors appear beside the gallery.
+Wallhaven lists wallpapers automatically on a known unmetered connection.
+Metered or unknown connections show a button to load the listing. A fresh
+installation shows the bundled *Moon Mountains* wallpaper until you pick another.
+The Style step matches your wallpaper's colours by default, using the bundled
+Matugen generator. You can choose fixed colours or a theme preset instead.
+**Settings → Wallpaper** also offers the Cybex OS collection and your own pictures.
 
 Use Tab and Enter to operate controls, and Ctrl+PageUp / Ctrl+PageDown to move
 between steps. Every step is optional. Escape, the close button and **Skip for
@@ -21,14 +24,10 @@ now** keep your progress and dismiss the guide. It will not reopen automatically
 return, or use **Settings → About → Welcome guide**. A completed guide starts
 again at Hello when opened manually.
 
-Practice ticks come from what the shell observes: opening the launcher, opening
-and closing a new window, switching away from your starting workspace and back,
-opening the overview, and opening the shortcut sheet. The task list beside
-the keycaps numbers the five tasks and ticks each one once it is seen. The guide follows you
-between workspaces during practice. Its keycaps show your actual shortcuts,
-including ones changed in Settings or `user.lua`; an action you disabled shows
-**Not bound**. The guide reads them only while it is open. On another
-compositor the live shortcuts may be unavailable; you can still continue.
+The steps are Hello, Wallpaper, Style, Shortcuts and Finish. Shortcuts shows
+your actual bindings, including changes made in Settings or `user.lua`, and
+lets you edit them. An action you disabled shows **Not bound**. The shortcut
+backend runs only while that step is shown.
 
 The step list on the left also lists the optional items, each with its own
 icon and a tick once done; choosing one opens it on the Finish step. The
@@ -57,7 +56,7 @@ The shell exposes:
 ```sh
 cybexos-runtime ipc welcome open ''         # resume, or Hello after completion
 cybexos-runtime ipc welcome open wallpaper # open a particular step
-cybexos-runtime ipc welcome status          # JSON: open/status/step/practice/checklist
+cybexos-runtime ipc welcome status          # JSON: open/status/step/checklist
 cybexos-runtime ipc welcome close           # dismiss, preserving progress
 cybexos-runtime ipc welcome reset           # delete only welcome.json
 ```
@@ -67,17 +66,19 @@ For implementation and integration interfaces, see the
 
 ## Validation
 
-`tests/quickshell/welcome*.test.cjs` cover the pure state logic, the Keybindings
-keycap adapter, the claim wiring and every action ID the guide uses against the
-ungated Lua catalog. `tests/welcome-guide.py --screenshots DIR` runs the real
+`tests/quickshell/welcome*.test.cjs` cover the pure state logic and every action
+ID the guide uses against the ungated Lua catalog.
+`tests/welcome-guide.py --screenshots DIR` runs the real
 shell under a private headless Sway from a private git copy of the checkout
 with a test-only IPC target. Shortcut state is served by a fake `hyprctl`
-(remapped launcher, disabled Close window). It needs `nix develop` plus
-`grim`, `wtype` and ImageMagick on PATH. It checks:
+(remapped launcher, disabled Close window). It runs through `nix develop` and checks:
 
 - the fresh-install default wallpaper behind the first frame, against the
   bundled image;
-- keyboard selection and apply in the embedded picker;
+- direct Wallhaven browsing and automatic apply after keyboard selection, with
+  a scripted offline listing/download boundary;
+- real Matugen generation for the default and selected images, light/dark
+  palettes, explicit fixed-colour preservation, and Style → Shortcuts navigation;
 - Space typing in Wallhaven search without a request;
 - the Space peek, by comparing a frame taken while Space is held (past the
   key-repeat delay) with a desktop-only frame;

@@ -11,10 +11,10 @@ terminal-height: "50%"
 terminal-border: "0"
 
 + image {
-  left = 50%-180
+  left = 50%-90
   top = 12%
-  width = 360
-  height = 85
+  width = 180
+  height = 42
   file = "logo.png"
 }
 + label {

@@ -1,27 +1,22 @@
-// The guide records observations, never success inferred from a button press.
-// Keep transient practice sequences out of the document: after a restart a
-// half-finished window/workspace exercise starts with a fresh baseline.
-var STEPS = ["hello", "wallpaper", "style", "keys", "shortcuts", "finish"];
-var TASKS = ["launcher", "terminal", "workspace", "overview", "shortcuts"];
+// Welcome progress and the optional checklist are independent of preferences.
+var STEPS = ["hello", "wallpaper", "style", "shortcuts", "finish"];
 var ITEMS = ["webapps", "assistant", "fingerprint", "security", "backup", "accounts"];
 function object(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
 function initial(version) {
-    return {v: 1, status: "new", step: "hello", seen: [], practice: {}, checklist: {},
+    return {v: 1, status: "new", step: "hello", seen: [], checklist: {},
         version: String(version || ""), notified: false};
 }
 function validate(value) {
     if (!object(value) || value.v !== 1 || !["new", "open", "completed", "dismissed"].includes(value.status)
             || !STEPS.includes(value.step) || !Array.isArray(value.seen)
             || value.seen.some(id => !STEPS.includes(id)) || new Set(value.seen).size !== value.seen.length
-            || !object(value.practice) || Object.keys(value.practice).some(id => !TASKS.includes(id)
-                || typeof value.practice[id] !== "boolean")
             || !object(value.checklist) || Object.keys(value.checklist).some(id => !ITEMS.includes(id)
                 || value.checklist[id] !== "later")
             || typeof value.version !== "string" || value.version.length > 128
             || (value.notified !== undefined && typeof value.notified !== "boolean"))
         return false;
     // Refuse a newer document rather than silently dropping its fields.
-    return Object.keys(value).every(key => ["v", "status", "step", "seen", "practice", "checklist", "version", "notified"].includes(key));
+    return Object.keys(value).every(key => ["v", "status", "step", "seen", "checklist", "version", "notified"].includes(key));
 }
 function parse(text, version) {
     if (String(text).length > 65536) return {error: "invalid"};
@@ -43,37 +38,6 @@ function resume(state, requested) {
     if (requested && !STEPS.includes(requested)) return null;
     return visit(state, requested || (state.status === "completed" ? "hello" : state.step));
 }
-function sequence(workspace, windows) {
-    return {start: workspace, away: false, baseline: (windows || []).slice(), candidates: []};
-}
-function reduce(practice, tracker, event) {
-    const done = Object.assign({}, practice);
-    const next = Object.assign({}, tracker);
-    if (["launcher", "overview", "shortcuts"].includes(event.type) && event.open === true)
-        done[event.type] = true;
-    if (event.type === "workspace" && tracker.start !== null && event.id !== null) {
-        next.away = tracker.away || event.id !== tracker.start;
-        if (tracker.away && event.id === tracker.start) done.workspace = true;
-    }
-    if (event.type === "windows") {
-        const ids = Array.isArray(event.ids) ? event.ids : [];
-        if (tracker.candidates.some(id => !ids.includes(id))) done.terminal = true;
-        next.candidates = tracker.candidates.filter(id => ids.includes(id)).concat(
-            ids.filter(id => !tracker.baseline.includes(id) && !tracker.candidates.includes(id)));
-    }
-    return {practice: done, tracker: next};
-}
-// Keybindings action IDs for the workspace exercise: leave for a nearby
-// workspace, then return to the observed start. Unknown or unbound starts
-// (null, special or beyond 10) keep the default 2 → 1 pair, or show only the
-// way out when the start has no numbered shortcut.
-function workspaceActions(start) {
-    if (start === null || start === undefined) return ["workspaces.switch.2", "workspaces.switch.1"];
-    const home = Number(start);
-    const valid = Number.isInteger(home) && home >= 1 && home <= 10;
-    const away = valid && home === 2 ? 1 : 2;
-    return valid ? ["workspaces.switch." + away, "workspaces.switch." + home] : ["workspaces.switch." + away];
-}
 function checklist(facts, later) {
     // Web apps are choices, not a task with a correct answer. The security
     // backend can read registrations, but cannot cheaply detect a FIDO reader.
@@ -91,4 +55,4 @@ function firstName(passwd, username) {
     return (name || String(username || "")).split(/\s+/)[0];
 }
 if (typeof module !== "undefined" && module.exports)
-    module.exports = {STEPS, TASKS, ITEMS, initial, validate, parse, serialize, visit, resume, sequence, reduce, workspaceActions, checklist, firstName};
+    module.exports = {STEPS, ITEMS, initial, validate, parse, serialize, visit, resume, checklist, firstName};

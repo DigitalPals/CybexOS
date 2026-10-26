@@ -3,7 +3,7 @@
   gobject-introspection, wrapGAppsNoGuiHook, networkmanager, libsecret,
   gnome-online-accounts, evolution-data-server, libical, fwupd, glib-networking,
   gsettings-desktop-schemas, adwaita-icon-theme,
-  satty, wayfreeze, tesseract, zbar, qrencode, hyprpicker, hyprsunset, imagemagick,
+  satty, wayfreeze, tesseract, zbar, qrencode, hyprpicker, hyprsunset, imagemagick, matugen,
   libnotify, wtype, pulseaudio, pipewire, wireplumber, wl-clipboard, cliphist, grim, slurp,
   wf-recorder, ffmpeg, libva-utils, jq, procps, findutils, gnugrep, gnused, gawk,
   xdg-utils, xdg-terminal-exec, curl, nodejs, iw, iproute2, brightnessctl, playerctl, bluez, upower,
@@ -22,7 +22,7 @@ let
   # desktop environment so optional developer tools or ambient host PATH cannot
   # conceal a missing product dependency (notably Node for connected widgets).
   runtimeTools = [ bash python coreutils quickshell hyprland hyprlock hypridle systemd dbus glib openssl git
-    satty wayfreeze tesseract zbar qrencode hyprpicker hyprsunset imagemagick libnotify wtype
+    satty wayfreeze tesseract zbar qrencode hyprpicker hyprsunset imagemagick matugen libnotify wtype
     pulseaudio pipewire wireplumber wl-clipboard cliphist grim slurp wf-recorder ffmpeg libva-utils jq
     procps findutils gnugrep gnused gawk xdg-utils xdg-terminal-exec curl nodejs iw iproute2 brightnessctl playerctl
     networkmanager bluez upower power-profiles-daemon restic openssh age gnutar zstd util-linux kitty libsecret fwupd
