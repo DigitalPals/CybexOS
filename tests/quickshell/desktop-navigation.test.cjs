@@ -244,7 +244,9 @@ test("ending a process is confirmed, signals by start time, and escalates only w
 test("both surfaces skip layer animations; only the dock is blurred", () => {
     const noAnim = look.match(/name = "quickshell-no-animation",\s*match = \{ namespace = \[\[([^\]]+)\]\] \}/);
     assert.ok(noAnim);
-    assert.match(noAnim[1], /\|overview\|dock\|assistant\)\$$/);
+    assert.match(noAnim[1], /\|overview\|dock\|assistant\|/);
+    // The welcome guide and its resume pill fade themselves.
+    assert.match(noAnim[1], /\|welcome\|welcome-resume\)\$$/);
     const blur = look.match(/name = "quickshell-blur",[\s\S]*?namespace = \[\[([^\]]+)\]\]/);
     assert.ok(blur);
     assert.match(blur[1], /\|dock\)\$$/);

@@ -1,0 +1,520 @@
+<!-- The welcome guide's design comp, approved 2026-10-26: the installer's design
+     (installer/ui-reference/index.html) carried into the first-login guide. The
+     shell (desktop/quickshell/Welcome) and docs/welcome.md are authoritative
+     where they differ. Wallhaven tiles are recoloured local wallpapers. -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cybex OS welcome guide: design reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+@font-face{font-family:SGL;font-weight:400;src:url("../../installer/kiosk/assets/fonts/SpaceGrotesk-Regular.ttf") format("truetype")}
+@font-face{font-family:SGL;font-weight:500;src:url("../../installer/kiosk/assets/fonts/SpaceGrotesk-Medium.ttf") format("truetype")}
+@font-face{font-family:SGL;font-weight:600 700;src:url("../../installer/kiosk/assets/fonts/SpaceGrotesk-Bold.ttf") format("truetype")}
+@font-face{font-family:JBL;font-weight:400;src:url("../../installer/kiosk/assets/fonts/JetBrainsMono-Regular.ttf") format("truetype")}
+@font-face{font-family:JBL;font-weight:500;src:url("../../installer/kiosk/assets/fonts/JetBrainsMono-Medium.ttf") format("truetype")}
+@font-face{font-family:JBL;font-weight:600 700;src:url("../../installer/kiosk/assets/fonts/JetBrainsMono-SemiBold.ttf") format("truetype")}
+.page{font-family:var(--font-sans,system-ui,sans-serif);color:var(--foreground);font-size:14px;line-height:1.5;max-width:1312px;margin:0 auto}
+.controls{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.controls button{font:500 12px var(--font-sans,system-ui,sans-serif);padding:5px 10px;border-radius:999px;border:1px solid var(--border);background:transparent;color:var(--muted-foreground);cursor:pointer}
+.controls button[aria-pressed="true"]{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
+.wrap{position:relative;overflow:hidden;border-radius:10px;box-shadow:0 0 0 1px var(--border)}
+.caption{margin:10px 0 0;color:var(--muted-foreground);font-size:13px}
+.caption b{color:var(--foreground);font-weight:600}
+.gal h3{font:600 15px var(--font-sans,system-ui,sans-serif);margin:28px 0 8px}
+#assets{display:none}
+html.standalone{background:#0f1012;--foreground:#e9e8e2;--muted-foreground:#9a9c95;--border:#2c2e33;--primary:#60a5fa;--primary-foreground:#1a1b1e}
+html.standalone body{margin:0;padding:24px}
+/* ── the installer's 1280×800 canvas and tokens (installer/kiosk/ui/theme.slint) ── */
+.k{--bg:#1A1B1E;--bg-deep:#141517;--card:#202125;--card-2:#26272c;--line:#2f3136;--line-2:#3b3d43;--ink:#F3F2EC;--fog:#A6A8A1;--faint:#6E7069;--accent:#60A5FA;--red:#FF6B57;--amber:#F2C14E;
+ --mono:"JetBrains Mono",JBL,ui-monospace,monospace;position:absolute;left:0;top:0;width:1280px;height:800px;transform-origin:0 0;overflow:hidden;background:var(--bg);color:var(--ink);
+ font-family:"Space Grotesk",SGL,system-ui,sans-serif;font-size:16px;line-height:1.4;-webkit-font-smoothing:antialiased;user-select:none}
+.k *{box-sizing:border-box}.k svg{flex:none}
+.k button{font-family:inherit;color:inherit;text-align:left}
+.k .mono{font-family:var(--mono)}
+.k .top{position:absolute;left:0;right:0;top:0;height:72px;display:flex;align-items:center;padding:0 40px;z-index:2}
+.k .top .logo img{height:39px;display:block}
+.k .steps{position:absolute;left:0;right:0;top:0;height:72px;display:flex;justify-content:center;align-items:center;gap:10px;pointer-events:none}
+.k .steps .s{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--faint);font-weight:500}
+.k .steps .s b{width:24px;height:24px;border-radius:12px;border:1.5px solid var(--line-2);display:grid;place-items:center;font:700 12px var(--mono);color:var(--faint)}
+.k .steps .s.cur{color:var(--ink)}.k .steps .s.cur b{border-color:var(--accent);color:var(--accent)}
+.k .steps .s.done{color:var(--fog)}.k .steps .s.done b{background:rgba(96,165,250,.12);border-color:transparent;color:var(--accent)}
+.k .steps .s b svg{width:13px;height:13px}
+.k .steps .bar{width:40px;height:1.5px;background:var(--line-2)}
+.k .chips{display:flex;gap:8px;margin-left:auto}
+.k .chip{height:36px;border-radius:18px;background:var(--card);border:1px solid var(--line);padding:0 14px;display:inline-flex;align-items:center;gap:8px;font-size:14px;color:var(--fog);cursor:pointer}
+.k .chip:hover{border-color:var(--line-2);color:var(--ink)}
+.k .chip.icon{width:36px;padding:0;justify-content:center}
+.k .chip svg{width:16px;height:16px}
+.k .body{position:absolute;left:0;right:0;top:72px;bottom:88px;padding:28px 64px 0}
+.k .body.full{bottom:0}
+.k .foot{position:absolute;left:0;right:0;bottom:0;height:88px;display:flex;align-items:center;gap:16px;padding:0 64px;border-top:1px solid var(--line)}
+.k .foot .note{flex:1;color:var(--faint);font-size:14px;display:flex;align-items:center;gap:8px}
+.k .foot .note svg{width:16px;height:16px}
+.k .kicker{font:500 12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--fog)}
+.k .kicker.accent{color:var(--accent)}
+.k h1{font-size:50px;line-height:1.04;font-weight:700;letter-spacing:-0.025em;margin:12px 0}
+.k h1.mid{font-size:40px;margin:6px 0 8px}
+.k .lead{font-size:19px;color:var(--fog);max-width:660px}
+.k h1.mid+.lead{max-width:none}
+.k .btn{height:52px;border-radius:12px;padding:0 26px;font-size:17px;font-weight:700;border:1px solid var(--line-2);background:transparent;cursor:pointer;display:inline-flex;align-items:center;gap:10px;white-space:nowrap}
+.k .btn:hover{border-color:var(--fog)}
+.k .btn svg{width:18px;height:18px}
+.k .btn.primary{background:var(--accent);color:#1A1B1E;border-color:var(--accent)}
+.k .btn.small{height:38px;padding:0 14px;font-size:14px;border-radius:10px;font-weight:500}
+.k .btn.small svg{width:16px;height:16px}
+.k .link{background:none;border:0;color:var(--accent);font-size:14px;font-weight:500;cursor:pointer;padding:0}
+.k .card{background:var(--card);border:1px solid var(--line);border-radius:18px}
+.k .lbl{font:500 12px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--fog);display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.k .lbl .aux{letter-spacing:0;text-transform:none;color:var(--faint)}
+.k .in{width:100%;height:52px;border-radius:12px;background:var(--bg-deep);border:1px solid var(--line-2);color:var(--ink);font:400 18px "Space Grotesk",SGL,sans-serif;padding:0 16px;outline:none;user-select:text}
+.k .in::placeholder{color:var(--faint)}
+.k .in:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(96,165,250,.16)}
+.k .toggle{width:48px;height:28px;border-radius:14px;background:var(--line-2);position:relative;border:0;cursor:pointer;flex:none}
+.k .toggle::after{content:"";position:absolute;left:3px;top:3px;width:22px;height:22px;border-radius:11px;background:var(--fog)}
+.k .toggle[aria-checked="true"]{background:var(--accent)}
+.k .toggle[aria-checked="true"]::after{left:23px;background:#1A1B1E}
+.k .row{display:flex;align-items:center;gap:14px}
+.k .checks{padding:0 24px}
+.k .check{display:flex;align-items:center;gap:14px;padding:13px 0;border-top:1px solid var(--line)}
+.k .check .t{width:100px;font-size:15px;color:var(--fog);flex:none}
+.k .check .v{flex:1;font-size:15px;min-width:0}
+.k .check .v small{display:block;color:var(--faint);font-size:13px}
+.k .mk{width:24px;height:24px;border-radius:12px;display:grid;place-items:center;flex:none}
+.k .mk svg{width:14px;height:14px}
+.k .mk.ok{background:rgba(96,165,250,.13);color:var(--accent)}
+.k .opt{display:flex;align-items:center;gap:16px;padding:14px 20px;cursor:pointer}
+.k .opt+.opt{border-top:1px solid var(--line)}
+.k .opt .tx{flex:1;min-width:0}
+.k .opt .tx b{font-weight:600;font-size:17px;display:block}
+.k .opt .tx>span{color:var(--fog);font-size:14px}
+.k .opt>svg{width:22px;height:22px;color:var(--fog)}
+.k .radio{width:24px;height:24px;border-radius:12px;border:1.5px solid var(--line-2);flex:none;display:grid;place-items:center}
+.k .sel>.radio{border-color:var(--accent);background:var(--accent);color:#1A1B1E}
+.k .radio svg{width:14px;height:14px}
+.k ol.howto{margin:0;padding:0;list-style:none;counter-reset:s}
+.k ol.howto li{counter-increment:s;display:flex;gap:14px;padding:8px 0;font-size:17px;align-items:center}
+.k ol.howto li::before{content:counter(s);font:600 13px var(--mono);color:var(--accent);width:26px;height:26px;border-radius:13px;background:rgba(96,165,250,.1);display:grid;place-items:center;flex:none}
+.k ol.howto li span{color:var(--fog)}
+.k .center{text-align:center;display:flex;flex-direction:column;align-items:center}
+.k .symbol img{height:52px;display:block}
+.k .next{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:34px 0 30px;width:1000px}
+.k .next .card{padding:20px 22px;text-align:left;display:flex;gap:16px;align-items:center}
+.k .next .n{font:600 13px var(--mono);color:var(--accent)}
+.k .next b{display:block;font-size:18px;margin:8px 0 4px;font-weight:700}
+.k .next .tx>span{color:var(--fog);font-size:14.5px}
+.k .key{display:inline-block;font:600 15px var(--mono);padding:6px 11px;border-radius:8px;background:var(--bg-deep);border:1px solid var(--line-2);border-bottom-width:3px;color:var(--ink);line-height:1.2}
+.k .key.sm{font-size:12px;padding:3px 8px;border-radius:6px;border-bottom-width:2px}
+.k .plus{color:var(--faint);font-size:13px}
+.k .scrim{position:absolute;inset:0;background:rgba(10,10,11,.62);z-index:5}
+.k .sheet{position:absolute;top:72px;right:24px;bottom:24px;width:460px;background:var(--card);border:1px solid var(--line-2);border-radius:22px;padding:24px 26px;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.45);z-index:6}
+.k .sheet h3{font-size:24px;font-weight:700;margin:0 0 4px;letter-spacing:-0.01em}
+.k .sheet .x{position:absolute;right:18px;top:18px;width:38px;height:38px;border-radius:19px;background:var(--card-2);border:0;cursor:pointer;display:grid;place-items:center;color:var(--fog)}
+.k .sheet .x svg{width:18px;height:18px}
+.k .sheet .sub{color:var(--fog);font-size:14.5px;margin-bottom:16px;padding-right:40px}
+.k .list{overflow:hidden;flex:1;margin:12px -8px 0;padding:0 8px}
+.k .li{display:flex;align-items:center;gap:12px;padding:0 14px;height:54px;border-radius:12px;cursor:pointer;border:1px solid transparent}
+.k .li:hover{background:var(--card-2)}
+.k .li.sel{background:rgba(96,165,250,.08);border-color:rgba(96,165,250,.35)}
+.k .li .a{flex:1;min-width:0}.k .li .a b{font-weight:600;font-size:16px}
+.k .li .a em{display:block;font-style:normal;color:var(--faint);font-size:12.5px;font-family:var(--mono)}
+.k .li svg{width:18px;height:18px;color:var(--accent)}
+/* ── new for the guide, built from the same tokens ── */
+.k .segctl{display:inline-flex;gap:4px;padding:4px;border-radius:12px;background:var(--bg-deep);border:1px solid var(--line-2);flex:none}
+.k .segctl button{height:36px;padding:0 14px;border-radius:9px;border:0;background:transparent;color:var(--fog);font-size:14px;font-weight:500;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.k .segctl button svg{width:16px;height:16px}
+.k .segctl button.on{background:var(--card-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-2)}
+.k .search{position:relative;flex:1;display:block}
+.k .search svg{position:absolute;left:15px;top:14px;width:18px;height:18px;color:var(--faint)}
+.k .search .in{height:46px;font-size:16px;padding-left:44px}
+.k .im{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.k .thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.k .thumb{position:relative;height:130px;border-radius:14px;overflow:hidden;border:1.5px solid var(--line);background:var(--card);cursor:pointer;padding:0}
+.k .thumb:hover{border-color:var(--line-2)}
+.k .thumb.sel{border-color:var(--accent);box-shadow:0 0 0 3px rgba(96,165,250,.16)}
+.k .thumb .badge{position:absolute;right:8px;top:8px;width:24px;height:24px;border-radius:12px;background:var(--accent);color:#1A1B1E;display:grid;place-items:center}
+.k .thumb .badge svg{width:14px;height:14px}
+.k .thumb .cap{position:absolute;left:8px;bottom:8px;font:500 11px var(--mono);background:rgba(20,21,23,.82);padding:2px 7px;border-radius:6px;color:var(--fog)}
+.k .thumb.add{display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;background:var(--bg-deep);border-style:dashed;color:var(--fog);font-size:14px}
+.k .thumb.add svg{width:22px;height:22px}
+.k .sws{display:flex;gap:6px;margin-top:6px}
+.k .sws i{width:22px;height:22px;border-radius:11px;border:1px solid rgba(255,255,255,.14);display:block;cursor:pointer}
+.k .sws i.on{box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--ink)}
+.k .sws.lg{gap:8px}.k .sws.lg i{width:28px;height:28px;border-radius:14px}
+.k .mode{height:72px;border-radius:16px;background:var(--card);border:1.5px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 16px;cursor:pointer;width:100%}
+.k .mode.sel{border-color:var(--accent);box-shadow:0 0 0 3px rgba(96,165,250,.10)}
+.k .mode .pv{width:56px;height:38px;border-radius:8px;border:1px solid var(--line-2);position:relative;overflow:hidden}
+.k .mode .pv.dark{background:#1a1b1e}.k .mode .pv.light{background:#f3f2ec}
+.k .mode .pv::before{content:"";position:absolute;left:0;right:0;top:0;height:7px;background:rgba(127,127,127,.35)}
+.k .mode .pv::after{content:"";position:absolute;left:8px;top:13px;width:28px;height:18px;border-radius:4px;background:rgba(127,127,127,.35)}
+.k .mode .nm{flex:1;font-size:17px;font-weight:600}
+.k .mini{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--line-2);background:#0b0f12;--ts:1}
+.k .mini .mbar{position:absolute;left:0;right:0;top:0;height:calc(20px*var(--ts));display:flex;align-items:center;gap:6px;padding:0 10px;background:rgba(18,19,22,.86);color:#e9e8e2;font:600 calc(9px*var(--ts)) var(--mono)}
+.k .mini .mbar svg{width:10px;height:10px}
+.k .mini.light .mbar{background:rgba(246,245,241,.9);color:#1a1b1e}
+.k .mini .ws{min-width:16px;height:12px;border-radius:4px;background:var(--pa);color:#1a1b1e;display:grid;place-items:center;font-size:8px}
+.k .mini .dot{width:4px;height:4px;border-radius:2px;background:currentColor;opacity:.45}
+.k .mini .clock{position:absolute;left:50%;transform:translateX(-50%)}
+.k .mini .win{position:absolute;left:6%;top:17%;width:60%;height:70%;border-radius:10px;background:#1d1e22;border:1px solid rgba(255,255,255,.08);display:flex;overflow:hidden;color:#e9e8e2;box-shadow:0 12px 30px rgba(0,0,0,.35)}
+.k .mini.glass .win,.k .mini.glass .toast{background:rgba(29,30,34,.7);backdrop-filter:blur(10px)}
+.k .mini.light .win,.k .mini.light .toast{background:#f6f5f1;color:#1a1b1e;border-color:rgba(0,0,0,.08)}
+.k .mini.light.glass .win,.k .mini.light.glass .toast{background:rgba(246,245,241,.78)}
+.k .mini .side{width:32%;padding:10px 8px;border-right:1px solid rgba(127,127,127,.18);display:flex;flex-direction:column;gap:4px}
+.k .mini .side i{display:block;height:calc(17px*var(--ts));border-radius:5px;font-style:normal;font-size:calc(9.5px*var(--ts));padding:0 7px;line-height:calc(17px*var(--ts));opacity:.75}
+.k .mini .side i.on{background:color-mix(in srgb,var(--pa) 22%,transparent);color:var(--pa);opacity:1}
+.k .mini.light .side i.on{color:#1a1b1e;background:color-mix(in srgb,var(--pa) 45%,transparent)}
+.k .mini .main{flex:1;padding:12px 14px;display:flex;flex-direction:column;gap:9px}
+.k .mini .main b{font-size:calc(14px*var(--ts));font-weight:700}
+.k .mini .main p{margin:0;font-size:calc(9.5px*var(--ts));opacity:.7;line-height:1.35}
+.k .mini .mrow{display:flex;align-items:center;justify-content:space-between;font-size:calc(9.5px*var(--ts))}
+.k .mini .tg{width:24px;height:14px;border-radius:7px;background:var(--pa);position:relative}
+.k .mini .tg::after{content:"";position:absolute;right:2px;top:2px;width:10px;height:10px;border-radius:5px;background:#1a1b1e}
+.k .mini.light .tg{background:rgba(127,127,127,.35)}.k .mini.light .tg::after{right:auto;left:2px;background:#fff}
+.k .mini .sl{height:4px;border-radius:2px;background:rgba(127,127,127,.3);position:relative}
+.k .mini .sl::before{content:"";position:absolute;left:0;top:0;bottom:0;width:62%;border-radius:2px;background:var(--pa)}
+.k .mini .pb{align-self:flex-start;margin-top:auto;background:var(--pa);color:#1a1b1e;border-radius:6px;padding:4px 10px;font-size:calc(9.5px*var(--ts));font-weight:700}
+.k .mini .toast{position:absolute;right:4%;top:calc(20px*var(--ts) + 10px);width:32%;border-radius:9px;background:#1d1e22;border:1px solid rgba(255,255,255,.08);padding:8px 10px;display:flex;gap:8px;align-items:center;color:#e9e8e2;font-size:calc(9.5px*var(--ts))}
+.k .mini .toast i{width:18px;height:18px;border-radius:9px;background:var(--pa);flex:none}
+.k .mini .toast small{display:block;opacity:.65}
+.k .kmap{display:flex;flex-direction:column;gap:6px}
+.k .kr{display:flex;gap:6px}
+.k .kc{width:42px;height:42px;border-radius:8px;background:var(--bg-deep);border:1px solid var(--line);border-bottom-width:3px;display:grid;place-items:center;font:500 13px var(--mono);color:var(--faint);padding:0;text-align:center}
+.k .kc.w{flex:1;width:auto;font-size:11px}.k .kc.m{width:56px;font-size:11px}
+.k .kc.lit{color:var(--accent);background:rgba(96,165,250,.10);border-color:rgba(96,165,250,.35);cursor:pointer}
+.k .kc.lit:hover{border-color:var(--accent)}
+.k .kc.on{background:var(--accent);color:#1A1B1E;border-color:var(--accent)}
+.k .kc.held{color:var(--ink);border-color:var(--fog)}
+.k .ksel{margin-top:16px;padding-top:16px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.k .ksel .a{flex:1;margin-left:8px}.k .ksel .a b{font-size:17px;font-weight:600;display:block}.k .ksel .a span{color:var(--fog);font-size:14px}
+.k .ess{padding:6px 20px 8px}
+.k .er{display:flex;align-items:center;gap:6px;height:45px;border-top:1px solid var(--line)}
+.k .er .l{flex:1;font-size:15px}
+.k .er .lk{display:grid;place-items:center;width:18px;color:var(--faint)}.k .er .lk svg{width:14px;height:14px}
+.k .er .ed{width:30px;height:30px;border-radius:8px;border:0;background:transparent;color:var(--faint);display:grid;place-items:center;cursor:pointer;margin-left:4px}
+.k .er .ed:hover{background:var(--card-2);color:var(--ink)}.k .er .ed svg{width:16px;height:16px}
+.k .tmini{position:relative;width:76px;height:50px;border-radius:9px;overflow:hidden;flex:none;border:1px solid var(--line-2)}
+.k .extras{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:14px;max-width:1000px}
+.k .extras .chip{height:44px;border-radius:22px;padding:0 18px;font-size:15px;color:var(--ink)}
+.k .extras .chip svg{width:18px;height:18px;color:var(--fog)}
+.k .extras .chip svg.ck{color:var(--accent)}
+.k .desk{position:absolute;inset:0}
+.k .sbar{position:absolute;left:0;right:0;top:0;height:40px;display:flex;align-items:center;gap:10px;padding:0 14px;background:rgba(14,15,17,.92);font:600 13px var(--mono);color:#e9e8e2}
+.k .sbar .ws{height:24px;min-width:24px;border-radius:6px;background:var(--pa);color:#1a1b1e;display:grid;place-items:center;font-size:12px}
+.k .sbar .dt{width:4px;height:4px;border-radius:2px;background:#6e7069}
+.k .sbar .clk{position:absolute;left:50%;transform:translateX(-50%);background:#1d1e22;padding:4px 12px;border-radius:8px}
+.k .sbar svg{width:16px;height:16px;color:#c8c8c2}
+.k .swin{position:absolute;left:240px;top:92px;width:800px;height:520px;border-radius:14px;background:#1d1e22;border:1px solid #2f3136;display:flex;overflow:hidden;box-shadow:0 30px 70px rgba(0,0,0,.5);font-family:var(--mono)}
+.k .swin .sd{width:220px;background:#191a1d;padding:18px 12px;display:flex;flex-direction:column;gap:4px;font-size:13px;color:#a6a8a1}
+.k .swin .sd i{font-style:normal;padding:8px 12px;border-radius:8px}
+.k .swin .sd i.on{background:color-mix(in srgb,var(--pa) 16%,transparent);color:var(--pa)}
+.k .swin .mn{flex:1;padding:24px 28px}.k .swin .mn h4{margin:0 0 16px;font-size:20px}
+.k .swin .rw{display:flex;justify-content:space-between;padding:14px 0;border-top:1px solid #2f3136;font-size:13px}
+.k .swin .rw span{color:#a6a8a1}
+.k .resume{position:absolute;left:50%;transform:translateX(-50%);bottom:28px;height:60px;border-radius:30px;background:var(--card);border:1px solid var(--line-2);display:flex;align-items:center;gap:14px;padding:0 10px 0 20px;box-shadow:0 18px 50px rgba(0,0,0,.5);white-space:nowrap;z-index:3;font-size:15px}
+.k .resume img{height:20px}.k .resume .t span{color:var(--fog)}
+.k .resume .btn.small{height:40px}.k .resume .chip{height:40px;width:40px}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="controls" id="controls"></div>
+  <div id="view"></div>
+</div>
+<div id="assets">
+  <img id="img-moon-mountains" src="../../assets/wallpapers/moon-mountains.png" alt="">
+  <img id="img-dusk-ridges" src="../../assets/wallpapers/dusk-ridges.png" alt="">
+  <img id="img-blue-hour" src="../../assets/wallpapers/blue-hour.png" alt="">
+  <img id="img-quiet-fjord" src="../../assets/wallpapers/quiet-fjord.png" alt="">
+  <img id="img-copper-horizon" src="../../assets/wallpapers/copper-horizon.png" alt="">
+  <img id="img-forest-distance" src="../../assets/wallpapers/forest-distance.png" alt="">
+  <img id="img-winter-silence" src="../../assets/wallpapers/winter-silence.png" alt="">
+  <img id="img-moon-large" src="../../assets/wallpapers/moon-mountains.png" alt="">
+  <img id="img-logo" src="../../installer/kiosk/assets/logo.svg" alt="">
+  <img id="img-symbol" src="../../installer/kiosk/assets/symbol.svg" alt="">
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const A = n => document.getElementById("img-" + n).src;
+const P = {
+  eth: '<rect x="5" y="4" width="14" height="12" rx="2"/><path d="M9 16v4M15 16v4M9 8v3M12 8v3M15 8v3"/>',
+  wifi: '<path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="1"/>',
+  kb: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  right: '<path d="M9 5l7 7-7 7"/>', search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  image: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 16l-5-5-9 8"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  palette: '<path d="M12 3a9 9 0 1 0 0 18c1.2 0 1.8-.9 1.8-1.8 0-1.2-1-1.5-1-2.6 0-1 .8-1.6 1.8-1.6H17a4 4 0 0 0 4-4C21 6.5 17 3 12 3z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="14.5" cy="7" r="1"/>',
+  drop: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
+  pen: '<path d="M4 20h4L19 9l-4-4L4 16z"/>', lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
+  finger: '<path d="M8 20c1-2 1.5-4.5 1.5-7a2.5 2.5 0 0 1 5 0c0 1.5-.1 3-.4 4.5"/><path d="M5.5 17c.6-1.3 1-2.6 1-4a5.5 5.5 0 0 1 11 0c0 2.6-.4 5-1.2 7"/>',
+  key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M14 9l2 2"/>',
+  archive: '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  apps: '<rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/>',
+  bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  power: '<path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/>',
+};
+const I = (n, c = "") => `<svg class="${c}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${P[n]}</svg>`;
+
+/* ── fixtures ── */
+const CX = [
+  ["moon-mountains", "Moon Mountains", ["#101a29", "#1c2637", "#2c3a52", "#9fb3c2", "#a6c8ff"]],
+  ["dusk-ridges", "Dusk Ridges", ["#221b2b", "#332735", "#4a3550", "#c9a7c7", "#dcb4f0"]],
+  ["blue-hour", "Blue Hour", ["#131a2e", "#1c253d", "#2a3760", "#9eb0e0", "#b4c5ff"]],
+  ["quiet-fjord", "Quiet Fjord", ["#112029", "#1d2e36", "#2a4450", "#9cc3c9", "#8fd0d8"]],
+  ["copper-horizon", "Copper Horizon", ["#281d20", "#3a2827", "#5a3a30", "#e0b090", "#f4b48c"]],
+  ["forest-distance", "Forest Distance", ["#132322", "#1e312a", "#2e4a3e", "#a4c8b0", "#9fd6b4"]],
+  ["winter-silence", "Winter Silence", ["#172231", "#263544", "#3a4d60", "#c4d2e0", "#bcd2ee"]],
+].map(([id, name, pal]) => ({ id, img: id, name, pal, acc: pal[4], src: "Cybex OS collection · 5120 × 2880" }));
+const WHX = [
+  ["k7q2zm", "blue-hour", "20% 60%", 1.6, "hue-rotate(25deg) saturate(1.3)", "#c2b8ff", "3840×2160", "aurora_m"],
+  ["1p3ow9", "copper-horizon", "80% 50%", 1.5, "saturate(1.5)", "#ffb68a", "2560×1440", "kilnlight"],
+  ["gpl8d3", "quiet-fjord", "30% 40%", 1.9, "hue-rotate(-20deg) saturate(1.4)", "#8fd0d8", "3440×1440", "northwall"],
+  ["6dvx5l", "forest-distance", "60% 70%", 1.4, "saturate(1.6) brightness(1.1)", "#9fd6b4", "3840×2160", "mossgrown"],
+  ["zygeko", "dusk-ridges", "50% 50%", 1.7, "hue-rotate(-30deg) saturate(1.6)", "#ffb0c8", "2560×1600", "late.light"],
+  ["rr7q8w", "winter-silence", "10% 30%", 2, "brightness(1.15)", "#bcd2ee", "5120×2880", "frostline"],
+  ["4v5e8n", "moon-mountains", "75% 30%", 2.2, "hue-rotate(160deg)", "#f0c9a0", "3840×2160", "emberfield"],
+  ["m9w3xk", "copper-horizon", "20% 80%", 2, "hue-rotate(180deg) saturate(1.2)", "#8fd4ff", "2560×1440", "tidal"],
+  ["ex9q1j", "blue-hour", "90% 80%", 1.5, "hue-rotate(-60deg) saturate(1.5)", "#8fe0c8", "3840×2160", "glasshouse"],
+];
+const WH = WHX.map(([id, img, pos, z, f, acc, res, by]) => ({ id, img, pos, z, f, acc, res, name: "Wallhaven " + id, src: `by ${by} · ${res}`, pal: [...CX.find(c => c.id === img).pal.slice(0, 4), acc] }));
+const ACCENTS = ["#60a5fa", "#9ecbeb", "#a992e0", "#79b88b", "#d3b47e", "#e8837a"];
+const ACT = { "`": ["Screenshot a region", "Capture"], "1": ["Workspace 1", "Workspaces"], "2": ["Workspace 2", "Workspaces"], "3": ["Workspace 3", "Workspaces"], "4": ["Workspace 4", "Workspaces"], "5": ["Workspace 5", "Workspaces"], "6": ["Workspace 6", "Workspaces"], "7": ["Workspace 7", "Workspaces"], "8": ["Workspace 8", "Workspaces"], "9": ["Workspace 9", "Workspaces"], "0": ["Workspace 10", "Workspaces"], "-": ["Scratchpad", "Windows"], "⌫": ["Toggle transparency", "Windows"], Tab: ["Overview", "Windows"], Q: ["Close window", "Windows"], W: ["WhatsApp", "Web apps"], E: ["Files", "Apps"], T: ["T3 Code", "Apps"], Y: ["YouTube", "Web apps"], I: ["Assistant", "Shell"], P: ["Portal", "Apps"], A: ["Control Panel", "Shell"], S: ["Spotify", "Apps"], D: ["Docker", "Development"], F: ["Toggle floating", "Windows"], G: ["Window group", "Windows"], J: ["Toggle split", "Windows"], K: ["Keyboard shortcuts", "Shell · always kept"], L: ["Lock screen", "Shell · always kept"], "↵": ["Terminal", "Apps"], Z: ["Zoom", "Windows"], X: ["Cut", "Clipboard"], C: ["Copy", "Clipboard"], V: ["Paste", "Clipboard"], B: ["Browser", "Apps · opens your default browser"], N: ["Notifications", "Shell"], M: ["Slack", "Web apps"], ",": ["Settings", "Shell · always kept"], Space: ["Launcher", "Shell"] };
+const ROWS = [
+  ["`", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=", { k: "⌫", w: 1 }],
+  [{ k: "Tab", w: 1 }, "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "[", "]", "\\"],
+  [{ k: "Caps", w: 1 }, "A", "S", "D", "F", "G", "H", "J", "K", "L", ";", "'", { k: "↵", w: 1.3 }],
+  [{ k: "Shift", w: 1 }, "Z", "X", "C", "V", "B", "N", "M", ",", ".", "/", { k: "Shift", w: 1 }],
+  [{ k: "Ctrl", m: 1 }, { k: "Super", m: 1 }, { k: "Alt", m: 1 }, { k: "Space", w: 1 }, { k: "Alt", m: 1 }, { k: "Super", m: 1 }, { k: "Ctrl", m: 1 }],
+];
+const ESS = [["Launcher", ["Super", "Space"]], ["Terminal", ["Super", "Return"]], ["Browser", ["Super", "B"]], ["Files", ["Super", "E"]], ["Overview", ["Super", "Tab"]], ["Close window", ["Super", "Q"]], ["Settings", ["Super", ","], 1], ["All shortcuts", ["Super", "K"], 1], ["Lock screen", ["Super", "L"], 1]];
+const LAYOUTS = [["English (US)", "us"], ["English (US, intl., with dead keys)", "us · intl"], ["English (UK)", "gb"], ["Dutch", "nl"], ["German", "de"], ["French", "fr"], ["Spanish", "es"], ["Swedish", "se"]];
+const EXTRAS = [["globe", "Web apps"], ["sparkle", "AI assistant"], ["finger", "Fingerprint", 1], ["key", "Security keys"], ["archive", "Backups"], ["user", "Online accounts"]];
+const ORDER = ["hello", "wallpaper", "style", "shortcuts", "ready"];
+const VIEWS = [["hello", "1 · Hello"], ["wallpaper", "2 · Wallpaper"], ["style", "3 · Style"], ["shortcuts", "4 · Shortcuts"], ["ready", "5 · Ready"], ["sheet", "Keyboard sheet"], ["aside", "Steps aside"]];
+const CAPTIONS = {
+  hello: "<b>Hello.</b> The installer's first screen, continued: mono kicker, 50 px headline, lead, and a card on the right. The card lists what the installer already set (read from the real backends), so nothing is asked twice. <i>Change</i> and the top-bar chips open installer-style sheets.",
+  wallpaper: "<b>Wallpaper.</b> The installer's three-step stepper returns as Wallpaper · Style · Shortcuts. Choosing a tile applies it straight away. The card shows it on a miniature desktop with the colours Style will use. Hold Space to look at the real desktop. The Wallhaven tiles here are placeholders.",
+  style: "<b>Style.</b> Installer cards, rows and toggles on the left. On the right, a live preview drawn with your real settings. In this mockup you can try Light, an accent, a text size or Glass.",
+  shortcuts: "<b>Shortcuts.</b> Lit keys do something with Super. Choose one to see or change it, using the existing recorder and apply flow. The essentials use the installer's summary rows. Pressing a real shortcut runs it, and the guide steps aside.",
+  ready: "<b>Ready.</b> The installer's done screen, continued: three numbered cards recap your choices, then optional extras each open their Settings page.",
+  sheet: "<b>Sheets.</b> Copied from the installer: a scrim, a 460 px panel from the right and a searchable list. Esc closes it. Used for keyboard, language, time zone and network.",
+  aside: "<b>Stepping aside.</b> The guide fills the screen like the installer. When you open Settings, an app or a shortcut, it moves out of the way and leaves this pill. Resume returns to the same step. Esc or × closes it.",
+};
+
+/* ── state ── */
+const S = { screen: "hello", back: "style", tab: "wallhaven", wall: "moon-mountains", mode: "dark", colour: "wallpaper", accent: "#60a5fa", text: "default", glass: true, key: "B", peek: false, gallery: false };
+const W = () => CX.find(w => w.id === S.wall) || WH.find(w => w.id === S.wall);
+const accent = () => S.colour === "wallpaper" ? W().acc : S.colour === "theme" ? "#88c0d0" : S.accent;
+const wimg = (w, large) => `<img class="im" alt="" src="${large && w.id === "moon-mountains" ? A("moon-large") : A(w.img)}" style="${w.pos ? `object-position:${w.pos};transform:scale(${w.z});transform-origin:${w.pos};` : ""}${w.f ? `filter:${w.f}` : ""}">`;
+const sw = (pal, f) => `<div class="sws"${f ? ` style="filter:${f}"` : ""}>${pal.map(c => `<i style="background:${c}"></i>`).join("")}</div>`;
+
+/* ── chrome ── */
+function topBar(step) {
+  const names = ["Wallpaper", "Style", "Shortcuts"];
+  const steps = step ? names.map((n, i) => `${i ? '<span class="bar"></span>' : ""}<span class="s ${i + 1 < step ? "done" : i + 1 === step ? "cur" : ""}"><b>${i + 1 < step ? I("check") : i + 1}</b>${n}</span>`).join("") : "";
+  return `<div class="top"><div class="logo"><img src="${A("logo")}" alt="Cybex"></div><div class="steps">${steps}</div>
+    <div class="chips"><button class="chip" data-sheet>${I("eth")}Ethernet</button><button class="chip" data-sheet>${I("kb")}US</button><button class="chip" data-sheet>${I("globe")}EN</button><button class="chip icon" data-aside title="Close the guide (Esc)">${I("x")}</button></div></div>`;
+}
+const foot = (note, next = "Continue") => `<div class="foot"><button class="btn" data-go="-1">Back</button><div class="note">${note}</div><button class="btn primary" data-go="1">${next} ${I("right")}</button></div>`;
+function mini(big) {
+  const w = W(), ts = { default: 1, large: 1.15, larger: 1.3 }[S.text];
+  return `<div class="mini ${S.mode === "light" ? "light" : ""} ${S.glass ? "glass" : ""}" style="--pa:${accent()};--ts:${big ? ts : 1};height:${big ? 346 : 191}px">${wimg(w)}
+    <div class="mbar">${I("apps")}<span class="ws">1</span><span class="dot"></span><span class="dot"></span><span class="clock">14:41 Mon 26</span><span style="margin-left:auto;display:flex;gap:6px"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span></div>
+    ${big ? `<div class="win"><div class="side"><i>Network</i><i class="on">Appearance</i><i>Wallpaper</i><i>Keyboard</i><i>Sound</i></div><div class="main"><b>Appearance</b><p>Colours, text and effects for the whole desktop.</p><div class="mrow">Dark mode<span class="tg"></span></div><div class="mrow">Panel opacity</div><div class="sl"></div><span class="pb">Apply</span></div></div><div class="toast"><i></i><div>Wallpaper set<small>${w.name}</small></div></div>` : ""}</div>`;
+}
+
+/* ── screens ── */
+const SC = {
+  hello() {
+    const rows = [["Language", "English (United States)", "en_US.UTF-8", 1], ["Keyboard", "English (US)", "Also used to unlock the disk", 1], ["Time zone", "Amsterdam · 14:41", "Europe/Amsterdam · UTC+01:00", 1], ["Network", "Ethernet · connected", "enp5s0 · 192.168.1.42", 1], ["Account", "John Pals · <span class='mono'>john</span>", "Signs in after you unlock the disk"], ["Disk", "Encrypted · LUKS2", "Samsung SSD 990 PRO 1TB"]];
+    return `${topBar(0)}<div class="body full" style="padding-top:60px"><div style="display:grid;grid-template-columns:1fr 470px;gap:64px">
+      <div>
+        <div class="kicker accent">First login · Cybex OS 1.0.0-beta.3</div>
+        <h1>Welcome home,<br>John.</h1>
+        <div class="lead">Three quick choices make this desktop yours. Each one applies the moment you pick it.</div>
+        <ol class="howto" style="margin:28px 0 30px"><li><div>Wallpaper <span>· from Wallhaven, our collection or your pictures</span></div></li><li><div>Style <span>· light or dark, colours and text size</span></div></li><li><div>Shortcuts <span>· the keys that make Cybex OS fast</span></div></li></ol>
+        <div class="row"><button class="btn primary" data-to="wallpaper">Get started ${I("right")}</button><button class="btn" data-aside>Not now</button></div>
+        <div style="margin-top:18px;color:var(--faint);font-size:14px">About 3 minutes. Everything here is also in Settings.</div>
+      </div>
+      <div class="card checks" style="align-self:start">
+        <div class="lbl" style="margin:18px 0 8px">Set during installation <span class="aux">nothing to redo</span></div>
+        ${rows.map(r => `<div class="check"><span class="mk ok">${I("check")}</span><span class="t">${r[0]}</span><span class="v">${r[1]}<small>${r[2]}</small></span>${r[3] ? `<button class="link" data-sheet>Change</button>` : ""}</div>`).join("")}
+        <div style="color:var(--faint);font-size:13px;padding:14px 0 16px;border-top:1px solid var(--line)">Change any of these now, or later in Settings.</div>
+      </div></div></div>`;
+  },
+  wallpaper() {
+    const w = W(), list = S.tab === "wallhaven" ? WH : CX;
+    const tabs = [["wallhaven", "globe", "Wallhaven"], ["cybex", "image", "Cybex OS"], ["mine", "folder", "My pictures"]];
+    const tiles = S.tab === "mine" ? `<div class="thumb add" style="grid-column:1/-1;height:200px">${I("folder")}Choose a folder with your pictures<span style="color:var(--faint);font-size:13px">~/Pictures/Wallpapers is used when it exists</span></div>`
+      : list.map(t => `<button class="thumb ${t.id === S.wall ? "sel" : ""}" data-wall="${t.id}">${wimg(t)}${t.id === S.wall ? `<span class="badge">${I("check")}</span>` : ""}<span class="cap">${t.res || t.name}</span></button>`).join("");
+    return `${topBar(1)}<div class="body">
+      <h1 class="mid">Find your view.</h1>
+      <div class="lead" style="margin-bottom:22px">Pick one and it is on your desktop at once. Its colours tint the rest of Cybex OS.</div>
+      <div style="display:grid;grid-template-columns:1fr 380px;gap:36px">
+        <div>
+          <div class="row" style="gap:12px;margin-bottom:14px"><div class="segctl">${tabs.map(t => `<button class="${S.tab === t[0] ? "on" : ""}" data-tab="${t[0]}">${I(t[1])}${t[2]}</button>`).join("")}</div>
+            <label class="search">${I("search")}<input class="in" placeholder="${S.tab === "wallhaven" ? "Search Wallhaven" : "Filter by name"}"></label></div>
+          <div class="thumbs">${tiles}</div>
+        </div>
+        <div class="card" style="padding:18px 20px;align-self:start">
+          <div class="lbl">On your desktop <span class="aux">applied</span></div>
+          ${mini(false)}
+          <div style="margin-top:14px;font-size:19px;font-weight:700">${w.name}</div>
+          <div style="color:var(--fog);font-size:14px">${w.src}</div>
+          <div class="lbl" style="margin:18px 0 2px">Its colours <span class="aux">Style uses these</span></div>
+          ${sw(w.pal, w.f)}
+        </div>
+      </div></div>${foot(`<span class="key sm">Space</span>Hold to look at your desktop`)}`;
+  },
+  style() {
+    const w = W();
+    const mode = m => `<button class="mode ${S.mode === m ? "sel" : ""}" data-mode="${m}"><span class="pv ${m}"></span><span class="nm">${m === "dark" ? "Dark" : "Light"}</span><span class="radio">${S.mode === m ? I("check") : ""}</span></button>`;
+    const opt = (id, icon, title, body) => `<div class="opt ${S.colour === id ? "sel" : ""}" data-colour="${id}">${I(icon)}<div class="tx"><b>${title}</b>${body}</div><span class="radio">${S.colour === id ? I("check") : ""}</span></div>`;
+    return `${topBar(2)}<div class="body">
+      <h1 class="mid">Make it feel like home.</h1>
+      <div class="lead" style="margin-bottom:22px">Light or dark, your colours and comfortable text. Your desktop changes as you choose.</div>
+      <div style="display:grid;grid-template-columns:1fr 554px;gap:44px">
+        <div>
+          <div class="lbl">Appearance</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${mode("dark")}${mode("light")}</div>
+          <div class="lbl" style="margin-top:20px">Colours</div>
+          <div class="card">
+            ${opt("wallpaper", "image", "From your wallpaper", sw(w.pal, w.f))}
+            ${opt("theme", "palette", "A Cybex OS theme", `<span>${S.colour === "theme" ? "Nord · " : ""}Gruvbox, Catppuccin, Tokyo Night and more</span>`)}
+            ${opt("accent", "drop", "One accent colour", `<div class="sws">${ACCENTS.map(c => `<i data-accent="${c}" class="${S.colour === "accent" && S.accent === c ? "on" : ""}" style="background:${c}"></i>`).join("")}</div>`)}
+          </div>
+          <div style="display:flex;gap:24px;margin-top:20px;align-items:flex-end">
+            <div><div class="lbl">Text size</div><div class="segctl">${[["default", "Default"], ["large", "Large"], ["larger", "Larger"]].map(t => `<button class="${S.text === t[0] ? "on" : ""}" data-text="${t[0]}">${t[1]}</button>`).join("")}</div></div>
+            <div><div class="lbl">Glass</div><div style="height:46px;display:flex;align-items:center"><button class="toggle" role="switch" aria-checked="${S.glass}" data-glass></button></div></div>
+          </div>
+        </div>
+        <div>
+          <div class="lbl">Preview <span class="aux">live · your real settings</span></div>
+          ${mini(true)}
+          <div style="margin-top:14px;color:var(--faint);font-size:14px;display:flex;gap:8px;align-items:center">Hold <span class="key sm">Space</span> to see the desktop itself.</div>
+        </div>
+      </div></div>${foot("Everything here is also in Settings → Appearance.")}`;
+  },
+  shortcuts() {
+    const kc = k => {
+      const o = typeof k === "object", lab = o ? k.k : k, lit = ACT[lab];
+      return `<button class="kc ${o && k.w ? "w" : ""} ${o && k.m ? "m" : ""} ${lit ? "lit" : ""} ${S.key === lab ? "on" : ""} ${lab === "Super" ? "held" : ""}" ${o && k.w ? `style="flex:${k.w}"` : ""} ${lit ? `data-key="${lab}" title="Super + ${lab}: ${lit[0]}"` : ""}>${lab}</button>`;
+    };
+    const a = ACT[S.key];
+    return `${topBar(3)}<div class="body">
+      <h1 class="mid">Your keyboard has superpowers.</h1>
+      <div class="lead" style="margin-bottom:22px">Lit keys do something while you hold Super, the key with the Windows logo. Choose one to change it.</div>
+      <div style="display:grid;grid-template-columns:1fr 384px;gap:32px">
+        <div class="card" style="padding:18px 22px 20px;align-self:start">
+          <div class="lbl">Super + … <span class="aux">${Object.keys(ACT).length} keys in use</span></div>
+          <div class="kmap">${ROWS.map(r => `<div class="kr">${r.map(kc).join("")}</div>`).join("")}</div>
+          <div class="ksel"><span class="key">Super</span><span class="plus">+</span><span class="key">${S.key}</span><div class="a"><b>${a[0]}</b><span>${a[1]}</span></div><button class="btn small">${I("pen")}Change key</button></div>
+        </div>
+        <div class="card ess" style="align-self:start">
+          <div class="lbl" style="margin:12px 0 6px">The essentials <span class="aux">Super + K shows all</span></div>
+          ${ESS.map(e => `<div class="er"><span class="l">${e[0]}</span>${e[1].map(k => `<span class="key sm">${k}</span>`).join('<span class="plus">+</span>')}<span class="lk" title="Always keeps this key">${e[2] ? I("lock") : ""}</span><button class="ed" title="Change">${I("pen")}</button></div>`).join("")}
+        </div>
+      </div></div>${foot(`${I("kb")}Edits wait for Apply here, as in Settings. Your user.lua still loads last.`)}`;
+  },
+  ready() {
+    const w = W(), cn = S.colour === "wallpaper" ? "wallpaper colours" : S.colour === "theme" ? "Nord theme" : "your accent";
+    return `<div class="top"><div class="logo"><img src="${A("logo")}" alt="Cybex"></div><div class="chips"><button class="chip">${I("eth")}Ethernet</button><button class="chip">${I("kb")}US</button><button class="chip">${I("globe")}EN</button><button class="chip icon" data-aside>${I("x")}</button></div></div>
+      <div class="body full center" style="padding-top:64px">
+      <div class="symbol"><img src="${A("symbol")}" alt=""></div>
+      <h1 style="margin-top:28px">You're all set, John.</h1>
+      <div class="lead">Your choices are live. You will find every one of them again in Settings.</div>
+      <div class="next">
+        <div class="card"><div class="tx" style="flex:1"><div class="n">01 · Wallpaper</div><b>${w.name}</b><span>${w.res ? "From Wallhaven" : "Cybex OS collection"}</span></div><div class="tmini">${wimg(w)}</div></div>
+        <div class="card"><div class="tx" style="flex:1"><div class="n">02 · Style</div><b>${S.mode === "dark" ? "Dark" : "Light"}, ${cn}</b><span>${{ default: "Default", large: "Large", larger: "Larger" }[S.text]} text · glass ${S.glass ? "on" : "off"}</span></div><span style="width:34px;height:34px;border-radius:17px;background:${accent()};flex:none"></span></div>
+        <div class="card"><div class="tx" style="flex:1"><div class="n">03 · Shortcuts</div><b>Ready as they are</b><span>Super + K shows every shortcut</span></div><span class="key">K</span></div>
+      </div>
+      <div class="kicker">Whenever you like · optional</div>
+      <div class="extras">${EXTRAS.map(e => `<button class="chip" data-aside>${I(e[0])}${e[1]}${e[2] ? I("check", "ck") : ""}</button>`).join("")}</div>
+      <div style="margin-top:10px;color:var(--faint);font-size:14px">Each one opens its page in Settings. The guide steps aside while you are there.</div>
+      <div class="row" style="margin-top:28px"><button class="btn" data-go="-1">Back</button><button class="btn primary" data-to="hello">Start using Cybex OS ${I("right")}</button></div>
+      </div>`;
+  },
+};
+function sheet() {
+  return `<div class="scrim" data-close></div><div class="sheet"><button class="x" data-close>${I("x")}</button><h3>Keyboard</h3>
+    <div class="sub">The layout you type with. The same list is in Settings → Keyboard.</div>
+    <label class="search" style="flex:none">${I("search")}<input class="in" placeholder="Search layouts"></label>
+    <div class="list">${LAYOUTS.map(([n, c], i) => `<div class="li ${i ? "" : "sel"}"><div class="a"><b>${n}</b><em>${c}</em></div>${i ? "" : I("check")}</div>`).join("")}</div>
+    <input class="in" placeholder="Type here to test your keyboard" style="margin-top:12px">
+    <div class="row" style="justify-content:flex-end;gap:12px;margin-top:16px"><button class="btn small" data-close>Cancel</button><button class="btn small primary" data-close>Use English (US)</button></div></div>`;
+}
+function desk(inner) {
+  const w = W();
+  return `<div class="desk" style="--pa:${accent()}">${wimg(w, true)}<div class="sbar">${I("apps")}<span class="ws">1</span><span class="dt"></span><span class="dt"></span><span class="dt"></span><span class="clk">14:41 Mon 26</span><span style="margin-left:auto;display:flex;gap:16px">${I("bell")}${I("wifi")}${I("power")}</span></div>${inner}</div>`;
+}
+function aside() {
+  const step = { hello: "Hello", wallpaper: "Wallpaper, step 1 of 3", style: "Style, step 2 of 3", shortcuts: "Shortcuts, step 3 of 3", ready: "Ready" }[S.back] || "Style, step 2 of 3";
+  return desk(`<div class="swin"><div class="sd"><i>Network</i><i>Bluetooth</i><i>Displays</i><i class="on">Region &amp; language</i><i>Keyboard</i><i>Appearance</i><i>Security</i></div>
+    <div class="mn"><h4>Region &amp; language</h4><div class="rw">Language<span>English (United States)</span></div><div class="rw">Formats<span>Netherlands</span></div><div class="rw">Time zone<span>Europe/Amsterdam</span></div><div class="rw">Automatic time zone<span>On</span></div></div></div>
+    <div class="resume"><img src="${A("symbol")}" alt=""><span class="t"><b>Welcome guide</b> <span>· ${step}</span></span><button class="btn small primary" data-resume>Resume</button><button class="chip icon" title="Close the guide">${I("x")}</button></div>`);
+}
+const peek = () => desk(`<div class="resume" style="padding:0 22px"><span class="key sm">Space</span><span class="t"><span>Release to return to the guide</span></span></div>`);
+function screenHTML(name) {
+  if (name === "sheet") return SC.hello() + sheet();
+  if (name === "aside") return aside();
+  if (S.peek) return peek();
+  return SC[name]();
+}
+
+/* ── frame ── */
+function frame(name, cap) {
+  return `<div class="wrap"><div class="k" data-screen="${name}">${screenHTML(name)}</div></div>${cap ? `<p class="caption">${CAPTIONS[name]}</p>` : ""}`;
+}
+function render() {
+  $("#controls").innerHTML = VIEWS.map(([id, label]) => `<button aria-pressed="${!S.gallery && S.screen === id}" data-view="${id}">${label}</button>`).join("") + `<button aria-pressed="${S.gallery}" data-view="all">All screens</button>`;
+  $("#view").innerHTML = S.gallery ? `<div class="gal">${VIEWS.map(([id, label]) => `<h3>${label}</h3>${frame(id, true)}`).join("")}</div>` : frame(S.screen, true);
+  fit();
+}
+function fit() {
+  for (const k of document.querySelectorAll(".k")) {
+    const wrap = k.parentElement, s = Math.min(1, wrap.clientWidth / 1280);
+    k.style.transform = `scale(${s})`; wrap.style.height = 800 * s + "px";
+  }
+}
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-view],[data-to],[data-go],[data-close],[data-sheet],[data-aside],[data-resume],[data-wall],[data-tab],[data-mode],[data-colour],[data-accent],[data-text],[data-glass],[data-key]");
+  if (!t) return;
+  const d = t.dataset, here = t.closest(".k")?.dataset.screen || S.screen;
+  if (d.view) { S.gallery = d.view === "all"; if (!S.gallery) { S.screen = d.view; if (d.view === "sheet") S.back = "hello"; if (d.view === "aside") S.back = "style"; } }
+  else if (d.to) S.screen = d.to;
+  else if (d.go) S.screen = ORDER[Math.max(0, Math.min(ORDER.length - 1, ORDER.indexOf(here) + +d.go))];
+  else if ("close" in d) S.screen = "hello";
+  else if ("sheet" in d) { S.back = here; S.screen = "sheet"; }
+  else if ("aside" in d) { S.back = here === "aside" ? S.back : here; S.screen = "aside"; }
+  else if ("resume" in d) S.screen = S.back;
+  else if (d.wall) S.wall = d.wall;
+  else if (d.tab) S.tab = d.tab;
+  else if (d.mode) S.mode = d.mode;
+  else if (d.accent) { S.colour = "accent"; S.accent = d.accent; e.stopPropagation(); }
+  else if (d.colour) S.colour = d.colour;
+  else if (d.text) S.text = d.text;
+  else if ("glass" in d) S.glass = !S.glass;
+  else if (d.key) S.key = d.key;
+  render();
+});
+document.addEventListener("keydown", e => {
+  if (e.key === " " && !e.repeat && !S.gallery && ["wallpaper", "style"].includes(S.screen) && !(e.target instanceof HTMLInputElement)) { S.peek = true; render(); e.preventDefault(); }
+});
+document.addEventListener("keyup", e => { if (e.key === " " && S.peek) { S.peek = false; render(); } });
+addEventListener("resize", fit);
+if (!getComputedStyle(document.documentElement).getPropertyValue("--foreground").trim()) document.documentElement.classList.add("standalone");
+const want = location.hash.slice(1);
+S.gallery = !want && innerWidth >= 1300;
+if (VIEWS.some(v => v[0] === want)) { S.screen = want; if (want === "sheet") S.back = "hello"; }
+render();
+document.fonts?.ready.then(fit);
+</script>
+</body>
+</html>

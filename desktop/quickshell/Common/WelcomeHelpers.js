@@ -49,10 +49,15 @@ function checklist(facts, later) {
     rows.push({id: "accounts", page: "accounts", done: facts.accountsKnown ? !!facts.accounts : null});
     return rows.map(row => Object.assign({}, row, {later: later[row.id] === "later"}));
 }
+// The GECOS full name, or "" when the account has none.
+function fullName(passwd) {
+    const fields = String(passwd || "").trim().split(":");
+    return fields.length >= 5 ? fields[4].split(",")[0].trim() : "";
+}
 function firstName(passwd, username) {
     const fields = String(passwd || "").trim().split(":");
     const name = fields.length >= 5 ? fields[4].split(",")[0].trim() : "";
     return (name || String(username || "")).split(/\s+/)[0];
 }
 if (typeof module !== "undefined" && module.exports)
-    module.exports = {STEPS, ITEMS, initial, validate, parse, serialize, visit, resume, checklist, firstName};
+    module.exports = {STEPS, ITEMS, initial, validate, parse, serialize, visit, resume, checklist, fullName, firstName};

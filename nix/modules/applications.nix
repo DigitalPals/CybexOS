@@ -36,7 +36,7 @@ in {
       ++ lib.optionals cfg.features.steam [ mangohud protonup-qt ]
       ++ lib.optionals cfg.features.connectedWidgets [ gnome-calendar gnome-online-accounts-gtk (pkgs.callPackage ../packages/t3-code.nix {}) ];
     fonts.packages = with pkgs; [
-      (pkgs.callPackage ../packages/fonts.nix {}) figtree geist-font
+      (pkgs.callPackage ../packages/fonts.nix {}) (pkgs.callPackage ../packages/space-grotesk.nix {}) figtree geist-font
       nerd-fonts.jetbrains-mono nerd-fonts.fira-code inter ibm-plex noto-fonts
       noto-fonts-color-emoji font-awesome fira-code jetbrains-mono
     ];

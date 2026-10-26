@@ -19,7 +19,9 @@ test('the user\'s own files keep their casing, with separators as spaces', () =>
     assert.equal(W.label('.png', false), '.png', 'nothing left keeps the file name');
     const picker = fs.readFileSync(path.join(shellDir, 'Settings/WallpaperPicker.qml'), 'utf8');
     assert.match(picker, /label: WallpaperNames\.label\(Wallpaper\.basename\(path\), bundled\)/);
+    const welcome = fs.readFileSync(path.join(shellDir, 'Common/Welcome.qml'), 'utf8');
+    assert.match(welcome, /WallpaperNames\.label\(Settings\.wall, false\)/);
     const finish = fs.readFileSync(path.join(shellDir, 'Welcome/FinishStep.qml'), 'utf8');
-    assert.match(finish, /WallpaperNames\.label\(Settings\.wall, false\)/);
+    assert.match(finish, /title: Welcome\.wallpaperName/);
     assert.doesNotMatch(finish, /Settings\.accent\]/, 'the summary shows a swatch, not a hex code');
 });

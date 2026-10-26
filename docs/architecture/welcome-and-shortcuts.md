@@ -314,9 +314,12 @@ As built:
   `Keybindings` claim, only to mark rows: a filled accent dot for changed or
   custom rows, a ring for `user.lua` rows. Collapsed numbered rows stay
   unmarked.
-- **Welcome step.** `Welcome/ShortcutsStep.qml` shows the map, the main
-  shortcuts (keycaps from `Keybindings.keysFor`) with Edit, an inline Apply
-  bar and "All shortcuts in Settings".
+- **Welcome step.** `Welcome/ShortcutsStep.qml` draws the same
+  `ShortcutEditor.keyboardMap` model in installer keycaps
+  (`Welcome/KioskKeyMap.qml`), the essentials (keycaps from
+  `Keybindings.keysFor`) with Edit, and "All shortcuts in Settings". Its
+  footer becomes the Apply bar while a draft waits. A free or shared key
+  hands over to Settings, where the Add form lives.
 
 ## 2. Welcome guide
 
@@ -325,10 +328,11 @@ As built:
 - **`Common/Welcome.qml` (singleton).** Holds state, decides when to open,
   tracks progress and the optional checklist.
 - **`Common/WelcomeHelpers.js`.** Pure logic, tested under Node.
-- **`WelcomeWindow.qml`.** A `FloatingWindow` titled exactly
-  `Welcome to Cybex OS`; `desktop/hypr/looknfeel.lua` already floats and
-  centres it.
-- **`Welcome/*.qml`.** One file per step, plus shared parts.
+- **`WelcomeWindow.qml`.** A full-screen overlay layer (`qs-welcome`)
+  on the focused screen with exclusive keyboard focus, and the resume pill
+  (`qs-welcome-resume`) shown while the guide steps aside.
+- **`Welcome/*.qml`.** One file per step, the installer-style sheets, and
+  the `Kiosk*` controls that draw the installer's design (§2.5).
 - **`shell.qml`.** Instantiates the window and adds the `welcome` IPC target.
 
 ### 2.2 State: `$XDG_STATE_HOME/cybexos/welcome.json`
@@ -348,8 +352,9 @@ As built:
 - **Persistence:** progress is saved on every step change, so a shell
   restart resumes on the same step. An unreadable file is reported and not
   overwritten, following the same rule as `shell.json`.
-- **Dismissal:** Escape, the window close button, IPC `close`, and **Skip for
-  now** (including on the finish step) set `dismissed`, keeping all progress.
+- **Dismissal:** Escape, the top bar's close button, the resume pill's close
+  button, IPC `close`, and **Not now** on Hello set `dismissed`, keeping all
+  progress.
   It never reopens automatically after dismissal. The first dismissal sends
   “You can finish setting up any time: open the launcher and search for Welcome.”
   `notified` remembers this across restarts. **Finish** sets `completed`.
@@ -362,58 +367,70 @@ As built:
 
 ### 2.3 Steps
 
-1. **`hello`.** Greets the user by full name. Shows the installer's choices
-   (language, keyboard layout, time zone) with Change links into Settings.
-   Shows the network state and offers Connect when offline.
-2. **`wallpaper`.** The wallpaper picker (§3), directly in Wallhaven without
-   source tabs. A selection downloads and applies immediately. Holding Space
-   fades the window so the desktop shows through.
-3. **`style`.** Dark or light; wallpaper colours by default or a theme preset;
-   glass; text size and density. It writes the same `Settings` keys as the
-   Appearance page.
-4. **`shortcuts`.** The keyboard map (§1.7), the main shortcuts with Edit, and
-   a link to Settings → Keyboard shortcuts.
-5. **`finish`.** A summary plus an optional checklist. Each item reads its
-   real state and is never ticked by a click:
-   - web apps: keep or remove the seeded ones, add others; Open Software;
-   - AI assistant: choose an agent and sign in;
-   - fingerprint and security keys: only when a reader is present;
+Hello and Ready stand outside the step indicator, as the installer's welcome
+and done screens stand outside Disk · You · Review. The indicator shows
+Wallpaper · Style · Shortcuts.
+
+1. **`hello`.** The installer's welcome-screen composition: kicker, headline
+   ("Welcome home, <first name>."), lead and what comes next on the left, Get
+   started and Not now. A card on the right lists what the installer set,
+   read from the live backends: language, keyboard layout, time zone,
+   network, account and computer name. Change opens the language, keyboard
+   or time zone sheet; the network row steps aside to Settings → Network.
+2. **`wallpaper`.** Wallhaven, the Cybex OS collection or the user's folder,
+   opening on Wallhaven. Choosing a tile applies it at once. A card shows the
+   wallpaper on a miniature desktop with the colours Matugen read from it.
+3. **`style`.** Dark or light; the accent from the wallpaper, a theme (in a
+   sheet) or one accent colour; text size; glass. It writes the same
+   `Settings` keys as the Appearance page. A preview drawn with the live
+   `Theme` shows each choice.
+4. **`shortcuts`.** The keyboard map and the essentials (§1.7).
+5. **`finish`.** Ready: the installer's done screen. Three numbered cards
+   recap the wallpaper, the style and where the shortcuts are, then the
+   optional extras as pills. Each extra reads its real state (a tick, never
+   set by a click) and opens its Settings page, stepping aside:
+   - web apps;
+   - AI assistant;
+   - fingerprint, only when a reader is ready;
+   - security keys;
    - backups;
    - online accounts.
 
-   "Later" is remembered per item.
-
 Web apps have no completion tick because keep/remove is a personal choice.
-Fingerprint setup is shown only for a ready reader. The existing security
-backend has no cheap, reliable FIDO device-presence probe, so security keys are
-an always-available plain Settings link without a tick. Other unavailable
-checklist probes also remain unticked links rather than inferred successes.
+The existing security backend has no cheap, reliable FIDO device-presence
+probe, so security keys never show a tick. `welcome.json` still validates a
+`checklist` of `"later"` entries, but the guide no longer writes them.
 
-Every step can be skipped. Back and Continue are available (Back is disabled
-on Hello); Escape dismisses, preserving progress as specified above.
+Every step can be skipped. Back and Continue are in the footer of the three
+middle steps; Escape dismisses, preserving progress as specified above.
 
 Integration notes (as implemented):
 
-- **Wallpaper step.** `Welcome/WallpaperStep.qml` embeds
-  `WallpaperPicker { embedded: true; tab: "online"; showSources: false;
-  automaticOnlineLoad: true; applyOnSelect: true }`; `escapeRequested` dismisses the guide like Escape elsewhere.
-  `applied` needs no handler: the guide stores no wallpaper progress, and
-  Finish reads `Settings.wall`. Holding Space peeks from anywhere on the step,
-  including a focused thumbnail or button (Enter activates those), except
-  while a `TextInput`/`TextEdit` such as Wallhaven search has focus, where
-  Space types. Qt Wayland repeats a held key as release/press pairs, so only
-  a non-repeat release ends the peek; losing window activation ends it too.
+- **Stepping aside.** The guide covers the desktop, so anything it opens
+  would open behind it. Every Settings link calls `Welcome.stepAside(false)`
+  first (a unit test checks this). A Hyprland `openwindow` event does the
+  same. The launcher, the overview and the Super+K sheet make it step aside
+  as transient: it comes back 0.7 s after they close, unless a window opened
+  meanwhile. Resume on the pill, or `welcome open`, brings it back.
+- **Wallpaper step.** `Welcome/WallpaperStep.qml` draws installer tiles over
+  `OnlineWallpapers.results`, `Wallpaper.bundledFiles` and `Wallpaper.files`.
+  The metering probe runs while Wallhaven is shown; listing starts on its
+  own only on a known unmetered connection, otherwise it asks. Holding Space
+  peeks from the Wallpaper and Style steps, including with a tile or button
+  focused (Enter activates those), except while a `TextInput`/`TextEdit`
+  such as Wallhaven search has focus, where Space types. Qt Wayland repeats a
+  held key as release/press pairs, so only a non-repeat release ends the
+  peek; losing focus ends it too.
 - **Keycaps.** The Shortcuts step reads `Keybindings.keysFor(id)` and renders
   them through `KeybindEditor.display`. Its own `Claim` acquires the backend
   while the step is visible and releases it when the step is hidden or
-  destroyed. Other steps do not watch shortcuts. A Node test checks every
+  destroyed, including while the guide steps aside. A Node test checks every
   action ID in the guide against the ungated Lua catalog.
-- **Small windows.** At the 640 × 480 minimum, or with large text, the step
-  rail hides (its optional section hides first when only height is short),
-  a short window drops the lead line (the window height decides, never the
-  step area whose margin the choice changes: that was a binding loop).
-  The wallpaper step fills the viewport, with a
-  `Theme.scaled(240)` floor; below it the step scrolls rather than clipping.
+- **Sheets.** `Welcome.sheet` names the open sheet. Language and time zone
+  run the region backend's `locale` and `timezone` actions; the keyboard
+  sheet makes the chosen layout the first through `InputDrafts.keyboard`;
+  the theme sheet calls `Themes.apply`. The page beneath is disabled while a
+  sheet is open, so Tab stays in it, and Escape closes only the sheet.
 
 ### 2.4 IPC target `welcome`
 
@@ -426,6 +443,33 @@ which returns JSON `{ open, status, step, checklist }`.
 The old Fedora-era wallpaper calls `popular`, `results` and `pick`, and
 `WallhavenHelpers.ipcItems`, were made for the removed out-of-process window.
 They are deleted. `browse`, `list`, `set` and `status` stay.
+
+### 2.5 Design: the installer's canvas
+
+The guide continues the installer visually, so it uses the installer's
+design rather than the shell theme:
+
+- **Tokens.** `Welcome/Kiosk.qml` holds `installer/kiosk/ui/theme.slint`'s
+  colours verbatim (`welcome-kiosk.test.cjs` compares them) and the
+  installer's faces: Space Grotesk, packaged for the desktop from the
+  installer's vendored copy (`nix/packages/space-grotesk.nix`), and
+  JetBrains Mono. The palette does not follow the desktop theme; only the
+  Style step's preview does.
+- **Canvas.** Every length is in the installer's 1280×800 design pixels and
+  drawn through `Kiosk.px()`. `WelcomeWindow` sets `Kiosk.zoom` by the rule
+  of `installer/kiosk/src/zoom.rs`, from the screen's physical pixels,
+  rounded down to two decimals so the canvas never overflows, with a 0.6
+  floor instead of 0.8. The canvas is centred on the installer's page colour.
+  The text-size setting does not change the guide's layout.
+- **Controls.** `KioskButton`, `KioskChip`, `KioskField`, `KioskSheet`,
+  `KioskStepper`, `KioskKeycap` and the rest port
+  `installer/kiosk/ui/widgets.slint` and the design reference
+  (`installer/ui-reference/index.html`), including 2 px focus rings.
+- **Design reference.** `desktop/welcome-ui-reference/index.html` is the
+  approved interactive comp for the guide, in the installer reference's CSS.
+  Open it from the checkout. The shell is authoritative where they differ.
+- **Exceptions.** The shortcut recorder is the shared Settings recorder,
+  drawn in the shell theme over the guide.
 
 ## 3. Wallpaper picker
 

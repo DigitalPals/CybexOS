@@ -221,7 +221,7 @@ hl.animation({ leaf = "workspaces", enabled = true, speed = 6, bezier = "default
 -- instantaneous so the menubar itself never replays a layer animation.
 hl.layer_rule({
   name = "quickshell-no-animation",
-  match = { namespace = [[^qs-(bar|bar-popout|launcher|notifications|osd|shortcuts|wallpaper|overview|dock|assistant)$]] },
+  match = { namespace = [[^qs-(bar|bar-popout|launcher|notifications|osd|shortcuts|wallpaper|overview|dock|assistant|welcome|welcome-resume)$]] },
   no_anim = true,
 })
 
@@ -295,10 +295,6 @@ end
 if power_saver.restore then hl.config(power_saver_config) end
 
 hl.window_rule({ match = { title = [[^Cybex OS Settings$]] }, float = true, center = true })
--- Keep the roomy welcome proportions, but cap them to the logical monitor
--- work area so scaled or short displays can reach its scrolling content.
--- Qt also bounds its initial request by QScreen.availableGeometry.
-hl.window_rule({ match = { title = [[^Welcome to Cybex OS$]] }, float = true, center = true, size = "min(monitor_w-32,max(1080,monitor_w*0.5)) min(monitor_h-64,max(800,monitor_h*0.48))" })
 hl.window_rule({ match = { class = [[xdg-desktop-portal-gtk]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Properties]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Open.*]] }, float = true })

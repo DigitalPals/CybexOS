@@ -303,8 +303,7 @@ def main():
 
         try:
             (base / 'sway.conf').write_text('output HEADLESS-1 mode 1440x900\nseat seat0 fallback true\n'
-                'for_window [title="Cybex OS Settings"] floating enable, resize set 1000 760, move position center\n'
-                'for_window [title="Welcome to Cybex OS"] floating enable, resize set 1180 820, move position center\n')
+                'for_window [title="Cybex OS Settings"] floating enable, resize set 1000 760, move position center\n')
             sway = base / 'sway'
             shutil.copyfile(os.environ.get('CYBEXOS_SWAY_BINARY') or shutil.which('sway'), sway)
             sway.chmod(0o700)
@@ -428,7 +427,6 @@ def main():
             time.sleep(1.5)
             screenshot('welcome-shortcuts.png')
             ipc('shortcut-test', 'welcomeEdit', 'apps.terminal')
-            subprocess.run(['swaymsg', '[title="Welcome to Cybex OS"]', 'focus'], env=env, check=True, capture_output=True)
             welcome = lambda: json.loads(ipc('shortcut-test', 'welcomeRecorder')) or {}
             try:
                 wait(lambda: welcome().get('inhibiting'), 'welcome recorder inhibits shortcuts')
@@ -446,8 +444,7 @@ def main():
             assert guide().get('open') is True, 'Escape in the recorder must not dismiss the guide'
 
             def guide_keys(*keys, log):
-                # A fresh virtual keyboard can move Sway's seat focus.
-                subprocess.run(['swaymsg', '[title="Welcome to Cybex OS"]', 'focus'], env=env, check=True, capture_output=True)
+                # The guide is an overlay layer with exclusive keyboard focus.
                 process = start(['wtype', '-s', '400', *keys, '-s', '200'], log)
                 process.wait(timeout=10)
 
@@ -459,20 +456,18 @@ def main():
             assert ipc('welcome', 'open', 'shortcuts') == 'ok'
             wait(lambda: guide().get('step') == 'shortcuts', 'shortcuts step again')
             ipc('shortcut-test', 'welcomeEdit', 'apps.terminal')
-            subprocess.run(['swaymsg', '[title="Welcome to Cybex OS"]', 'focus'], env=env, check=True, capture_output=True)
             wait(lambda: welcome().get('inhibiting'), 'welcome recorder listens again')
             keyboard = start(['wtype', '-s', '500', '-k', 'F9', '-s', '600', '-k', 'Return', '-s', '300'], 'welcome-accept.log')
             keyboard.wait(timeout=10)
             wait(lambda: welcome().get('shown') is False and state().get('dirty'), 'F9 accepted in the welcome recorder')
             assert state()['terminal']['keys'] == ['F9'], state()['terminal']
             guide_keys('-M', 'ctrl', '-k', 'Prior', '-m', 'ctrl', log='welcome-after-accept.log')
-            wait(lambda: guide().get('step') == 'keys', 'Ctrl+PageUp after accepting in the recorder')
+            wait(lambda: guide().get('step') == 'style', 'Ctrl+PageUp after accepting in the recorder')
             assert ipc('shortcut-test', 'discard') == 'true'
             wait(lambda: not state().get('dirty'), 'welcome draft discarded')
             assert ipc('welcome', 'open', 'shortcuts') == 'ok'
             wait(lambda: guide().get('step') == 'shortcuts', 'shortcuts step for the last Escape')
             ipc('shortcut-test', 'welcomeEdit', 'apps.terminal')
-            subprocess.run(['swaymsg', '[title="Welcome to Cybex OS"]', 'focus'], env=env, check=True, capture_output=True)
             wait(lambda: welcome().get('inhibiting'), 'welcome recorder listens a third time')
             guide_keys('-k', 'Escape', log='welcome-escape-1.log')
             wait(lambda: welcome().get('shown') is False, 'Escape closes the recorder')

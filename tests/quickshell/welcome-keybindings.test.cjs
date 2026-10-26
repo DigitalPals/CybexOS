@@ -31,7 +31,7 @@ function catalog() {
 
 // Every quoted action ID in the guide's sources.
 function guideIds() {
-    const sources = fs.readdirSync(path.join(shellDir, 'Welcome')).map(name => read('Welcome/' + name))
+    const sources = fs.readdirSync(path.join(shellDir, 'Welcome')).filter(name => /\.(qml|js)$/.test(name)).map(name => read('Welcome/' + name))
         .concat([read('Common/Welcome.qml'), read('Common/WelcomeHelpers.js'), read('WelcomeWindow.qml')]);
     const ids = new Set();
     for (const source of sources)
@@ -53,12 +53,18 @@ test('every action ID the welcome guide uses exists in the ungated vendor catalo
     }
 });
 
-test('the wallpaper step embeds the shared picker and keeps Space typing in text fields', () => {
+test('the wallpaper step opens on Wallhaven, applies on choice and keeps Space typing in text fields', () => {
     const step = read('Welcome/WallpaperStep.qml');
-    assert.match(step, /SettingsUi\.WallpaperPicker \{[^}]*embedded: true[^}]*automaticOnlineLoad: true[^}]*onEscapeRequested: Welcome\.dismiss\(\)/);
-    assert.doesNotMatch(step, /WallpaperPage|INTEGRATION/);
+    assert.match(step, /property string tab: "online"/, 'Wallhaven is the first source');
+    assert.match(step, /OnlineWallpapers\.select\(item\.id\);\s*OnlineWallpapers\.apply\(item\);/);
+    assert.match(step, /Wallpaper\.applyBundled\(item\.path\)/);
+    // Automatic listing waits for a known unmetered connection.
+    assert.match(step, /OnlineWallpapers\.watchMetering\(\); OnlineWallpapers\.ensureLoaded\(true\);/);
+    assert.match(step, /onMeteredKnownChanged[^}]*autoLoadAllowed\(\)/);
+    // Space is the guide's peek: tiles choose with Enter only.
+    assert.doesNotMatch(step, /Qt\.Key_Space/);
     const view = read('Welcome/WelcomeView.qml');
-    assert.match(view, /enabled: Welcome\.open && Welcome\.step === "wallpaper" && !root\.typing/);
+    assert.match(view, /enabled: Welcome\.open && !Welcome\.aside && !root\.sheetOpen && !root\.typing\s*&& \(Welcome\.step === "wallpaper" \|\| Welcome\.step === "style"\)/);
     assert.match(view, /typing: focusedItem instanceof TextInput \|\| focusedItem instanceof TextEdit/);
     assert.match(view, /event\.key === Qt\.Key_Space && !event\.isAutoRepeat/, 'repeat releases must not end a peek');
 });

@@ -403,14 +403,37 @@ test "$(runuser -u cybexqa -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BU
                 return hello
             time.sleep(0.5)
 
+    def welcome_layers(self):
+        """The guide's layer surfaces Hyprland has mapped: the full-screen guide and its resume pill."""
+        layers = json.loads(self.command('runuser -u cybexqa -- env XDG_RUNTIME_DIR=/run/user/1000 hyprctl -i 0 -j layers'))
+        names = {layer.get('namespace') for monitor in layers.values()
+                 for level in monitor.get('levels', {}).values() for layer in level}
+        return sorted(names & {'qs-welcome', 'qs-welcome-resume'})
+
+    def wait_welcome_layers(self, expected, timeout=30):
+        """Hyprland's own layer list, not only the shell's report."""
+        deadline = time.monotonic() + timeout
+        while True:
+            names = self.welcome_layers()
+            if names == sorted(expected):
+                return names
+            if time.monotonic() >= deadline:
+                raise RuntimeError('Welcome layers ' + json.dumps(names) + ', expected ' + json.dumps(sorted(expected)))
+            time.sleep(0.25)
+
+    def wait_welcome_state(self, predicate, label, timeout=30):
+        deadline = time.monotonic() + timeout
+        while True:
+            state = json.loads(self.welcome('status'))
+            if predicate(state):
+                return state
+            if time.monotonic() >= deadline:
+                raise RuntimeError(label + ': ' + json.dumps(state))
+            time.sleep(0.25)
+
     def wait_welcome_unmapped(self):
         """A dismissed guide must leave the compositor, not only report it."""
-        self.command('''for n in $(seq 1 40); do
-  clients=$(runuser -u cybexqa -- env XDG_RUNTIME_DIR=/run/user/1000 hyprctl -i 0 -j clients)
-  printf %s "$clients" | python3 -c 'import json, sys; sys.exit(any(c.get("title") == "Welcome to Cybex OS" for c in json.load(sys.stdin)))' && exit 0
-  sleep 0.25
-done
-exit 1''', timeout=60)
+        self.wait_welcome_layers([])
 
     def check_welcome_closed(self):
         state = json.loads(self.welcome('status'))
@@ -1061,17 +1084,32 @@ QA_SOURCE''').strip())
                 raise RuntimeError('Welcome did not open at first login: ' + json.dumps(welcome))
             time.sleep(0.5)
         hello = vm.hello_services()
+        vm.wait_welcome_layers(['qs-welcome'])
         if screenshots:
             vm.screenshot(screenshots / 'welcome-first-login.png')
+        # A window opened over the full-screen guide makes it step aside
+        # (Hyprland's openwindow event), leaving only the resume pill.
+        vm.settings('open about')
+        vm.wait_welcome_state(lambda state: state['open'] and state['aside'], 'Welcome did not step aside for Settings')
+        vm.wait_welcome_layers(['qs-welcome-resume'])
+        if screenshots:
+            time.sleep(1)
+            vm.screenshot(screenshots / 'welcome-aside.png')
+        vm.settings('close')
+        vm.welcome("open ''")
+        vm.wait_welcome_state(lambda state: state['open'] and not state['aside'], 'Resume did not bring the guide back')
+        vm.wait_welcome_layers(['qs-welcome'])
         vm.welcome('close')
         vm.check_welcome_closed()
         vm.wait_welcome_unmapped()
         # A failed summary fails the case after the remaining checks have run.
         summarized = all(state['loaded'] and not state['failed'] for state in hello.values())
         milestones['welcomeFirstLogin'] = {'result': 'passed' if summarized else 'failed', 'opened': True,
-                                           'dismissed': True, 'unmapped': True, 'helloSummaryServices': hello}
+                                           'fullScreenLayer': 'qs-welcome', 'steppedAsideForWindow': True,
+                                           'resumed': True, 'dismissed': True, 'unmapped': True,
+                                           'helloSummaryServices': hello}
         if screenshots:
-            # The compositor's next frame follows the unmapped window.
+            # The compositor's next frame follows the unmapped layer.
             time.sleep(2)
             vm.screenshot(screenshots / 'installed-desktop.png')
         # A failure here fails the case after the remaining checks have run.

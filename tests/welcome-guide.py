@@ -24,7 +24,6 @@ import time
 import shell_fonts
 
 ROOT = Path(__file__).resolve().parents[1]
-TITLE = 'Welcome to Cybex OS'
 ERRORS = re.compile(r'TypeError|ReferenceError|Binding loop|is not a type|Type \w+ unavailable'
                     r'|Cannot assign|Unable to assign|Illegal method name|Failed to load configuration')
 # Action IDs the guide shows. The launcher is remapped and Close window is
@@ -89,31 +88,26 @@ TEST_IPC = '''
             OnlineWallpapers.searched = true;
         }
         function focusGrid(): void {
-            const grid = shell.testFind(shell.testItem("wallpaperPicker"), item => item.visible && item.online === true && item.focusItem !== undefined);
+            const grid = shell.testItem("wallpaperGrid");
             grid.focusItem(grid.currentIndex);
         }
         function focusSearch(): void { shell.testItem("wallhavenSearch").forceActiveFocus(); }
-        function colour(): string {
-            const filter = shell.testItem("wallhavenColour");
-            if (!filter) return "missing";
-            filter.open();
-            return "ok";
-        }
-        function colourOpen(): string { const filter = shell.testItem("wallhavenColour"); return String(!!filter && filter.opened); }
         function focusRoot(): void { shell.testItem("welcomeView").focusInitial(); }
+        function aside(): void { Welcome.stepAside(false); }
+        function sheet(id: string): void { Welcome.openSheet(id); }
+        function launcher(open: bool): void { Launcher.open = open; }
         function state(): string {
-            const picker = shell.testItem("wallpaperPicker");
             const view = shell.testItem("welcomeView");
+            const step = shell.testItem("welcomeWallpaperStep");
             const search = shell.testItem("wallhavenSearch");
+            const origin = view ? view.mapToItem(null, 0, 0) : {x: 0, y: 0};
             const keys = {};
             for (const id of ACTION_IDS) keys[id] = Keybindings.keysFor(id);
-            return JSON.stringify({picker: picker !== null, tab: picker ? picker.tab : "",
-                showSources: picker ? picker.showSources : true,
-                applyOnSelect: picker ? picker.applyOnSelect : false,
-                selected: picker && picker.selected ? picker.selected.fileName || "" : "",
+            return JSON.stringify({grid: shell.testItem("wallpaperGrid") !== null, tab: step ? step.tab : "",
+                selected: OnlineWallpapers.selected ? OnlineWallpapers.selected.fileName || "" : "",
                 wall: Settings.wall, current: Wallpaper.current, peeking: view ? view.peeking : false,
-                shortHeight: view ? view.shortHeight : null, footer: Theme.scaled(76), margins: [Theme.scaled(16), Theme.scaled(28)], step: Theme.scaled(520),
-                railShown: view ? view.railShown : null,
+                zoom: TestGuide.Kiosk.zoom, mapped: welcomeWindow.contentItem ? welcomeWindow.contentItem.visible : false,
+                view: view ? {x: origin.x, y: origin.y, width: view.width, height: view.height} : null,
                 search: search ? search.text : null, searchFocus: search ? search.activeFocus : false,
                 keysLoaded: Keybindings.loaded, watchers: SystemSettings.keybindings.watchers, keys: keys,
                 paletteMode: Settings.paletteMode, paletteReady: TestCommon.Palette.ready, paletteBusy: TestCommon.Palette.busy,
@@ -196,15 +190,14 @@ class Session:
         shell = self.source / 'desktop/quickshell'
         ids = 'const ACTION_IDS = ' + json.dumps(list(ACTIONS)) + ';'
         entry = shell / 'shell.qml'
-        text = entry.read_text().replace('import "Common"\n', 'import "Common"\nimport "Common" as TestCommon\n')
+        text = entry.read_text().replace('import "Common"\n', 'import "Common"\nimport "Common" as TestCommon\nimport "Welcome" as TestGuide\n')
         assert text.count('    WelcomeWindow {}\n') == 1
         entry.write_text(text.replace('    WelcomeWindow {}\n', '    WelcomeWindow { id: welcomeWindow }\n'
             + TEST_IPC.replace('const keys = {};', ids + '\n            const keys = {};'), 1))
-        for name, owner in (('Settings/WallpaperPicker.qml', 'wallpaperPicker'), ('Welcome/WelcomeView.qml', 'welcomeView')):
-            path = shell / name
-            text = path.read_text()
-            assert '    id: root\n' in text, name
-            path.write_text(text.replace('    id: root\n', f'    id: root\n    objectName: "{owner}"\n', 1))
+        path = shell / 'Welcome/WelcomeView.qml'
+        text = path.read_text()
+        assert '    id: root\n' in text
+        path.write_text(text.replace('    id: root\n', '    id: root\n    objectName: "welcomeView"\n', 1))
         # Scripted download boundary: no Wallhaven traffic in a UI regression.
         # The real singleton still runs its helper, saves, applies and emits
         # completion; Matugen and the QML palette path run unchanged.
@@ -301,24 +294,20 @@ print('done ' + name, flush=True)
         return subprocess.run(['swaymsg', *args], env=self.env, check=True, capture_output=True, text=True).stdout
 
     def guide_rect(self):
-        """The guide's content rectangle in output coordinates, or None."""
-        def walk(node):
-            if node.get('name') == TITLE and node.get('visible'):
-                rect, inner = node['rect'], node['window_rect']
-                return {'x': rect['x'] + inner['x'], 'y': rect['y'] + inner['y'],
-                        'width': inner['width'], 'height': inner['height']}
-            for child in node.get('nodes', []) + node.get('floating_nodes', []):
-                found = walk(child)
-                if found:
-                    return found
+        """The guide's design canvas in output coordinates, or None while it is not on screen."""
+        probe = self.probe()
+        view = probe.get('view')
+        if not probe.get('mapped') or not view:
             return None
-        return walk(json.loads(self.sway('-t', 'get_tree')))
+        return {key: round(value) for key, value in view.items()}
 
-    def focus(self):
-        self.sway(f'[title="{TITLE}"] focus')
+    def output(self, width, height):
+        self.sway('output', 'HEADLESS-1', 'mode', f'{width}x{height}')
+        self.wait(lambda: (r := self.guide_rect()) is None or r['x'] + r['width'] <= width + 1
+                  and r['height'] <= height + 1, f'{width}x{height} output')
 
     def key(self, *args):
-        self.focus()
+        # The guide holds exclusive keyboard focus as an overlay layer.
         subprocess.run(['wtype', '-s', '200', *args, '-s', '100'], env=self.env, check=True, timeout=10)
         time.sleep(.25)
 
@@ -330,7 +319,7 @@ print('done ' + name, flush=True)
         return path
 
     def capture_guide(self, directory, name, settle=1.0):
-        """A screenshot cropped to the guide window, for reviewing its layout."""
+        """A screenshot cropped to the guide's canvas, for reviewing its layout."""
         from PIL import Image
         path = self.capture(directory, name, settle)
         rect = self.guide_rect()
@@ -392,9 +381,7 @@ def main():
         assert not own_processes(session.runtime)
         try:
             conf = base / 'sway.conf'
-            conf.write_text('output HEADLESS-1 mode 1440x900\nseat seat0 fallback true\n'
-                # No decorations: `resize set` then sizes the guide's own surface.
-                f'for_window [title="{TITLE}"] floating enable, border none, move position center\n')
+            conf.write_text('output HEADLESS-1 mode 1440x900\nseat seat0 fallback true\n')
             sway = base / 'sway'
             shutil.copyfile(os.environ.get('CYBEXOS_SWAY_BINARY') or shutil.which('sway'), sway)
             sway.chmod(0o700)
@@ -409,22 +396,32 @@ def main():
             session.wait(lambda: session.state().get('open'), 'first-login auto opening')
             assert session.state()['step'] == 'hello'
             rect = session.wait(session.guide_rect, 'mapped guide')
+            # The installer's canvas, zoomed by its rule and rounded down to
+            # fit: 1440×900 gives 1.12, a 1434×896 canvas centred on the output.
+            probe = session.probe()
+            assert abs(probe['zoom'] - 1.12) < 1e-6, probe['zoom']
+            assert (rect['width'], rect['height']) == (1434, 896) and (rect['x'], rect['y']) == (3, 2), rect
+            first = session.capture(shots, 'welcome-hello-en.png', settle=.3)
 
             # Fresh installation: an empty Settings.wall shows the bundled
-            # default behind the guide's first frame.
-            first = session.capture(shots, 'welcome-hello-en.png', settle=.3)
+            # default. The guide covers the screen; stepping aside shows the
+            # desktop behind it and leaves the resume pill.
             probe = session.probe()
             assert probe['wall'] == '' and probe['current'].endswith('/assets/wallpapers/moon-mountains.png'), probe
             assert not (session.home / 'Pictures/Wallpapers').exists(), 'the default must not be imported'
-            width, height = Image.open(first).size
-            # Left of the guide, below the bar and above any dock.
-            strip = (8, int(height * .3), rect['x'] - 8, int(height * .7))
-            assert strip[2] - strip[0] > 40, rect
+            session.call('welcome-test', 'aside')
+            session.wait(lambda: session.state().get('aside') and not session.probe().get('mapped'), 'guide steps aside')
+            behind = session.capture(shots, 'welcome-aside-en.png')
+            width, height = Image.open(behind).size
+            strip = (8, int(height * .3), int(width * .25), int(height * .7))
             expected = {name: ImageOps.fit(Image.open(ROOT / 'assets/wallpapers' / name).convert('RGB'), (width, height),
                         method=Image.Resampling.BILINEAR) for name in ('moon-mountains.png', 'quiet-fjord.png')}
-            default_diff = region_difference(first, expected['moon-mountains.png'], strip)
-            other_diff = region_difference(first, expected['quiet-fjord.png'], strip)
+            default_diff = region_difference(behind, expected['moon-mountains.png'], strip)
+            other_diff = region_difference(behind, expected['quiet-fjord.png'], strip)
             assert default_diff < 6 and other_diff > default_diff * 3, (default_diff, other_diff)
+            assert region_difference(first, behind, strip) > 15, 'the guide must cover the desktop'
+            assert session.ipc('open', '') == 'ok'
+            session.wait(lambda: not session.state().get('aside') and session.guide_rect(), 'open resumes the guide')
 
             session.wait(lambda: session.probe().get('paletteActive'), 'default wallpaper palette')
             assert session.probe()['paletteError'] == ''
@@ -434,7 +431,7 @@ def main():
                 assert session.ipc('open', step) == 'ok'
                 session.wait(lambda: session.state().get('step') == step, step)
                 if step == 'wallpaper':
-                    session.wait(lambda: (p := session.probe()).get('picker') and p.get('tab') == 'online', 'Wallhaven picker')
+                    session.wait(lambda: (p := session.probe()).get('grid') and p.get('tab') == 'online', 'Wallhaven first')
                 if step == 'shortcuts':
                     session.wait(lambda: session.probe().get('keysLoaded'), 'Keybindings loaded')
                 session.capture(shots, 'welcome-' + step + '-en.png')
@@ -452,6 +449,15 @@ def main():
             assert keys['workspaces.switch.2'] == ['SUPER + 2'], keys
             session.capture(shots, 'welcome-shortcuts-unbound-en.png')
 
+            # A shell surface over the guide is transient: the guide steps
+            # aside while it is open and comes back when it closes.
+            session.call('welcome-test', 'launcher', 'true')
+            session.wait(lambda: session.state().get('aside'), 'launcher makes the guide step aside')
+            assert session.probe()['watchers'] == 0, 'a guide out of the way holds no claim'
+            session.call('welcome-test', 'launcher', 'false')
+            session.wait(lambda: not session.state().get('aside'), 'the guide resumes after the launcher')
+            assert session.state()['step'] == 'shortcuts'
+
             # Enter activates the primary action with initial page focus.
             session.ipc('open', 'finish')
             session.call('welcome-test', 'focusRoot')
@@ -462,26 +468,24 @@ def main():
             session.ipc('open', '')
             assert session.state()['step'] == 'hello'
 
-            # Selecting an online tile applies immediately, without visiting
-            # the preview's Apply action. The scripted download saves a real
-            # image; the real Matugen must drive the next step's palette.
+            # Selecting an online tile applies immediately. The scripted
+            # download saves a real image; the real Matugen must drive the
+            # next step's palette.
             session.ipc('open', 'wallpaper')
             session.wait(lambda: session.probe().get('tab') == 'online', 'Wallhaven tab')
             probe = session.probe()
-            assert not probe['showSources'] and probe['applyOnSelect'], probe
             assert probe['selected'] == '' and probe['wall'] == '', probe
             assert probe['requests'] == 0, 'unknown metering must not contact Wallhaven'
             session.call('welcome-test', 'seedWallhaven')
             keyboard = session.start(['wtype', '-s', '800', '-d', '100', '-k', 'Right', '-k', 'Return',
                                       '-s', '200'], 'keyboard.log')
             time.sleep(.25)
-            session.focus()
             session.call('welcome-test', 'focusGrid')
             session.wait(lambda: session.probe().get('selected') == 'wallhaven-bbb222.png', 'keyboard selection')
             assert keyboard.wait(timeout=10) == 0, 'wtype failed'
             applied = session.wait(lambda: (p := session.probe()).get('wall') == 'wallhaven-bbb222.png' and p,
                                    'online wallpaper automatically applied')
-            assert session.state()['step'] == 'wallpaper', 'Enter in the picker must not continue'
+            assert session.state()['step'] == 'wallpaper', 'Enter in the grid must not continue'
             assert json.loads(session.call('wallpaper', 'list'))['current'] == 'wallhaven-bbb222.png'
             session.ipc('open', 'style')
             generated = session.wait(lambda: (p := session.probe()).get('paletteReady')
@@ -496,6 +500,7 @@ def main():
             session.patch_settings(themeMode='light')
             session.wait(lambda: session.probe().get('primary') == expected_palette['colors']['primary']['light']['color'],
                          'light wallpaper palette')
+            session.capture(shots, 'welcome-style-light-en.png')
             session.patch_settings(themeMode='dark', paletteMode='fixed')
             session.ipc('open', 'wallpaper')
             session.ipc('open', 'style')
@@ -510,11 +515,9 @@ def main():
             # Space types in Wallhaven search and does not peek. Metering is
             # unknown in this private session, so no request is made.
             session.wait(lambda: session.probe().get('search') is not None, 'Wallhaven view')
-            # Attach the virtual keyboard first: a new one moves seat focus.
             typing = session.start(['wtype', '-s', '1000', 'sea', '-P', 'space', '-s', '1200', '-p', 'space',
                                     'side', '-s', '100'], 'typing.log')
             time.sleep(.25)
-            session.focus()
             session.call('welcome-test', 'focusSearch')
             session.wait(lambda: session.probe().get('searchFocus'), 'search focus')
             time.sleep(1.5)
@@ -527,7 +530,7 @@ def main():
             assert searched['requests'] == 0, 'typing must not contact Wallhaven'
             session.capture(shots, 'welcome-wallpaper-search-en.png')
 
-            # Hold Space: the window fades and the actual desktop shows.
+            # Hold Space: the guide fades and the actual desktop shows.
             session.ipc('close')
             session.wait(lambda: session.guide_rect() is None, 'guide unmapped')
             desktop = session.capture(base, 'desktop.png')
@@ -535,11 +538,9 @@ def main():
             rect = session.wait(session.guide_rect, 'guide mapped again')
             shown = session.capture(base, 'shown.png')
             box = inset(rect, 40)
-            assert region_difference(shown, desktop, box) > 15, 'the window must cover the compared region'
-            session.focus()
-            session.call('welcome-test', 'focusGrid')  # a focused thumbnail still peeks
+            assert region_difference(shown, desktop, box) > 15, 'the guide must cover the compared region'
+            session.call('welcome-test', 'focusGrid')  # a focused tile still peeks
             # One virtual keyboard owns the entire press/release pair.
-            # Disconnecting wtype between them releases every pressed key.
             # wtype: -P presses and -p releases; it rejects unknown flags
             # before sending anything, so its exit status is checked.
             peek = session.start(['wtype', '-s', '200', '-P', 'space', '-s', '2000', '-p', 'space'], 'peek.log')
@@ -547,42 +548,41 @@ def main():
             # pairs have arrived and must not have ended the peek.
             time.sleep(1.2)
             assert session.probe()['peeking'], 'holding Space peeks'
-            peeked = session.capture(shots, 'welcome-wallpaper-peek-en.png', settle=0)
+            peeked = session.capture(shots, 'welcome-wallpaper-peek-en.png', settle=.3)
             assert peek.wait(timeout=10) == 0, 'wtype failed'
             session.wait(lambda: not session.probe().get('peeking'), 'release ends the peek')
-            assert session.state()['open'], 'Space keeps the window mapped'
+            assert session.state()['open'], 'Space keeps the guide open'
             peek_diff = region_difference(peeked, desktop, box)
-            assert peek_diff < 2, f'Space must reveal the actual wallpaper (difference {peek_diff:.2f})'
+            assert peek_diff < 2, f'Space must reveal the actual desktop (difference {peek_diff:.2f})'
             back = session.capture(base, 'back.png')
             assert region_difference(back, shown, box) < 2, 'release restores the guide'
 
-            # The picker fits the guide's minimum size. Smaller windows
-            # scroll the step rather than clipping the picker.
-            session.sway(f'[title="{TITLE}"] resize set 640 480')
-            session.wait(lambda: (r := session.guide_rect()) and (r['width'], r['height']) == (640, 480), 'minimum size')
-            session.capture(shots, 'welcome-wallpaper-minimum-en.png')
-            # The short layout starts when the 520 px step area no longer fits
-            # under the 28 px top margin and above the 76 px footer (all
-            # scaled). With the 16 px short margin, a window height up to
-            # 12 px lower than that used to flip the condition back and forth
-            # through the margin it changes: a binding loop. Sweep through the
-            # band, up and down, and require a settled layout and a clean log.
+            # A sheet opens over the guide and Escape closes only the sheet.
+            session.call('welcome-test', 'sheet', 'keyboard')
+            session.wait(lambda: session.state().get('sheet') == 'keyboard', 'keyboard sheet')
+            session.capture(shots, 'welcome-sheet-keyboard-en.png')
+            session.key('-k', 'Escape')
+            session.wait(lambda: session.state().get('sheet') == '', 'Escape closes the sheet')
+            assert session.state()['open'], 'Escape in a sheet must not dismiss the guide'
+
+            # The canvas follows the installer's zoom on other outputs,
+            # centred, with no binding loop.
             assert not session.binding_loops(), session.binding_loops()
-            limits = session.probe()
-            threshold = limits['footer'] + limits['margins'][1] + limits['step']
-            band = range(threshold - limits['margins'][1] + limits['margins'][0] - 8, threshold + 8)
-            for sweep in list(band) + list(reversed(band)):
-                session.sway(f'[title="{TITLE}"] resize set 1080 {sweep}')
-                session.wait(lambda: (r := session.guide_rect()) and r['height'] == sweep, f'{sweep} px guide')
-                session.wait(lambda: session.probe().get('shortHeight') == (sweep < threshold), f'short layout at {sweep} px')
+            for (width, height), zoom in (((1280, 800), 1.0), ((1920, 1080), 1.35), ((1024, 600), .75)):
+                session.output(width, height)
+                session.wait(lambda: abs(session.probe().get('zoom', 0) - zoom) < 1e-6, f'zoom {zoom} at {width}x{height}')
+                rect = session.wait(session.guide_rect, 'canvas')
+                assert abs(rect['width'] - 1280 * zoom) <= 1 and abs(rect['height'] - 800 * zoom) <= 1, rect
+                assert abs(rect['x'] * 2 + rect['width'] - width) <= 2, f'centred: {rect}'
+                session.capture(shots, f'welcome-wallpaper-{width}x{height}-en.png')
             assert not session.binding_loops(), session.binding_loops()
-            session.sway(f'[title="{TITLE}"] resize set 1080 800')
+            session.output(1440, 900)
 
             session.key('-M', 'ctrl', '-k', 'Next', '-m', 'ctrl')
             session.wait(lambda: session.state().get('step') == 'style', 'Ctrl+PageDown')
             session.key('-M', 'ctrl', '-k', 'Prior', '-m', 'ctrl')
             assert session.state()['step'] == 'wallpaper'
-            # Escape inside the picker dismisses like Escape elsewhere.
+            # Escape inside the grid dismisses like Escape elsewhere.
             session.call('welcome-test', 'focusGrid')
             session.key('-k', 'Escape')
             session.wait(lambda: session.state().get('status') == 'dismissed', 'Escape dismiss')
@@ -595,44 +595,41 @@ def main():
             assert session.state()['step'] == 'wallpaper'
             session.ipc('close')
 
-            # Text-size and density extremes at the minimum window size.
-            for scale, density in (('larger', 'comfortable'), ('default', 'compact')):
-                session.stop_process(session.shell)
-                session.patch_settings(textScale=scale, interfaceDensity=density)
-                session.start_shell(f'qs-{scale}.log')
-                for step in ('wallpaper', 'shortcuts'):
-                    session.ipc('open', step)
-                    session.wait(session.guide_rect, 'guide')
-                    session.sway(f'[title="{TITLE}"] resize set 640 480')
-                    session.capture(shots, f'welcome-{step}-minimum-{scale}-{density}-en.png', settle=1.2)
-                session.ipc('close')
+            # The preview follows the largest text size; the guide keeps the
+            # installer's layout.
             session.stop_process(session.shell)
-            session.patch_settings(textScale='default', interfaceDensity='default')
+            session.patch_settings(textScale='larger')
+            session.start_shell('qs-larger.log')
+            session.ipc('open', 'style')
+            session.wait(session.guide_rect, 'guide')
+            session.capture(shots, 'welcome-style-larger-en.png', settle=1.2)
+            session.ipc('close')
+            session.stop_process(session.shell)
+            session.patch_settings(textScale='default')
 
-            # The whole guide in English and Dutch, at the default and the
-            # minimum size, cropped to the window for layout review.
+            # The whole guide in English and Dutch at two output sizes,
+            # cropped to the canvas for layout review.
             for language in ('en', 'nl'):
                 session.env['CYBEXOS_LANG'] = language
                 session.start_shell(f'qs-tour-{language}.log')
-                for size, (width, height) in (('normal', (1080, 800)), ('minimum', (640, 480))):
+                for size, (width, height) in (('normal', (1440, 900)), ('small', (1024, 600))):
+                    session.output(width, height)
                     for step in ('hello', 'wallpaper', 'style', 'shortcuts', 'finish'):
                         assert session.ipc('open', step) == 'ok'
                         session.wait(lambda: session.state().get('step') == step and session.guide_rect(), step)
-                        session.sway(f'[title="{TITLE}"] resize set {width} {height}')
-                        session.wait(lambda: (r := session.guide_rect()) and (r['width'], r['height']) == (width, height),
-                                     f'{size} guide')
                         session.capture_guide(shots, f'tour-{language}-{size}-{step}.png')
-                    # Wallhaven's colour grid opens over the picker and
-                    # Escape closes only the grid. Metering is unknown here,
-                    # so nothing is requested.
-                    session.ipc('open', 'wallpaper')
-                    session.wait(lambda: session.call('welcome-test', 'colour') == 'ok', 'colour filter')
-                    session.wait(lambda: session.call('welcome-test', 'colourOpen') == 'true', 'colour grid open')
-                    session.capture_guide(shots, f'tour-{language}-{size}-colours.png')
-                    session.key('-k', 'Escape')
-                    session.wait(lambda: session.call('welcome-test', 'colourOpen') == 'false', 'Escape closes the grid')
-                    assert session.state()['open'], 'Escape in the colour grid must not dismiss the guide'
-                    assert session.probe()['requests'] == 0, 'the colour grid must not contact Wallhaven'
+                    for sheet in ('language', 'keyboard', 'timezone', 'theme'):
+                        session.ipc('open', 'style' if sheet == 'theme' else 'hello')
+                        session.call('welcome-test', 'sheet', sheet)
+                        session.wait(lambda: session.state().get('sheet') == sheet, sheet)
+                        session.capture_guide(shots, f'tour-{language}-{size}-sheet-{sheet}.png')
+                        session.key('-k', 'Escape')
+                        session.wait(lambda: session.state().get('sheet') == '', f'{sheet} closed')
+                    session.call('welcome-test', 'aside')
+                    session.wait(lambda: session.state().get('aside'), 'aside')
+                    session.capture(shots, f'tour-{language}-{size}-aside.png')
+                    session.ipc('open', '')
+                session.output(1440, 900)
             session.ipc('open', 'hello')
             session.capture(shots, 'welcome-hello-nl.png')
             session.ipc('close')
@@ -660,9 +657,10 @@ def main():
             print(json.dumps({'defaultWallpaperDifference': round(default_diff, 2),
                               'otherWallpaperDifference': round(other_diff, 2),
                               'peekDifference': round(peek_diff, 2), 'applied': applied['wall']}))
-            print('PASS: fresh-install default wallpaper, first login, all five steps, Keybindings keycaps '
-                  '(remapped/unbound) and claim lifecycle, picker apply, Space typing in search, Space peek '
-                  'versus the desktop-only frame, minimum size and text extremes, Finish, keyboard navigation, '
+            print('PASS: fresh-install default wallpaper behind the full-screen guide, installer zoom at four '
+                  'output sizes, first login, all five steps, Keybindings keycaps (remapped/unbound) and claim '
+                  'lifecycle, stepping aside for the launcher, tile apply, Space typing in search, Space peek '
+                  'versus the desktop-only frame, sheets and Escape, Finish, keyboard navigation, '
                   'dismissal/resume across restart, Dutch, protected invalid state, reset and environment suppression')
         except Exception:
             for log in session.logs:

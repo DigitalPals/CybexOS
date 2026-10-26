@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "WelcomeHelpers.js" as Helpers
+import "WallpaperNames.js" as WallpaperNames
 
 Singleton {
     id: root
@@ -30,6 +31,16 @@ Singleton {
     readonly property string step: document.step
     readonly property bool hasHyprland: Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") !== ""
     property string firstName: Quickshell.env("USER") || ""
+    property string fullName: ""
+    readonly property string userName: Quickshell.env("USER") || ""
+    // The guide fills the screen. It steps aside, leaving a resume pill, while
+    // the person uses Settings, an app or a shell surface it opened; a
+    // transient aside (the launcher, the overview) resumes when that closes.
+    property bool aside: false
+    property bool asideTransient: false
+    // The installer-style sheet over the guide: "", language, keyboard,
+    // timezone or theme.
+    property string sheet: ""
     readonly property var checklist: Helpers.checklist({
         assistantAvailable: Assistant.available, assistant: Assistant.agentReady,
         reader: (SystemSettings.security.snapshot.reader || {}).state === "ready",
@@ -39,9 +50,16 @@ Singleton {
         accounts: (SystemSettings.accounts.snapshot.accounts || []).length > 0
     }, document.checklist)
     property bool backupRead: false
+    // The wallpaper on the desktop, named as the guide names it.
+    readonly property string wallpaperName: Settings.wall === "" ? WallpaperNames.label("moon-mountains.png", true)
+        : /^wallhaven-/.test(Settings.wall) ? "Wallhaven " + WallpaperNames.label(Settings.wall, false).replace(/^wallhaven /, "")
+        : WallpaperNames.label(Settings.wall, false)
+    // collection, wallhaven or library.
+    readonly property string wallpaperSource: Settings.wall === "" || /^cybexos-/.test(Settings.wall) ? "collection"
+        : /^wallhaven-/.test(Settings.wall) ? "wallhaven" : "library"
+    // Web apps for the shortcut editor's "A web app" choice.
     property var webapps: []
     property string webappsError: ""
-    readonly property bool webappsBusy: webappList.running || webappRemove.running
     signal present()
 
     function changed(value) {
@@ -60,22 +78,42 @@ Singleton {
         if (!next) return "unknown";
         next.version = version;
         const wasOpen = open;
-        screenName = Screens.focused ? Screens.focused.name : "";
+        if (!wasOpen || !aside) screenName = Screens.focused ? Screens.focused.name : "";
         changed(next);
+        aside = false;
         open = true;
         if (wasOpen) present();
         return "ok";
     }
     function go(id) {
         if (!Helpers.STEPS.includes(id)) return;
+        sheet = "";
         changed(Helpers.visit(document, id));
     }
+    function stepAside(transient) {
+        if (!open) return;
+        sheet = "";
+        asideTransient = aside ? asideTransient && transient === true : transient === true;
+        aside = true;
+    }
+    function resume() {
+        if (!open || !aside) return;
+        aside = false;
+        asideTransient = false;
+        present();
+    }
+    function openSheet(id) {
+        if (open && !aside && ["language", "keyboard", "timezone", "theme"].includes(id)) sheet = id;
+    }
+    function closeSheet() { sheet = ""; }
     function move(delta) {
         go(Helpers.STEPS[Math.max(0, Math.min(Helpers.STEPS.length - 1, Helpers.STEPS.indexOf(step) + delta))]);
     }
     function dismiss() {
         if (!open) return;
         open = false;
+        aside = false;
+        sheet = "";
         const notify = !document.notified;
         changed(Object.assign({}, document, {status: "dismissed", notified: true}));
         saveNow();
@@ -85,29 +123,23 @@ Singleton {
     function finish() {
         changed(Object.assign({}, document, {status: "completed"}));
         open = false;
+        aside = false;
+        sheet = "";
         saveNow();
     }
-    function later(id, value) {
-        const items = Object.assign({}, document.checklist);
-        if (value) items[id] = "later"; else delete items[id];
-        changed(Object.assign({}, document, {checklist: items}));
-    }
     function status() {
-        return JSON.stringify({open: open, status: document.status, step: step, checklist: checklist});
+        return JSON.stringify({open: open, aside: aside, sheet: sheet, status: document.status, step: step, checklist: checklist});
     }
     function reset() {
         open = false;
+        aside = false;
+        sheet = "";
         autoAttempted = true;
         saveTimer.stop();
         resetPending = true;
         if (!writeInFlight) resetRequest.running = true;
     }
     function refreshWebapps() { if (!webappList.running) webappList.running = true; }
-    function removeWebapp(id) {
-        if (webappsBusy || !webapps.some(app => app.id === id)) return;
-        webappRemove.command = ["cybexos-webapp", "remove", "--notify", id];
-        webappRemove.running = true;
-    }
     function applyLoaded(text) {
         const result = Helpers.parse(text);
         loaded = true;
@@ -155,7 +187,7 @@ Singleton {
     Timer { id: saveTimer; interval: 120; onTriggered: root.saveNow() }
     Timer {
         interval: 10000; repeat: true; running: root.open && root.step === "finish"
-        onTriggered: { root.refreshWebapps(); Backup.refresh(); }
+        onTriggered: Backup.refresh()
     }
     CommandRequest {
         id: makeDirectory
@@ -181,7 +213,10 @@ Singleton {
     CommandRequest {
         id: userRequest; command: ["getent", "passwd", Quickshell.env("USER") || ""]
         running: true
-        onCompleted: (code, body, detail) => root.firstName = Helpers.firstName(code === 0 ? body : "", Quickshell.env("USER"))
+        onCompleted: (code, body, detail) => {
+            root.firstName = Helpers.firstName(code === 0 ? body : "", Quickshell.env("USER"));
+            root.fullName = Helpers.fullName(code === 0 ? body : "");
+        }
     }
     CommandRequest {
         id: webappList; command: ["cybexos-webapp", "list", "--json"]
@@ -192,13 +227,6 @@ Singleton {
                 root.webapps = rows.filter(row => row && typeof row.id === "string" && typeof row.name === "string");
                 root.webappsError = "";
             } catch (_) { root.webappsError = I18n.tr("Web apps could not be read. Open Software to manage your apps."); }
-        }
-    }
-    CommandRequest {
-        id: webappRemove
-        onCompleted: (code, body, detail) => {
-            if (code !== 0) root.webappsError = I18n.tr("The web app could not be removed. Try again.");
-            root.refreshWebapps();
         }
     }
     FileView { id: releaseVersion; path: "/etc/cybexos/release.json"; printErrors: false; blockLoading: true }

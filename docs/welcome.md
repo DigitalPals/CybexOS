@@ -1,50 +1,55 @@
 # Welcome to Cybex OS
 
-The welcome guide opens on your focused display after your first desktop login.
-It shows your installed language (by name, such as *English (United States)*,
-in the guide's language), keyboard layout and time zone, then helps you
-choose a wallpaper, appearance and a few useful shortcuts. Changes apply to the
-real desktop immediately. Hold Space on the wallpaper step to peek behind the
-guide; release it to return. While you type in the Wallhaven search field,
-Space types a space instead.
+The welcome guide opens on your focused display after your first desktop
+login. It continues the installer: the same full-screen layout, colours and
+type, and the installer's step indicator, here Wallpaper · Style · Shortcuts.
+Like the installer, it scales its 1280×800 design to the display, so it looks
+the same on every screen size.
 
-The wallpaper step opens directly in Wallhaven. Selecting a wallpaper downloads
-and applies it immediately; progress and errors appear beside the gallery.
-Wallhaven lists wallpapers automatically on a known unmetered connection.
-Metered or unknown connections show a button to load the listing. A fresh
-installation shows the bundled *Moon Mountains* wallpaper until you pick another.
-The Style step matches your wallpaper's colours by default, using the bundled
-Matugen generator. You can choose fixed colours or a theme preset instead.
-**Settings → Wallpaper** also offers the Cybex OS collection and your own pictures.
+**Hello** greets you by name and lists what the installer already set:
+language, keyboard layout, time zone, network, account and computer name.
+Nothing is asked twice. **Change** opens a sheet from the right for the
+language, keyboard or time zone, as in the installer; the network opens
+Settings. The pills in the top bar show the network, keyboard layout and
+language, and the last one closes the guide.
+
+**Wallpaper** opens on Wallhaven, with the Cybex OS collection and your own
+pictures one click away. Choosing a tile applies it straight away. A card
+shows it on a miniature of your desktop, with the colours Cybex OS reads from
+it. Wallhaven lists wallpapers automatically on a known unmetered connection;
+on metered or unknown connections it asks first. A fresh installation shows
+the bundled *Moon Mountains* wallpaper until you pick another.
+
+**Style** chooses dark or light, where the accent comes from (your
+wallpaper, a Cybex OS theme or one colour of your own), the text size and
+glass. A preview beside the choices is drawn with your real settings. The
+guide itself keeps the installer's colours.
+
+**Shortcuts** shows the Super keys as a keyboard. Lit keys do something;
+choose one to see what, and **Change key** to record another. The essentials
+are listed beside it. Changes wait for **Apply** in the footer, as in
+Settings. Your bindings come from the same data as Settings, including
+changes made there or in `user.lua`; an action you disabled shows
+**Not bound**.
+
+**Ready** sums up your choices and offers optional extras: web apps, the AI
+assistant, fingerprint (when a reader is available), security keys, backups
+and online accounts. Each opens its page in Settings; a tick shows what is
+actually set up.
+
+On Wallpaper and Style, hold Space to look at your desktop; release it to
+return. While you type in the Wallhaven search field, Space types a space.
+
+The guide covers the screen, so it steps aside when you open Settings, an
+app or a shortcut, and leaves a **Resume** pill at the bottom of the screen.
+After the launcher or the overview it comes back by itself.
 
 Use Tab and Enter to operate controls, and Ctrl+PageUp / Ctrl+PageDown to move
-between steps. Every step is optional. Escape, the close button and **Skip for
-now** keep your progress and dismiss the guide. It will not reopen automatically.
-**Finish** marks it complete. Open the launcher and search for **Welcome** to
-return, or use **Settings → About → Welcome guide**. A completed guide starts
-again at Hello when opened manually.
-
-The steps are Hello, Wallpaper, Style, Shortcuts and Finish. Shortcuts shows
-your actual bindings, including changes made in Settings or `user.lua`, and
-lets you edit them. An action you disabled shows **Not bound**. The shortcut
-backend runs only while that step is shown.
-
-The step list on the left also lists the optional items, each with its own
-icon and a tick once done; choosing one opens it on the Finish step. The
-Finish step sums up your choices: light or dark, a swatch of the accent and
-where it comes from (a theme such as *Cybex OS*, your wallpaper, or your own),
-the text size and the wallpaper's name.
-
-In a small window or with large text, the step list on the left is hidden.
-Back, Continue and Ctrl+PageUp / Ctrl+PageDown still move between steps.
-
-The optional checklist reads actual assistant sign-in, fingerprint, backup and
-online-account state. **Later** remembers an item for another time and never
-marks it complete. Web apps are personal choices, so they have no completion
-tick. Seeded apps can be kept or removed, and **Install another…** opens the
-existing launcher workflow. Hardware security keys remain a plain Settings
-link: the security service does not report their physical presence. Fingerprint
-setup appears only when its reader is available.
+between steps. Every step is optional. Escape, the close button and **Not
+now** keep your progress and dismiss the guide. It will not reopen
+automatically. **Start using Cybex OS** marks it complete. Open the launcher
+and search for **Welcome** to return, or use **Settings → About → Welcome
+guide**. A completed guide starts again at Hello when opened manually.
 
 Progress lives in `$XDG_STATE_HOME/cybexos/welcome.json`, normally
 `~/.local/state/cybexos/welcome.json`. An unreadable or invalid document is
@@ -62,34 +67,43 @@ cybexos-runtime ipc welcome reset           # delete only welcome.json
 ```
 
 For implementation and integration interfaces, see the
-[shared contract](architecture/welcome-and-shortcuts.md).
+[shared contract](architecture/welcome-and-shortcuts.md). The design comp the
+guide was built from is `desktop/welcome-ui-reference/index.html`.
 
 ## Validation
 
-`tests/quickshell/welcome*.test.cjs` cover the pure state logic and every action
-ID the guide uses against the ungated Lua catalog.
+`tests/quickshell/welcome*.test.cjs` cover the pure state logic, every action
+ID the guide uses against the ungated Lua catalog, the installer tokens and
+zoom rule (`welcome-kiosk.test.cjs` compares them with
+`installer/kiosk/ui/theme.slint` and `installer/kiosk/src/zoom.rs`), and that
+every Settings link steps aside first.
 `tests/welcome-guide.py --screenshots DIR` runs the real
 shell under a private headless Sway from a private git copy of the checkout
 with a test-only IPC target. Shortcut state is served by a fake `hyprctl`
 (remapped launcher, disabled Close window). It runs through `nix develop` and checks:
 
-- the fresh-install default wallpaper behind the first frame, against the
-  bundled image;
-- direct Wallhaven browsing and automatic apply after keyboard selection, with
-  a scripted offline listing/download boundary;
+- the full-screen canvas at the installer's zoom, centred, on 1440×900,
+  1280×800, 1920×1080 and 1024×600 outputs, with no binding-loop warning;
+- the fresh-install default wallpaper behind the guide when it steps aside,
+  against the bundled image, and that the guide covers it otherwise;
+- stepping aside while the launcher is open and resuming after it closes,
+  with the shortcut claim released meanwhile;
+- Wallhaven as the first source and automatic apply after keyboard
+  selection, with a scripted offline listing/download boundary;
 - real Matugen generation for the default and selected images, light/dark
   palettes, explicit fixed-colour preservation, and Style → Shortcuts navigation;
 - Space typing in Wallhaven search without a request;
 - the Space peek, by comparing a frame taken while Space is held (past the
   key-repeat delay) with a desktop-only frame;
-- the guide's own keys (Ctrl+PageUp / Ctrl+PageDown, Escape) working at once
-  after the shortcut recorder closes by Escape or by accepting a key;
-- a resize sweep through the height at which the guide switches to its short
-  layout, in both directions, with no binding-loop warning in the log;
-- the minimum size at text/density extremes, Escape from inside the picker,
-  and the claim release;
-- a tour of every step in English and Dutch at the default and minimum
-  sizes, saved as `tour-<language>-<size>-<step>.png` cropped to the guide.
+- a sheet over the guide, which Escape closes without dismissing the guide;
+- Ctrl+PageUp / Ctrl+PageDown, Escape from the wallpaper grid, and the claim
+  release;
+- a tour of every step, sheet and the resume pill in English and Dutch at
+  1440×900 and 1024×600, saved as `tour-<language>-<size>-<name>.png`.
+
+`tests/shortcut-editor.py` drives the Shortcuts step's recorder: the
+keyboard-shortcut inhibitor, conflicts, and the guide's own keys working at
+once after the recorder closes by Escape or by accepting a key.
 
 It draws with the installed desktop's fonts (`tests/shell_fonts.py`), so the
 screenshots match an installation rather than the host's font fallback.

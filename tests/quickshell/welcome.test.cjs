@@ -44,6 +44,9 @@ test('passwd name uses the first GECOS word, with a username fallback', () => {
     assert.equal(W.firstName('john:x:1000:1000:John Doe,Room,Phone:/home/john:/bin/bash', 'john'), 'John');
     assert.equal(W.firstName('john:x:1000:1000::/home/john:/bin/bash', 'john'), 'john');
     assert.equal(W.firstName('', 'cybexqa'), 'cybexqa');
+    assert.equal(W.fullName('john:x:1000:1000:John Doe,Room,Phone:/home/john:/bin/bash'), 'John Doe');
+    assert.equal(W.fullName('john:x:1000:1000::/home/john:/bin/bash'), '');
+    assert.equal(W.fullName(''), '');
 });
 test('guide wiring stays out of safe mode and exposes its stable IPC and launcher routes', () => {
     const read = name => fs.readFileSync(path.join(shellDir, name), 'utf8');

@@ -431,7 +431,9 @@ test('the editor UI is wired to the shared contract', () => {
     assert.match(read('ShortcutsOverlay.qml'), /Settings\.showPanel\("shortcuts"\)/);
     const step = read('Welcome/ShortcutsStep.qml');
     assert.doesNotMatch(step, /INTEGRATION: stream B|Welcome\.keysFor/);
-    assert.match(step, /ShortcutKeyboardMap \{/);
+    // The guide draws the same keyboard model in installer keycaps.
+    assert.match(step, /KioskKeyMap \{/);
+    assert.match(read('Welcome/KioskKeyMap.qml'), /Helpers\.keyboardMap\(Keybindings\.actions, Keybindings\.userBinds\)/);
     assert.match(step, /Keybindings\.keysFor\(/);
     assert.match(step, /Keybindings\.preferencesError/);
     assert.match(step, /Keybindings\.preferencesDetail/);
