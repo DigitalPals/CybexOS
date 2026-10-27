@@ -720,8 +720,15 @@ subprocess.run(prefix + ['systemd-run', '--user', '--quiet', '--collect', '--uni
     def installer_state(self, timeout=20):
         """The installer service's current snapshot, exactly as the screen receives it."""
         import base64
-        raw = self.command(f'cybexos-installerd --client --timeout {timeout} | base64 -w0', timeout=timeout + 60).strip()
-        return json.loads(base64.b64decode(raw))
+        # Console text can interleave with the serial output; read again then.
+        for attempt in range(3):
+            raw = self.command(f'cybexos-installerd --client --timeout {timeout} | base64 -w0', timeout=timeout + 60).strip()
+            try:
+                return json.loads(base64.b64decode(raw, validate=True))
+            except ValueError:
+                if attempt == 2:
+                    raise
+                time.sleep(1)
 
     def installer_request(self, request):
         self.command('cybexos-installerd --client --timeout 5 --request ' + shlex.quote(json.dumps(request)) + ' >/dev/null', timeout=60)
@@ -885,23 +892,29 @@ def apply(vm, status):
         raise RuntimeError('Trial boot selection differs from the pending deployment: ' + json.dumps(selection))
 
 
-def trial_boot(vm, encrypted):
+def trial_boot(vm, encrypted, states=('awaiting-login',)):
     vm.reboot(encrypted)
-    wait_state(vm, ('awaiting-login',), timeout=180)
+    wait_state(vm, states, timeout=300)
     # GRUB consumes the one-shot selection while booting it.
     if boot_selection(vm).get('next_entry'):
         raise RuntimeError('GRUB kept the one-shot trial selection after booting it')
 
 
 def authenticated_boot(vm, encrypted):
-    trial_boot(vm, encrypted)
+    # After automatic login the desktop may confirm before this first poll.
+    trial_boot(vm, encrypted, ('awaiting-login', 'done') if vm.autologin else ('awaiting-login',))
     vm.login_desktop()
     vm.command('cybexos-health desktop-required', timeout=180)
 
 
 def confirm(vm):
-    vm.command('cybex update confirm')
-    wait_state(vm, ('done',), timeout=180)
+    """The signed-in desktop requests confirmation itself; health decides."""
+    wait_state(vm, ('done',), timeout=300)
+    request = json.loads(vm.command('cybex update status').strip())['request']
+    if request.get('action') != 'confirm' or request.get('state') != 'done':
+        raise RuntimeError('The trial boot was not confirmed by its own request: ' + json.dumps(request))
+    # Quickshell started the fixed unit through the session's polkit rule.
+    vm.command("journalctl -b -u cybexos-update-confirm.service -o cat --no-pager | grep -F '\"accepted\": true'")
     vm.command('test ! -e /var/lib/cybexos/pending.json')
     current = vm.command('readlink -f /run/current-system').strip()
     if boot_selection(vm).get('saved_entry') != grub_selection(current):
@@ -964,7 +977,29 @@ print(json.dumps({'lockSha256': hashlib.sha256(path.read_bytes()).hexdigest(),
                  **{name: lock['nodes'][root[name]]['locked'] for name in ('nixpkgs', 'cybexos')}}))
 QA
 ''').strip())
-    upstream = stage(vm, 'upstream')
+    # Background preparation: the same unit the desktop starts, deciding on
+    # its own discovery. Without a newer Nixpkgs it must do nothing.
+    vm.command('cybex update automatic prepare on')
+    previous = json.loads(vm.command('cybex update status').strip()).get('transaction')
+    vm.command('systemctl start cybexos-update-auto.service', timeout=900)
+    # The unit's own result line; systemd adds its lifecycle messages around it.
+    automatic = json.loads(vm.command("journalctl -b -u cybexos-update-auto.service -o cat --no-pager | grep '^{' | tail -n 1").strip())
+    if discovery['upstream']['state'] == 'available':
+        if automatic.get('scope') != 'upstream' or not automatic.get('accepted'):
+            raise RuntimeError('Background preparation did not request the available upstream update: ' + json.dumps(automatic))
+        wait_state(vm, ('ready',), previous=previous)
+        vm.command('cybex update status > /run/qa-status.json')
+        import base64
+        upstream = json.loads(base64.b64decode(vm.command('base64 -w0 /run/qa-status.json').strip()))
+        if 'nixos' not in [row['id'] for row in upstream['highlights']['components']]:
+            raise RuntimeError('The readable review omits the changed NixOS build: ' + json.dumps(upstream['highlights']))
+    else:
+        if automatic != {'skipped': 'current'}:
+            raise RuntimeError('Background preparation acted without an available update: ' + json.dumps(automatic))
+        upstream = stage(vm, 'upstream')
+    vm.command('cybex update automatic prepare off')
+    checks['automaticPreparation'] = {'result': 'passed', 'outcome': automatic,
+                                      'highlights': upstream.get('highlights')}
     if upstream['inputs']['cybexos'] != before['cybexos']:
         raise RuntimeError('Upstream staging changed the installed Cybex OS identity')
     after_hash = vm.command("sha256sum /etc/nixos/flake.lock | cut -d ' ' -f 1").strip()
@@ -1066,6 +1101,8 @@ cybexos-health desktop-required
 
     # An unconfirmed trial boots once; the next boot returns to the previous
     # generation and recovery restores it. This candidate is then quarantined.
+    # Automatic confirmation would keep this candidate on an autologin boot.
+    vm.command('cybex update automatic confirm off')
     edit_import(vm, 'qualification-unconfirmed.nix', '{ ... }: { environment.etc."cybexos-qualification-unconfirmed".text = "unconfirmed"; }')
     unconfirmed = stage(vm)
     apply(vm, unconfirmed)
@@ -1078,6 +1115,7 @@ cybexos-health desktop-required
     vm.login_desktop()
     vm.command(preserve)
     checks['unconfirmedTrialFallback'] = {'result': 'passed', 'transaction': unconfirmed['transaction']}
+    vm.command('cybex update automatic confirm on')
 
     edit_import(vm, 'qualification-candidate.nix', '{ ... }: { environment.etc."cybexos-qualification-candidate".text = "candidate"; }')
     candidate = stage(vm)
@@ -1141,6 +1179,14 @@ def qualify(iso, encrypted, base, lifecycle=True, evidence=None, *, interactive=
             vm.boot_screenshots(screenshots / 'installed-boot')
         vm.login(encrypted=encrypted)
         milestones['installedBootAndSerialPasswordLogin'] = {'result': 'passed'}
+        # Background preparation waits ten minutes after sign-in and for the
+        # boot timer. Keep the run deterministic; the lifecycle scenario
+        # exercises it explicitly.
+        policy = json.loads(vm.command('cybex update status').strip())['automatic']
+        if policy != {'prepare': True, 'confirm': True}:
+            raise RuntimeError('Fresh installation has an unexpected automatic update policy: ' + json.dumps(policy))
+        vm.command('cybex update automatic prepare off')
+        milestones['automaticUpdatePolicy'] = {'result': 'passed', 'default': policy, 'preparationDuringRun': False}
         milestones['quietBoot'] = vm.quiet_boot()
         vm.command('''grep -q 'submenu "Cybex OS - All configurations" --class submenu --id cybexos-generations {' /boot/grub/grub.cfg
 grep -q '^ *set theme=.*/theme/theme.txt$' /boot/grub/grub.cfg
@@ -1230,7 +1276,7 @@ QA_SOURCE''').strip())
         if not lifecycle:
             evidence.update(result='passed', scope='actual ISO install, installed boot/login, encryption; no update application')
         else:
-            evidence.update(result='passed', scope='actual ISO installation, boot/login, local updater failure/interruption, staged application, GRUB trial boot, unconfirmed-trial fallback, confirmation and rollback; no signed channel or physical qualification')
+            evidence.update(result='passed', scope='actual ISO installation, boot/login, background preparation, local updater failure/interruption, staged application, GRUB trial boot, unconfirmed-trial fallback, automatic confirmation from the signed-in desktop and rollback; no signed channel or physical qualification')
         return evidence
     except Exception:
         evidence['failureDiagnostics'] = vm.failure_diagnostics()

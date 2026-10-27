@@ -170,11 +170,11 @@ var BUILTIN_ACTIONS = [
     {
         id: "updates-open",
         verb: "update",
-        name: "Open updates",
-        subtitle: "Show pending updates and their progress",
-        keywords: ["upgrade", "install", "update", "pending"],
+        name: "Open Software Update…",
+        subtitle: "Review and install Cybex OS and NixOS updates",
+        keywords: ["upgrade", "install", "update", "pending", "kernel", "security", "software update"],
         glyph: "circle-arrow-up",
-        command: ["cybexos-runtime", "ipc", "updates", "open"]
+        command: ["cybexos-software-update"]
     },
     {
         id: "screenshot-region",

@@ -45,7 +45,6 @@ T3Picker T3Picker.qml
 T3RequestCard T3RequestCard.qml
 T3ThreadPage T3ThreadPage.qml
 TailscalePopover TailscalePopover.qml
-UpdatesPopover UpdatesPopover.qml
 WeatherPopover WeatherPopover.qml
 WifiPopover WifiPopover.qml
 RemoteServerPopover RemoteServerPopover.qml

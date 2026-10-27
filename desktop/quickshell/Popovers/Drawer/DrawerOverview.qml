@@ -13,7 +13,6 @@ import ".."
 Column {
     id: root
 
-    property bool highlightUpdates: false
     property var updateService: Updates
 
     width: parent ? parent.width : 0
@@ -261,7 +260,7 @@ Column {
             width: parent.width
             height: Math.max(56, updateCopy.implicitHeight + 16)
             radius: Theme.rowRadius
-            color: root.highlightUpdates ? Theme.chip : "transparent"
+            color: "transparent"
 
             Sym {
                 id: updatesGlyph
@@ -316,7 +315,10 @@ Column {
                 fill: root.updateService.hasUpdates ? Theme.accent : Theme.chip
                 tint: root.updateService.hasUpdates ? Theme.accentFg : Theme.textHi
                 hPadding: 20
-                onTriggered: root.updateService.show()
+                onTriggered: {
+                    Popouts.close();
+                    root.updateService.show();
+                }
             }
         }
     }

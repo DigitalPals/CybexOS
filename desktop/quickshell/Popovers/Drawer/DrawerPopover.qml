@@ -19,8 +19,6 @@ Surface {
     id: root
 
     property string tab: "overview"
-    // Deep links: the updates chip opens Overview with its updates row lit.
-    property string highlight: ""
 
     padding: Theme.panelPadding
     spacing: Theme.scaled(14)
@@ -69,8 +67,6 @@ Surface {
     Component.onCompleted: {
         const name = Popouts.currentName;
         tab = PanelRegistry.drawerTab(name) || "overview";
-        if (name === "updates")
-            highlight = "updates";
     }
 
     // Follow the presenting name while it is a drawer name. When another
@@ -86,7 +82,6 @@ Surface {
             if (tab === "")
                 return;
             root.tab = tab;
-            root.highlight = Popouts.currentName === "updates" ? "updates" : "";
         }
     }
 
@@ -149,9 +144,7 @@ Surface {
 
     Component {
         id: overviewTab
-        DrawerOverview {
-            highlightUpdates: root.highlight === "updates"
-        }
+        DrawerOverview {}
     }
 
     Component {

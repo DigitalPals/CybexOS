@@ -80,9 +80,105 @@ test("Control Center keeps pending system changes and errors reachable without a
     assert.equal(H.overviewVisible(false, { state: "awaiting-login" }, ""), true);
 });
 
-test("readable package details distinguish upgrades, additions, removals and rebuilds", () => {
-    assert.equal(H.packageChange({kind:"updated",before:"1",after:"2"}), "1 → 2");
-    assert.match(H.packageChange({kind:"added",after:"2"}), /New/);
-    assert.match(H.packageChange({kind:"removed",before:"1"}), /Removed/);
-    assert.match(H.packageChange({kind:"rebuilt",before:"1",after:"1"}), /Rebuilt/);
+test("finished failures can be dismissed; a pending generation cannot", () => {
+    for (const state of ["failed", "interrupted", "rolled-back"])
+        assert.equal(H.capabilities({ state, transaction: "id" }, false, true, "").discard, true, state);
+    for (const state of ["awaiting-boot", "awaiting-login", "recovery-failed", "done", "idle"])
+        assert.equal(H.capabilities({ state, transaction: "id" }, false, true, "").discard, false, state);
+});
+
+const base = { statusLoaded: true, sourcesLoaded: true, hasUpdates: false, error: "", state: "idle",
+    request: {}, automatic: { prepare: true, confirm: true } };
+const page = values => H.page({ ...base, ...values });
+
+test("Software Update shows one page per worker state, ahead of discovery", () => {
+    assert.equal(page({ statusLoaded: false }), "checking");
+    assert.equal(page({ statusLoaded: false, statusError: "no helper" }), "problem");
+    assert.equal(page({ sourcesLoaded: false }), "checking");
+    assert.equal(page({}), "current");
+    assert.equal(page({ state: "done" }), "current");
+    assert.equal(page({ hasUpdates: true }), "available");
+    assert.equal(page({ hasUpdates: true, state: "done" }), "available", "a later update follows completed history");
+    for (const state of ["discovering", "building", "validating"])
+        assert.equal(page({ state, hasUpdates: true }), "preparing");
+    assert.equal(page({ state: "ready", sourcesLoaded: false }), "ready", "a prepared update survives unknown discovery");
+    assert.equal(page({ state: "activating" }), "installing");
+    assert.equal(page({ state: "awaiting-boot", hasUpdates: true }), "restart");
+    assert.equal(page({ state: "recovering" }), "recovering");
+    assert.equal(page({ state: "unavailable" }), "unavailable");
+    for (const state of ["failed", "interrupted", "stale", "rolled-back", "recovery-failed"])
+        assert.equal(page({ state, hasUpdates: true }), "problem", state);
+    assert.equal(page({ error: "offline" }), "problem");
+    assert.equal(page({ error: "offline", hasUpdates: true }), "available", "a reachable update outranks another source's error");
+});
+
+test("queued requests show their action before the worker reports a phase", () => {
+    assert.equal(page({ request: { state: "queued", action: "stage" } }), "preparing");
+    assert.equal(page({ state: "ready", request: { state: "queued", action: "apply" } }), "installing");
+    assert.equal(page({ state: "awaiting-login", request: { state: "running", action: "confirm" } }), "finishing");
+    assert.equal(page({ state: "recovery-failed", request: { state: "queued", action: "rollback" } }), "recovering");
+    assert.equal(page({ state: "ready", request: { state: "queued" }, requestAction: "apply" }), "installing");
+    assert.equal(page({ state: "ready", request: { state: "queued", action: "discard" } }), "ready");
+    assert.equal(page({ state: "ready", request: { state: "failed", action: "apply" } }), "ready");
+});
+
+test("a trial boot is confirmed automatically unless that failed or is switched off", () => {
+    assert.equal(page({ state: "awaiting-login" }), "finishing");
+    assert.equal(page({ state: "awaiting-login", automatic: { prepare: true, confirm: false } }), "confirm");
+    assert.equal(page({ state: "awaiting-login", automatic: undefined }), "confirm", "an older status asks");
+    const failed = { state: "failed", action: "confirm", error: "Hyprland health failed" };
+    assert.equal(page({ state: "awaiting-login", request: failed }), "confirm");
+    assert.equal(H.confirmFailed("awaiting-login", failed), true);
+    assert.equal(H.confirmFailed("awaiting-login", { ...failed, action: "stage" }), false);
+    assert.equal(H.problem({ statusLoaded: true, state: "rolled-back" }), "rolled-back");
+    assert.equal(H.problem({ statusLoaded: true, state: "idle" }), "check");
+    assert.equal(H.problem({ statusLoaded: false }), "status");
+});
+
+test("background preparation is requested for each new target, never over a person's work", () => {
+    const sources = { upstream: { state: "available", available: "a" }, cybexos: { state: "current", available: "1.0.0" } };
+    assert.equal(H.targetKey(sources, "lock"), JSON.stringify(["lock", "a", ""]));
+    assert.notEqual(H.targetKey(sources, "lock"), H.targetKey(sources, "other lock"));
+    assert.equal(H.autoPrepare(true, { prepare: true }, "idle", false), true);
+    assert.equal(H.autoPrepare(true, { prepare: true }, "done", false), true);
+    assert.equal(H.autoPrepare(true, { prepare: false }, "idle", false), false);
+    assert.equal(H.autoPrepare(false, { prepare: true }, "idle", false), false);
+    assert.equal(H.autoPrepare(true, { prepare: true }, "idle", true), false);
+    for (const state of ["ready", "stale", "failed", "rolled-back", "awaiting-boot", "building"])
+        assert.equal(H.autoPrepare(true, { prepare: true }, state, false), false, state);
+});
+
+test("versions read as people expect: NixOS builds and firmware as dates", () => {
+    assert.deepEqual(H.versionParts("nixos", "26.05.20261024.abcdef1"), { text: "26.05", date: "2026-10-24" });
+    assert.deepEqual(H.versionParts("nixos", "26.11pre.20261024.abcdef1"), { text: "26.11", date: "2026-10-24" });
+    assert.deepEqual(H.versionParts("firmware", "20261014"), { text: "", date: "2026-10-14" });
+    assert.deepEqual(H.versionParts("tool", "0-unstable-2026-10-01"), { text: "", date: "2026-10-01" });
+    assert.deepEqual(H.versionParts("kernel", "6.12.58"), { text: "6.12.58", date: "" });
+    assert.deepEqual(H.versionParts("tool", "20261399"), { text: "20261399", date: "" }, "not a date");
+    assert.deepEqual(H.versionParts("kernel", null), { text: "", date: "" });
+});
+
+test("the review groups components, apps and tools, falling back to package changes", () => {
+    const highlights = { schema: 1, components: [{ id: "kernel", before: "6.12.55", after: "6.12.58" }],
+        apps: [{ name: "firefox", title: "Firefox", icon: "firefox", kind: "updated", before: "1", after: "2" }],
+        tools: [], background: 213, sizeChange: 40e6 };
+    const review = H.summary({ highlights });
+    assert.equal(review.components[0].id, "kernel");
+    assert.equal(review.apps[0].title, "Firefox");
+    assert.equal(review.background, 213);
+    const older = H.summary({ packageChanges: [{ name: "hello", kind: "updated", before: "1", after: "2", oldPath: "/nix/store/x" },
+        { name: "same", kind: "rebuilt", before: "1", after: "1" }] });
+    assert.deepEqual(older.tools, [{ name: "hello", kind: "updated", before: "1", after: "2" }]);
+    assert.deepEqual(H.summary({}).components, []);
+    for (const id of Object.keys(H.COMPONENTS))
+        assert.ok(H.component(id).label && H.component(id).detail && H.component(id).glyph, id);
+    assert.equal(H.component("unknown").label, "unknown");
+});
+
+test("release notes, sizes and labels stay short and honest", () => {
+    assert.deepEqual(H.noteItems("## Highlights\n- One\n* Two\n\n1. Three\n• Four", 3), { items: ["One", "Two", "Three"], more: true });
+    assert.deepEqual(H.noteItems(""), { items: [], more: false });
+    assert.equal(H.sizeChange(40e6), "+40 MB");
+    assert.equal(H.sizeChange(-2.04e9), "\u22122.0 GB");
+    assert.equal(H.sizeChange(1000), "", "a rounding error is not a size change");
 });

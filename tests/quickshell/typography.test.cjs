@@ -378,8 +378,6 @@ test("no surface paints an accent field where a chip belongs", () => {
         "Popovers/ControlCenterPopover.qml",
         "Popovers/Drawer/DrawerTile.qml",
         "Common/Toggle.qml",
-        // the one primary action per panel
-        "Popovers/UpdatesPopover.qml",
         // the current day, which is the calendar's workspace pill
         "Popovers/CalendarPopover.qml",
         // T3 and GitHub carry their own reviewed treatment

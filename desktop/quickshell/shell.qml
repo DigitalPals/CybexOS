@@ -27,6 +27,7 @@ ShellRoot {
 
     SettingsWindow {}
     SoftwareWindow {}
+    SoftwareUpdateWindow {}
 
     IpcHandler {
         target: "software"
@@ -267,20 +268,22 @@ ShellRoot {
         }
     }
 
-    // The launcher's "Check for updates" and scripts. `check` refreshes every
-    // source, as the panel's refresh button does (a run in progress is left
-    // alone); `open` shows the Updates panel on the focused output, which
-    // refreshes stale discovery when the review opens.
+    // The launcher's "Check for updates", `cybexos-software-update` and
+    // scripts. `check` refreshes every source (a run in progress is left
+    // alone); `open` shows Software Update, which refreshes stale discovery.
     IpcHandler {
         target: "updates"
 
         function check(): void {
-            Updates.check();
+            Updates.check(true);
         }
 
         function open(): void {
-            Popouts.openPanel("updates", undefined, undefined,
-                Screens.focused ? Screens.focused.name : "");
+            Updates.show();
+        }
+
+        function close(): void {
+            Updates.close();
         }
     }
 

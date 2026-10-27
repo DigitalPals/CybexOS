@@ -266,6 +266,10 @@ class FakeRunner:
                 {'name': 'hello', 'version': '2' if newer else '1',
                  'path': '/nix/store/' + ('f' if newer else 'e') * 32 + '-hello',
                  'description': 'A friendly application'}]})
+        if args[0] == 'cat' and args[1].endswith('/etc/cybexos/components.json'):
+            newer = args[1].startswith(NEW_SYSTEM)
+            return json.dumps({'schema': 1, 'components': {'kernel': '6.12.58' if newer else '6.12.55',
+                                                           'nixos': '26.05.20261024.abcdef1'}})
         if args[:3]==('nix','flake','metadata'):return json.dumps({'locked':{'rev':REV_NEW}})
         if args[:2]==('systemctl','list-units'):
             if args != ('systemctl','list-units','--state=failed,auto-restart','--all','--output=json','--no-pager'):

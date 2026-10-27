@@ -203,7 +203,7 @@ test("the catalogue wires every cross-package command exactly as named", () => {
         "ai-agent-launch": ["cybex", "agent", "--window"],
         "game-mode": ["game-mode", "toggle"],
         "updates-check": ["cybexos-runtime", "ipc", "updates", "check"],
-        "updates-open": ["cybexos-runtime", "ipc", "updates", "open"],
+        "updates-open": ["cybexos-software-update"],
         "screenshot-region": ["screenshot", "region"],
         "screenshot-fullscreen": ["screenshot", "fullscreen"],
         "screenshot-scroll": ["screenshot", "scroll"],

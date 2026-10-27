@@ -88,6 +88,27 @@ in pkgs.testers.runNixOSTest {
     machine.succeed("systemctl is-active cybexos-recover.service")
     machine.fail("journalctl -b --no-pager | grep -Ei 'cybexos-recover.*(ordering cycle|deleted.*job)|ordering cycle.*cybexos-recover'")
     machine.succeed("cybex update status | grep idle")
+    # Software Update reads exact component versions from the system itself.
+    components = json.loads(machine.succeed("cat /etc/cybexos/components.json"))["components"]
+    assert {"cybexos", "nixos", "kernel", "graphics", "firmware", "hyprland"} <= set(components), components
+    assert machine.succeed("uname -r").strip().startswith(components["kernel"]), components
+    assert components["nixos"] == machine.succeed("nixos-version").strip().split(" ")[0], components
+    # Background preparation and restart confirmation: default policy, fixed
+    # units and a timer. Only an active local administrator session may start
+    # the units without authentication; this inactive runuser session may not.
+    assert json.loads(machine.succeed("runuser -u tester -- cybex update status"))["automatic"] == {"prepare": True, "confirm": True}
+    machine.succeed("systemctl is-active cybexos-update-auto.timer")
+    machine.succeed("grep -l 'cybexos-update-confirm.service' /etc/polkit-1/rules.d/*.rules")
+    machine.fail("runuser -u tester -- systemctl --no-ask-password start cybexos-update-auto.service")
+    machine.succeed("cybex update automatic prepare off")
+    assert json.loads(machine.succeed("runuser -u tester -- cybex update status"))["automatic"] == {"prepare": False, "confirm": True}
+    machine.succeed("test \"$(stat -c %a /var/lib/cybexos/update-automatic.json)\" = 644")
+    machine.succeed("systemctl start cybexos-update-auto.service")
+    machine.succeed("journalctl -u cybexos-update-auto.service --no-pager | grep -F '\"skipped\": \"disabled\"'")
+    machine.succeed("cybex update automatic prepare on")
+    machine.succeed("systemctl start cybexos-update-confirm.service")
+    machine.succeed("journalctl -u cybexos-update-confirm.service --no-pager | grep -F '\"skipped\": \"idle\"'")
+    machine.succeed("test ! -e /var/lib/cybexos/update-request.json")
     assert json.loads(machine.succeed("cat /etc/cybexos/maintenance.json")) == {"automatic": True, "keepConfirmed": 5, "keepDays": 30}
     machine.succeed("systemctl is-active cybexos-maintenance-auto.timer")
     machine.succeed("systemctl start cybexos-maintenance-auto.service")
@@ -166,6 +187,15 @@ in pkgs.testers.runNixOSTest {
     assert software_status["changeKind"] == "software" and software_status["requestId"] == request_id
     assert software_status["software"]["packages"] == ["hello"]
     assert any(row["name"] == "hello" and row["kind"] == "added" for row in software_status["packageChanges"]), software_status["packageChanges"]
+    # The readable summary: a command-line program, known components only,
+    # and no store paths in what people read. This VM's running system is not
+    # built from the preview flake, so its NixOS build differs legitimately.
+    highlights = software_status["highlights"]
+    assert highlights["schema"] == 1, highlights
+    assert {row["id"] for row in highlights["components"]} <= {"cybexos", "nixos", "kernel", "graphics", "nvidia", "firmware", "hyprland"}, highlights
+    assert not any(row["before"] == row["after"] for row in highlights["components"]), highlights
+    assert any(row["name"] == "hello" and row["kind"] == "added" and row["before"] is None for row in highlights["tools"]), highlights
+    assert "/nix/store" not in json.dumps(highlights), highlights
     transaction = software_status["transaction"]
     machine.succeed("test -x $(readlink -f /var/lib/cybexos/transactions/" + transaction + "/roots/system)/sw/bin/hello")
     machine.succeed("cmp /etc/nixos/flake.lock /var/lib/cybexos/transactions/" + transaction + "/config/flake.lock")
@@ -199,6 +229,10 @@ in pkgs.testers.runNixOSTest {
     machine.wait_until_succeeds("cybex update request " + update["requestId"] + " | python3 -c 'import json,sys; assert json.load(sys.stdin)[\"state\"] in (\"done\",\"failed\")'", timeout=900)
     prepared = json.loads(machine.succeed("runuser -u tester -- cybex update status"))
     assert prepared["state"] == "ready" and prepared["request"]["state"] == "done", prepared
+    # A prepared change belongs to the person: background preparation waits.
+    machine.succeed("systemctl start cybexos-update-auto.service")
+    machine.succeed("journalctl -u cybexos-update-auto.service --no-pager | grep -F '\"skipped\": \"ready\"'")
+    assert json.loads(machine.succeed("cat /var/lib/cybexos/update-request.json"))["id"] == update["requestId"]
     assert prepared["request"]["id"] == update["requestId"] and prepared["reviewToken"], prepared
     machine.succeed("grep later-personal-edit /etc/nixos/local/preserved.txt")
     assert not prepared["error"], prepared

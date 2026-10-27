@@ -267,7 +267,7 @@ test("the tray and the updates chip use the reorderable widget pipeline", () => 
     // The widgets are files; the bar maps ids to their sources.
     assert.match(bar, /updates:\s*"Modules\/Updates\.qml"/);
     assert.match(bar, /tray:\s*"Modules\/Tray\.qml"/);
-    assert.match(read("Bar/Modules/Updates.qml"), /panelName:\s*"updates"/);
+    assert.match(read("Bar/Modules/Updates.qml"), /onClicked:\s*Updates\.show\(\)/);
     // Only confirmed available updates show a menubar indicator.
     assert.match(bar, /case "updates": return Updates\.showIndicator/);
     assert.doesNotMatch(bar, /Updates\.ran && Updates\.busy/);

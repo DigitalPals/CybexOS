@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Software Update
+Comment=Review and install Cybex OS and NixOS system updates
+Exec=cybexos-software-update
+Icon=cybexos
+Type=Application
+Categories=System;Settings;
+Keywords=update;upgrade;kernel;security;patch;

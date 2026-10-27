@@ -1584,9 +1584,33 @@ SettingsPage {
                 onResetRequested: view.resetOpt("pollMins")
             }
 
+            // Machine policies rather than shell preferences: the updater
+            // reads them as root, so changing one asks for authorization.
+            SwitchRow {
+                width: parent.width
+                label: I18n.tr("Download updates automatically")
+                description: I18n.tr("Prepared in the background while plugged in and on an unmetered network. Installing still waits for you.")
+                checked: Updates.automatic.prepare === true
+                disabledReason: !Updates.statusLoaded ? I18n.tr("The update status is unavailable") : Updates.choosingAutomatic ? I18n.tr("Waiting for authorization…") : ""
+                dirty: false
+                resetKeys: []
+                onToggled: value => Updates.setAutomatic("prepare", value)
+            }
+
+            SwitchRow {
+                width: parent.width
+                label: I18n.tr("Finish updates automatically after restarting")
+                description: I18n.tr("Keeps the new version once everything passes its checks after you sign in. When off, Software Update asks you first.")
+                checked: Updates.automatic.confirm === true
+                disabledReason: !Updates.statusLoaded ? I18n.tr("The update status is unavailable") : Updates.choosingAutomatic ? I18n.tr("Waiting for authorization…") : ""
+                dirty: false
+                resetKeys: []
+                onToggled: value => Updates.setAutomatic("confirm", value)
+            }
+
             SettingsHint {
                 width: parent.width
-                text: I18n.tr("The indicator appears when system updates are available. Open it to review the available sources and prepare the exact package changes before updating. Personal inputs and Flatpak apps are managed separately.")
+                text: I18n.tr("The indicator appears when system updates are available and opens Software Update. Personal inputs and Flatpak apps are managed separately.")
             }
 
         }

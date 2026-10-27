@@ -23,20 +23,93 @@ source is unknown/unavailable, never reported current. Nixpkgs checks identify
 available revisions; preview builds expose the actual package closure changes.
 The menubar shows one icon only when a source has confirmed an available
 update. There are no source counts, zero badges or success/error icons.
-The icon and Control Center's **Review** button open the same System updates
-review. Control Center keeps pending deployments and failures reachable even
-when there is no update indicator.
 
-Select the available sources, then use **Prepare update**. Preparation downloads
-and builds a candidate without activating it. The review lists the exact
-installed package names and before/after versions, including additions,
-removals and same-version rebuilds. **Show system details** exposes the full
-closure diff for dependencies and system components, plus logs and recovery
-actions. Release notes appear
-alongside the selected source. The single primary action becomes **Update**
-only after the candidate passes its checks. A new personal configuration edit
-invalidates the preview and requires preparation again. **Discard preview**
-clears only an unapplied preview and preserves its files and logs.
+## Software Update
+
+**Software Update** is the one place to review and install system updates. The
+menubar icon, Control Center's **Review** button, the launcher's **Software
+Update** application and **Open Software Update…** action, and
+`cybexos-software-update` (`cybexos-runtime ipc updates open`) all open it.
+Closing the window never interrupts an update; the supervised worker owns it.
+Control Center keeps pending deployments and failures reachable even when there
+is no update indicator.
+
+The app shows one page at a time: checking, up to date, updates available,
+getting the update ready, ready to install, installing, restart to finish,
+finishing after the restart, and a problem page. Worker state wins over
+discovery, so a prepared or restarting update is shown even when a source
+cannot be checked.
+
+Preparation downloads and builds a candidate without activating it. The ready
+page then lists what people recognise first:
+
+- **Important changes**: Cybex OS, the NixOS build (shown by date within one
+  release), the Linux kernel, Mesa or NVIDIA graphics drivers, device firmware
+  files and Hyprland, from old version to new. Each installed system declares
+  these exact versions in `/etc/cybexos/components.json`; nothing is inferred
+  from store path names. A system built before the manifest lists no
+  components, and the review still works.
+- **Apps**: installed packages with a visible `.desktop` entry, by their own
+  name and icon.
+- Release notes of a new Cybex OS version.
+- A count of the remaining background components. Opening it shows programs
+  without a window, the net size change, the exact `nix store diff-closures`
+  output, the build log, update history, the source choice and **Discard
+  Prepared Update**.
+
+Same-version rebuilds are not shown as changes, and no store paths, hashes,
+transaction IDs or tokens appear outside the technical details. The worker
+publishes this grouping as `highlights` in `cybex update status`, and the
+review token covers it with the package changes and closure diff. Nixpkgs does
+not label security fixes, so the app does not claim them.
+
+**Install Update** asks for authorization and is offered only after the
+candidate passes its checks. A new personal configuration edit invalidates the
+preview and requires preparation again. Finished failures (failed, interrupted
+or rolled back) can be dismissed; dismissal, like discarding a preview,
+preserves files and logs. Recovery that still needs attention cannot be
+dismissed.
+
+## Automatic preparation and confirmation
+
+Two machine policies live in `/var/lib/cybexos/update-automatic.json`. Both
+default to on. An unreadable file turns both off.
+
+```sh
+cybex update automatic prepare on|off   # download and prepare in the background
+cybex update automatic confirm on|off   # keep a trial boot that passes its checks
+```
+
+Changing either asks for administrator authorization. Software Update's up to
+date page and **Settings → Bar → Updates** offer the same switches;
+`cybex update status` reports both as `automatic`.
+
+**Background preparation** is `cybexos-update-auto.service`, started by its
+timer (15 minutes after boot, then every 6 hours, randomized) and by the
+desktop when a check finds a new update. The desktop waits ten minutes after
+sign-in unless the person checks explicitly. The unit runs only on AC power
+(`ConditionACPower`) and skips metered or likely metered NetworkManager
+connections. It submits an ordinary supervised `stage` request only when the
+updater is idle or done and an update is available. It prepares each target
+(personal configuration digest plus available source identities) once:
+discarded or installed targets are not prepared again, and a failure of its own
+is retried for a new target or after a day. Ready, stale, restarting,
+recovering and failed changes belong to the person, so it leaves them alone.
+Installing a prepared update still requires authorization.
+
+**Automatic confirmation** is `cybexos-update-confirm.service`. Twenty seconds
+after the signed-in shell sees a trial boot awaiting login, it starts the unit,
+which submits the same `confirm` request as **Confirm this boot** did. Health
+checks still decide: the system services, Hyprland, exactly one managed
+Quickshell and its journal must pass. If confirmation fails, or the policy is
+off, the app asks the person to keep the version or go back to the previous
+one. Restarting without keeping it returns to the previous generation, as
+before. A notification reports a completed update.
+
+Both units take no input. They read the policy and the updater's own state as
+root. A polkit rule lets an active local session of a `wheel` member start
+exactly these two units without a password; every other unit start, and every
+install, rollback or policy change, still requires authorization.
 
 A missing/untrusted Cybex OS channel does not prevent selecting a confirmed
 NixOS package update. Unavailable sources are explained and excluded from the
@@ -97,19 +170,21 @@ interrupted activation/recovery requires restoration. An unknown worker status
 blocks duplicate requests until it can be checked. Authentication cancellation
 and helper startup/timeout errors are visible in the review.
 
-`cybex update status` returns the structured `packageChanges`, full built diff,
-transaction and review token. `cybex update discard ID` clears an unapplied ready
-or stale preview; it cannot discard a pending generation.
+`cybex update status` returns the structured `packageChanges`, `highlights`,
+full built diff, transaction, review token and `automatic` policy.
+`cybex update discard ID` clears an unapplied ready or stale preview, or
+dismisses a finished failure; it cannot discard a pending generation or
+recovery that needs attention.
 `cybex update apply ID TOKEN` runs under a supervised systemd worker and rejects
 stale review tokens or intervening personal edits. No widget/module is removed
 to make evaluation or runtime checks pass. Actual build progress is phase-based;
 private transaction logs hold build diagnostics. After a deliberate reboot and
 authenticated desktop login, `cybex update confirm` validates system services,
 Hyprland, exactly one managed Quickshell and its current journal.
-The review distinguishes **Restart to finish** (before the trial boot) from
-**Confirm this boot** (after signing in); it never requests a second restart
-for confirmation. **Restore previous generation** remains explicit when
-recovery needs attention.
+The app distinguishes **Restart to finish** (before the trial boot) from
+finishing after signing in. It never requests a second restart for
+confirmation. **Go Back to Previous Version** and **Try Restoring Again**
+remain explicit when confirmation fails or recovery needs attention.
 
 A failed deployment is quarantined by complete system identity. Inspect the
 cause before using `cybex update retry-failed ID` to explicitly allow another

@@ -61,6 +61,18 @@ in {
       "cybexos-software@" = worker "software %i";
       "cybexos-maintenance-policy@" = worker "maintenance-policy %i";
       "cybexos-maintenance@" = worker "maintenance %i";
+      # Background preparation only downloads, builds and checks a candidate;
+      # installing it stays an authorized, reviewed action.
+      cybexos-update-auto = lib.recursiveUpdate (worker "update-auto") {
+        description = "Cybex OS background update preparation";
+        unitConfig.ConditionACPower = true;
+        serviceConfig.TimeoutStartSec = "15min";
+      };
+      # Started by the signed-in desktop after a trial boot; desktop health decides.
+      cybexos-update-confirm = lib.recursiveUpdate (worker "update-confirm") {
+        description = "Cybex OS restart confirmation";
+        serviceConfig.TimeoutStartSec = "5min";
+      };
       cybexos-recover = (worker "recover") // {
         wantedBy = [ "multi-user.target" ];
         # Recovery runs once per boot. NixOS activation starts active targets
@@ -72,6 +84,36 @@ in {
         # and wait for SDDM as well: graphical.target starts it beside this
         # target, while trial-boot health requires an active login manager.
         after = [ "multi-user.target" "display-manager.service" ];
+      };
+    };
+    systemd.timers.cybexos-update-auto = {
+      wantedBy = [ "timers.target" ];
+      timerConfig = { OnBootSec = "15min"; OnUnitInactiveSec = "6h"; RandomizedDelaySec = "30min"; };
+    };
+    # Both units validate the updater's own state as root and take no input.
+    # An active local administrator session may start them without a prompt.
+    security.polkit.extraConfig = ''
+      polkit.addRule(function (action, subject) {
+        if (action.id == "org.freedesktop.systemd1.manage-units" && action.lookup("verb") == "start"
+            && (action.lookup("unit") == "cybexos-update-auto.service"
+                || action.lookup("unit") == "cybexos-update-confirm.service")
+            && subject.local && subject.active && subject.isInGroup("wheel")) {
+          return polkit.Result.YES;
+        }
+      });
+    '';
+    # Exact versions of the components a person recognises. The update review
+    # compares the running and the prepared system's copies of this file.
+    environment.etc."cybexos/components.json".text = builtins.toJSON {
+      schema = 1;
+      components = lib.filterAttrs (_: version: version != null) {
+        cybexos = cfg.release.version;
+        nixos = config.system.nixos.version;
+        kernel = config.boot.kernelPackages.kernel.version;
+        graphics = if config.hardware.graphics.enable then config.hardware.graphics.package.version or null else null;
+        nvidia = if lib.elem "nvidia" config.services.xserver.videoDrivers then config.hardware.nvidia.package.version else null;
+        firmware = if config.hardware.enableRedistributableFirmware then pkgs.linux-firmware.version else null;
+        hyprland = if config.programs.hyprland.enable then config.programs.hyprland.package.version else null;
       };
     };
     # Ordinary nix-collect-garbage cannot delete the indirect roots retained by

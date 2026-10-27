@@ -53,7 +53,6 @@ var PANELS = [
     // Updates keeps its purpose-built state machine and transaction transcript
     // in a dedicated drawer. It uses the redesign's attached right-edge
     // geometry, but is deliberately not a Control Dashboard tab.
-    { name: "updates", island: "right", moduleId: "updates", source: "Popovers/UpdatesPopover.qml", attached: true, edge: "right" },
 
     // The Day sheet: one view shared by the clock and the weather pill.
     // centerAnchored so it opens in the same centred spot no matter which of
@@ -85,10 +84,11 @@ var PANELS = [
 // Bar modules that own no panel of their own. `ws` has no detail view,
 // `tray` opens each item's own menu, and `modelusage` hosts the vendored
 // Model Usage panel, which opens its own plugin-style popup. `assistant`
-// shows and hides the assistant's own overlay. Listed so the
+// shows and hides the assistant's own overlay; "updates" opens the Software
+// Update window. Listed so the
 // test can insist the module id and panel spaces account for each other
 // completely rather than silently tolerating a typo'd moduleId.
-var PANEL_LESS_MODULES = ["ws", "tray", "modelusage", "assistant"];
+var PANEL_LESS_MODULES = ["ws", "tray", "modelusage", "assistant", "updates"];
 
 var SETTINGS = "settings";
 var NOTES = "notes";

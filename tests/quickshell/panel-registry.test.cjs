@@ -156,25 +156,15 @@ test("T3 Code owns a dedicated attached widget-anchored panel", () => {
         "T3 must publish the live widget anchor to the popout host");
 });
 
-test("Updates owns a dedicated attached right-edge drawer", () => {
-    const panel = R.byName("updates");
-    assert.deepEqual(panel, {
-        name: "updates", island: "right", moduleId: "updates",
-        source: "Popovers/UpdatesPopover.qml", attached: true, edge: "right"
-    });
-    assert.notEqual(panel.source, "Popovers/Drawer/DrawerPopover.qml",
-        "the Updates widget must not open Control Dashboard Overview");
-    assert.equal(R.drawerTab("updates"), "",
-        "the dedicated Updates drawer must not masquerade as a dashboard tab");
-    assert.equal(Object.hasOwn(panel, "tab"), false);
-
+test("Updates opens the Software Update window, not a panel", () => {
+    assert.equal(R.byName("updates"), null, "the review has one surface: the Software Update window");
+    assert.ok(R.PANEL_LESS_MODULES.includes("updates"));
+    assert.equal(R.drawerTab("updates"), "");
     const widget = read("Bar/Modules/Updates.qml");
-    const drawer = read("Popovers/UpdatesPopover.qml");
-    assert.match(widget, /panelName:\s*"updates"/);
-    assert.match(drawer, /Surface\s*\{/,
-        "the Updates drawer must use the shared panel surface");
-    assert.match(drawer, /implicitWidth:\s*Theme\.drawerWidth/,
-        "the Updates drawer must use the current edge-drawer width template");
+    assert.doesNotMatch(widget, /panelName:/);
+    assert.match(widget, /onClicked:\s*Updates\.show\(\)/);
+    assert.equal(fs.existsSync(path.join(shellDir, "Popovers/UpdatesPopover.qml")), false);
+    assert.match(read("shell.qml"), /SoftwareUpdateWindow \{\}/);
 });
 
 test("the four status widgets each present their drawer tab", () => {

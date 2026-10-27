@@ -57,6 +57,11 @@ function dataKeys() {
         add(row.label);
         add(row.pageLabel);
     }
+    const updates = load("UpdatesHelpers.js");
+    for (const value of Object.values(updates.COMPONENTS)) {
+        add(value.label);
+        add(value.detail);
+    }
     const launcher = load("LauncherProviders.js");
     for (const provider of launcher.PROVIDERS)
         add(provider.label);

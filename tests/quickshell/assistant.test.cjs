@@ -182,7 +182,7 @@ test("the approval card never answers for the person", () => {
         assert.match(card, new RegExp(`Assistant\\.respond\\(root\\.approval\\.id, "${decision}"\\)`));
     assert.doesNotMatch(card, /Component\.onCompleted|Timer \{/, "no card answers itself");
     // A staged change is applied by the updater's own reviewed request.
-    assert.match(read("Assistant/AssistantReply.qml"), /onTriggered: Popouts\.openPanel\("updates", undefined, undefined, Assistant\.screenName\)/);
+    assert.match(read("Assistant/AssistantReply.qml"), /onTriggered: Updates\.show\(\)/);
     assert.doesNotMatch(read("Assistant/AssistantReply.qml"), /Updates\.apply\(\)/);
     assert.match(read("Assistant/AssistantReply.qml"),
         /Updates\.deployment\.transaction === turn\.staged/);

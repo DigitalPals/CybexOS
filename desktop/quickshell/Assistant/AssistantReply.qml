@@ -207,7 +207,7 @@ AssistantSurface {
                     AssistantButton {
                         label: I18n.tr("Review change…")
                         primary: true
-                        onTriggered: Popouts.openPanel("updates", undefined, undefined, Assistant.screenName)
+                        onTriggered: Updates.show()
                     }
 
                 }

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Real shell update review with a scripted cybex boundary and private Sway.
+"""Real Software Update app with a scripted cybex boundary and private Sway.
 
-The production QML, finite subprocesses, panel routing and controls run unchanged.
-The fake helper never authenticates, contacts update sources or changes the host.
-Backend worker/build/activation coverage belongs to NixOS qualification.
+The production QML, finite subprocesses, window routing and controls run
+unchanged. The fake helpers never authenticate, contact update sources, start
+system units, reboot or change the host. Backend worker/build/activation
+coverage belongs to NixOS qualification.
 """
 import importlib.util
 import argparse
@@ -28,6 +29,14 @@ def load(name):
 welcome = load('welcome-guide')
 pointer = load('assistant-overlay')
 
+HIGHLIGHTS = {'schema': 1,
+    'components': [{'id': 'kernel', 'before': '6.12.55', 'after': '6.12.58'},
+                   {'id': 'nixos', 'before': '26.05.20261024.abcdef1', 'after': '26.05.20261027.1234567'},
+                   {'id': 'firmware', 'before': '20260917', 'after': '20261014'}],
+    'apps': [{'name': 'firefox', 'title': 'Firefox', 'icon': 'firefox', 'kind': 'updated', 'before': '143.0.4', 'after': '144.0.1'}],
+    'tools': [{'name': 'hello', 'kind': 'updated', 'before': '1', 'after': '2'}],
+    'background': 213, 'sizeChange': 40000000}
+
 FAKE = r'''#!/usr/bin/env python3
 import json, os, sys, time
 from pathlib import Path
@@ -46,18 +55,24 @@ else:
     if fixture.get('cancel'):
         sys.exit(126)
     state = json.loads((root / 'status.json').read_text())
-    request = {'id':'c'*32, 'state':'done', 'createdAt':time.time()}
+    if args[1] == 'automatic':
+        state['automatic'][args[2]] = args[3] == 'on'
+        (root / 'status.json').write_text(json.dumps(state))
+        print(json.dumps({'automatic': state['automatic']}))
+        sys.exit(0)
+    request = {'id':'c'*32, 'state':'done', 'action':args[1], 'createdAt':time.time()}
     if fixture.get('reject'):
         request.update(state='failed',error='The worker rejected this request before starting.')
     elif args[1] == 'stage':
         state = {'state':'ready','transaction':'a'*32,'reviewToken':'b'*64,
             'scope':args[2], 'changeKind':'update', 'changes':'hello: 1 → 2',
-            'packageChanges':[{'name':'hello','kind':'updated','before':'1','after':'2'}]}
+            'packageChanges':[{'name':'hello','kind':'updated','before':'1','after':'2'}],
+            'highlights':HIGHLIGHTS, 'automatic':state['automatic']}
     elif args[1] == 'apply':
         assert args[2:] == ['a'*32, 'b'*64]
         state.update(state='awaiting-boot',reviewToken=None)
     elif args[1] == 'discard':
-        state = {'state':'idle'}
+        state = {'state':'idle', 'automatic':state['automatic']}
     elif args[1] == 'confirm':
         state.update(state='done')
     elif args[1] == 'rollback':
@@ -65,13 +80,33 @@ else:
     state.update(request=request,installedIdentity='installed-lock')
     (root / 'status.json').write_text(json.dumps(state))
     print(json.dumps({'accepted':True,'requestId':request['id']}))
+'''.replace('HIGHLIGHTS', repr(HIGHLIGHTS))
+
+# System units and session actions are recorded, never performed. The user
+# manager stays real: the shell's own services use it.
+SYSTEMCTL = r'''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+args = sys.argv[1:]
+if '--user' in args:
+    os.execv(REAL, [REAL] + args)
+with (Path(os.environ['XDG_RUNTIME_DIR']) / 'units.jsonl').open('a') as stream:
+    stream.write(json.dumps(args) + '\n')
+'''
+SESSION_ACTION = r'''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+with (Path(os.environ['XDG_RUNTIME_DIR']) / 'session.jsonl').open('a') as stream:
+    stream.write(json.dumps(sys.argv[1:]) + '\n')
 '''
 
 IPC = '''
     property var updateTestBar: null
     property var updateTestPopout: null
+    property var updateTestWindow: null
+    // Only shown items count: the review and the status page share names.
     function updateFind(item, name) {
-        if (!item) return null;
+        if (!item || item.visible === false) return null;
         if (item.objectName === name) return item;
         for (const child of item.children || []) {
             const found = shell.updateFind(child, name);
@@ -79,8 +114,15 @@ IPC = '''
         }
         return null;
     }
+    function updateCount(item, name) {
+        if (!item || item.visible === false) return 0;
+        let count = item.objectName === name ? 1 : 0;
+        for (const child of item.children || []) count += shell.updateCount(child, name);
+        return count;
+    }
     function updateItem(name) {
-        return shell.updateFind(updateTestBar ? updateTestBar.contentItem : null, name)
+        return shell.updateFind(updateTestWindow && updateTestWindow.visible ? updateTestWindow.contentItem : null, name)
+            || shell.updateFind(updateTestBar ? updateTestBar.contentItem : null, name)
             || shell.updateFind(updateTestPopout ? updateTestPopout.contentItem : null, name);
     }
     IpcHandler {
@@ -88,27 +130,33 @@ IPC = '''
         function refresh(): void { Updates.refreshStatus(); Updates.check(); }
         function trigger(name: string): void {
             const item = shell.updateItem(name);
-            if (item && item.visible && item.enabled) item.triggered();
+            if (item && item.enabled) item.triggered();
+        }
+        function toggle(name: string, value: string): void {
+            const item = shell.updateItem(name);
+            if (item && item.enabled) item.toggled(value === "true");
         }
         function state(): string {
             const primary = shell.updateItem("updatePrimary");
-            const error = shell.updateItem("updateError");
-            const packages = shell.updateItem("updatePackageChange");
+            const title = shell.updateItem("updateTitle");
+            const failure = shell.updateItem("updateRequestError");
             const chip = shell.updateItem("updateTestIndicator");
             const rect = chip ? chip.mapToItem(null, 0, 0) : null;
-            const sourceLabel = shell.updateItem("updateUpstreamLabel");
-            const toggle = shell.updateItem("updateSelectUpstream");
-            const toggleRect = toggle ? toggle.mapToItem(null, 0, 0) : null;
+            const content = updateTestWindow && updateTestWindow.visible ? updateTestWindow.contentItem : null;
             return JSON.stringify({loaded: Updates.statusLoaded && Updates.sourcesLoaded,
                 indicator: Updates.showIndicator, hasUpdates: Updates.hasUpdates,
-                state: Updates.deployment.state, error: Updates.error, summary: Updates.summary,
-                active: Updates.runActive, actions: Updates.actions, scope: Updates.selectedScope,
-                open: Popouts.open, panel: Popouts.currentName,
-                primary: primary ? {label: primary.label, enabled: primary.enabled, visible: primary.visible} : null,
-                errorCard: error ? error.text : null, package: packages !== null,
-                sourceLabel: sourceLabel ? {color:sourceLabel.color.toString(), expected:Theme.textHi.toString(),
-                    dark:Theme.dark, text:sourceLabel.text} : null,
-                sourceToggle: toggleRect ? {x:toggleRect.x+toggle.width/2,y:toggleRect.y+toggle.height/2} : null,
+                state: Updates.deployment.state, error: Updates.error, failure: Updates.requestFailure,
+                page: Updates.page, open: Updates.appOpen, window: !!content,
+                actions: Updates.actions, scope: Updates.selectedScope, automatic: Updates.automatic,
+                popout: Popouts.open, panel: Popouts.currentName,
+                title: title ? {text: title.text, color: title.color.toString(), expected: Theme.textHi.toString(),
+                    dark: Theme.dark} : null,
+                primary: primary ? {label: primary.text, enabled: primary.enabled} : null,
+                failureText: failure ? failure.text : null,
+                components: shell.updateCount(content, "updateComponent"),
+                apps: shell.updateCount(content, "updateApp"),
+                details: !!shell.updateItem("updateChanges"),
+                automaticToggle: !!shell.updateItem("updateAutomatic"),
                 chip: rect ? {x:rect.x+chip.width/2,y:rect.y+chip.height/2} : null});
         }
     }
@@ -129,6 +177,9 @@ class Session(welcome.Session):
             'Component.onCompleted: { outputName = output ? output.name : ""; shell.updateTestBar = bar; shell.updateTestPopout = updatePopup; }', 1)
         text = text.replace('            BarPopoutWindow {\n                bar: bar',
             '            BarPopoutWindow {\n                id: updatePopup\n                bar: bar', 1)
+        assert text.count('    SoftwareUpdateWindow {}\n') == 1
+        text = text.replace('    SoftwareUpdateWindow {}\n',
+            '    SoftwareUpdateWindow { id: updateWindow; Component.onCompleted: shell.updateTestWindow = updateWindow }\n')
         entry.write_text(text)
         chip = shell / 'Bar/Modules/Updates.qml'
         chip.write_text(chip.read_text().replace('        id: chip', '        id: chip\n        objectName: "updateTestIndicator"', 1))
@@ -145,15 +196,22 @@ class Session(welcome.Session):
         path.write_text(json.dumps(value | values))
 
     def status(self, **values):
+        values.setdefault('automatic', {'prepare': False, 'confirm': True})
         (self.runtime / 'status.json').write_text(json.dumps({'installedIdentity':'installed-lock', **values}))
         self.call('update-test', 'refresh')
 
     def trigger(self, name):
         self.call('update-test', 'trigger', name)
 
-    def calls(self):
-        path = self.runtime / 'calls.jsonl'
+    def records(self, name):
+        path = self.runtime / name
         return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    def calls(self):
+        return self.records('calls.jsonl')
+
+    def units(self):
+        return self.records('units.jsonl')
 
 
 def process_guard(runtime=None):
@@ -189,17 +247,20 @@ def main():
         session = Session(base, native/'qml')
         session.env.update(CYBEXOS_WELCOME='0', CYBEXOS_ASSISTANT='0')
         session.patch_settings(drawerOverview={'updates':True,'processes':False,'media':False})
-        fake = base/'bin/cybex'
-        fake.write_text(FAKE)
-        fake.chmod(0o700)
+        for name, body in (('cybex', FAKE), ('systemctl', SYSTEMCTL.replace('REAL', repr(shutil.which('systemctl')))),
+                           ('cybexos-session-action', SESSION_ACTION)):
+            (base/'bin'/name).write_text(body)
+            (base/'bin'/name).chmod(0o700)
         sources = {'installedIdentity':'installed-lock', 'upstream':{'state':'available','available':'new-revision'},
                    'cybexos':{'state':'unpublished'}}
         session.fixture(sources=sources)
         session.status(state='idle')
         mouse = None
+        shot = lambda name: args.screenshots and session.capture(args.screenshots, name)
         try:
             conf = base/'sway.conf'
-            conf.write_text('output HEADLESS-1 mode 1440x900\nseat seat0 fallback true\n')
+            conf.write_text('output HEADLESS-1 mode 1440x900\nseat seat0 fallback true\n'
+                            'for_window [title="Software Update"] floating enable, move position center\n')
             sway = base/'sway'
             shutil.copyfile(os.environ.get('CYBEXOS_SWAY_BINARY') or shutil.which('sway'), sway)
             sway.chmod(0o700)
@@ -210,80 +271,134 @@ def main():
             session.start_shell('qs-first.log')
             session.wait(lambda:session.state().get('loaded') and session.state().get('chip'),'available update indicator')
             assert session.state()['scope']=='upstream', session.state()
+
+            # The menubar indicator opens the app; nothing is requested yet.
             mouse = pointer.VirtualPointer(session.env,1440,900)
             chip=session.state()['chip']
             mouse.move(chip['x'],chip['y'])
             mouse.button(True); mouse.button(False)
-            session.wait(lambda:session.state().get('open') and session.state().get('panel')=='updates' and session.state().get('primary'),'menubar review')
-            assert not session.calls(), session.calls()
+            session.wait(lambda:session.state().get('window') and session.state().get('page')=='available'
+                and session.state().get('primary'),'Software Update from the menubar')
+            assert session.state()['primary']['label']=='Download Update', session.state()
+            assert not session.state()['popout'], 'the indicator opens a window, not a panel'
+            assert not session.calls() and not session.units(), (session.calls(), session.units())
             assert session.state()['error'] == '', session.state()
             for mode in ('dark', 'light', 'dark'):
                 session.patch_settings(themeMode=mode)
-                session.wait(lambda: (label := session.state().get('sourceLabel'))
-                    and label['dark'] == (mode == 'dark') and label['color'] == label['expected'],
-                    mode + ' readable update source label')
-                if args.screenshots:
-                    session.capture(args.screenshots, 'updates-' + mode + '.png')
-            toggle = session.state()['sourceToggle']
-            mouse.move(toggle['x'], toggle['y'])
-            mouse.button(True); mouse.button(False)
-            session.wait(lambda:session.state()['scope'] == '', 'deselect upstream')
-            mouse.button(True); mouse.button(False)
-            session.wait(lambda:session.state()['scope'] == 'upstream', 'select upstream with unpublished vendor')
+                session.wait(lambda: (title := session.state().get('title'))
+                    and title['dark'] == (mode == 'dark') and title['color'] == title['expected'],
+                    mode + ' readable title')
+                shot('software-update-available-' + mode + '.png')
+
+            # Control Center's Review closes the drawer and opens the same app.
+            session.call('updates','close')
+            session.wait(lambda:not session.state().get('window'),'closed app')
             mouse.move(100, 700)
             session.call('popouts','open','control')
             session.wait(lambda:session.state().get('panel')=='control','control center')
             session.trigger('overviewUpdateReview')
-            session.wait(lambda:session.state().get('panel')=='updates','shared review from control center')
+            session.wait(lambda:session.state().get('window') and not session.state().get('popout'),
+                'shared review from control center')
             assert not session.calls(), session.calls()
+
             session.fixture(cancel=True)
             session.trigger('updatePrimary')
-            session.wait(lambda:'cancelled' in session.state().get('error',''),'authorization cancellation')
+            session.wait(lambda:'cancelled' in session.state().get('failure',''),'authorization cancellation')
             time.sleep(2.2)
-            assert 'cancelled' in session.state()['errorCard']
-            session.call('popouts','close')
-            session.call('popouts','open','updates')
-            assert 'cancelled' in session.state()['error']
+            assert 'cancelled' in (session.state()['failureText'] or ''), session.state()
             session.fixture(cancel=False,reject=True)
             session.trigger('updatePrimary')
-            session.wait(lambda:'worker rejected' in session.state().get('error',''),'worker failure')
+            session.wait(lambda:'worker rejected' in session.state().get('failure',''),'worker failure')
             session.start_shell('qs-reloaded.log')
-            session.wait(lambda:'worker rejected' in session.state().get('error',''),'durable failure after shell restart')
-            session.call('popouts','open','updates')
-            session.wait(lambda:session.state().get('primary'),'review reload')
+            session.wait(lambda:'worker rejected' in session.state().get('failure',''),'durable failure after shell restart')
+            session.call('updates','open')
+            session.wait(lambda:'worker rejected' in (session.state().get('failureText') or ''),'durable failure in the app')
+
+            # Preparation shows the review people read first.
             session.fixture(reject=False)
             session.trigger('updatePrimary')
-            session.wait(lambda:session.state().get('state')=='ready' and session.state().get('package'),'exact package changes')
-            assert session.state()['primary']['label']=='Update', session.state()
+            session.wait(lambda:session.state().get('page')=='ready' and session.state().get('components')==3,'readable review')
+            state = session.state()
+            assert state['apps'] == 1 and state['primary']['label']=='Install Update', state
+            assert state['title']['text'] == 'An update is ready to install', state
             assert session.calls()[-1]==['stage','upstream'], session.calls()
+            assert not state['details'], 'technical details start collapsed'
+            shot('software-update-ready.png')
             session.trigger('updatePrimary')
             session.trigger('updatePrimary')
-            session.wait(lambda:session.state().get('state')=='awaiting-boot','reviewed application')
+            session.wait(lambda:session.state().get('page')=='restart','reviewed installation')
             assert sum(call[0]=='apply' for call in session.calls())==1, session.calls()
             assert session.calls()[-1]==['apply','a'*32,'b'*64], session.calls()
-            assert session.state()['primary']['label']=='Restart to finish', session.state()
+            assert session.state()['primary']['label']=='Restart Now', session.state()
             assert not session.state()['indicator']
-            session.status(state='awaiting-login',transaction='a'*32)
-            session.wait(lambda:session.state().get('state')=='awaiting-login','postboot confirmation')
-            assert session.state()['primary']['label']=='Confirm this boot', session.state()
+            shot('software-update-restart.png')
             session.trigger('updatePrimary')
-            session.wait(lambda:session.state().get('state')=='done','confirmation')
+            session.wait(lambda:session.records('session.jsonl')==[['reboot']],'restart requested through the session action')
+
+            # After the restart the signed-in desktop confirms automatically.
+            session.status(state='awaiting-login',transaction='a'*32)
+            session.wait(lambda:session.state().get('page')=='finishing','automatic confirmation')
+            session.wait(lambda:['--no-ask-password','start','--no-block','cybexos-update-confirm.service'] in session.units(),
+                'confirmation unit started', timeout=40)
+            failed = {'id':'d'*32,'action':'confirm','state':'failed','error':'Hyprland health failed'}
+            session.status(state='awaiting-login',transaction='a'*32,request=failed)
+            session.wait(lambda:session.state().get('page')=='confirm','failed confirmation asks')
+            assert session.state()['primary']['label']=='Keep This Version', session.state()
+            shot('software-update-confirm.png')
+            session.trigger('updatePrimary')
+            session.wait(lambda:session.state().get('state')=='done','manual confirmation')
+            assert session.calls()[-1]==['confirm'], session.calls()
+            assert session.units().count(['--no-ask-password','start','--no-block','cybexos-update-confirm.service'])==1
+            session.status(state='awaiting-login',transaction='a'*32,automatic={'prepare':False,'confirm':False})
+            session.wait(lambda:session.state().get('page')=='confirm','manual confirmation policy')
+
+            # Up to date: the automatic download choice is a machine policy.
             session.fixture(sources={'upstream':{'state':'current'},'cybexos':{'state':'current'}})
+            session.status(state='done',changeKind='update')
+            session.wait(lambda:session.state().get('page')=='current' and not session.state().get('hasUpdates'),'up to date')
+            assert not session.state()['indicator'] and session.state()['automaticToggle'], session.state()
+            shot('software-update-current.png')
+            session.call('update-test','toggle','updateAutomatic','true')
+            session.wait(lambda:session.state().get('automatic',{}).get('prepare') is True,'automatic downloads chosen')
+            assert session.calls()[-1]==['automatic','prepare','on'], session.calls()
+            # Background work waits for the session to settle; checking now is
+            # the person's explicit go-ahead.
+            session.fixture(sources=sources)
             session.call('update-test','refresh')
-            session.wait(lambda:not session.state().get('hasUpdates'),'no updates')
-            assert not session.state()['indicator']
+            time.sleep(2)
+            assert ['--no-ask-password','start','--no-block','cybexos-update-auto.service'] not in session.units()
+            session.wait(lambda:session.state().get('hasUpdates'),'update found')
+            session.status(state='done',changeKind='update',automatic={'prepare':True,'confirm':True})
+            session.wait(lambda:session.state().get('page')=='available','available again')
+            session.call('updates','check')
+            session.wait(lambda:['--no-ask-password','start','--no-block','cybexos-update-auto.service'] in session.units(),
+                'background preparation requested')
+            for _ in range(3):
+                session.call('update-test','refresh'); time.sleep(1)
+            assert session.units().count(['--no-ask-password','start','--no-block','cybexos-update-auto.service'])==1, session.units()
+
             session.fixture(sources={'upstream':{'state':'unreachable','error':'offline'},'cybexos':{'state':'unavailable'}})
             session.call('update-test','refresh')
-            session.wait(lambda:'offline' in session.state().get('error',''),'discovery error')
+            session.wait(lambda:session.state().get('page')=='problem' and 'offline' in session.state().get('error',''),'discovery error')
             assert not session.state()['indicator']
+            assert session.state()['title']['text']=="Couldn't check for updates", session.state()
             session.status(state='recovery-failed',transaction='a'*32,error='Recovery interrupted')
             session.wait(lambda:session.state().get('state')=='recovery-failed','recovery action')
-            assert session.state()['primary']['label']=='Restore previous generation', session.state()
+            assert session.state()['primary']['label']=='Try Restoring Again', session.state()
+            session.status(state='rolled-back',transaction='a'*32,error='Trial boot failed system health')
+            session.wait(lambda:session.state().get('state')=='rolled-back','rolled back')
+            assert session.state()['primary']['label']=='OK', session.state()
+            shot('software-update-rolled-back.png')
+            session.trigger('updatePrimary')
+            session.wait(lambda:session.state().get('state')=='idle','dismissed')
+            assert session.calls()[-1]==['discard','a'*32], session.calls()
             for log in session.logs:
                 if log.name.startswith('qs-'):
                     errors=[line for line in log.read_text(errors='replace').splitlines() if welcome.ERRORS.search(line)]
                     assert not errors, '\n'.join(errors)
-            print('PASS: both entry points, exact review/apply once, partial source availability, authorization cancellation, durable worker errors, shell restart, boot/confirm/recovery, hidden empty/error badge')
+            print('PASS: menubar and Control Center open the app, authorization cancellation, durable worker errors, '
+                  'shell restart, readable review, install once, restart, automatic and manual confirmation, '
+                  'automatic download policy and single background request, discovery error, recovery and dismissal')
         except BaseException:
             for log in session.logs:
                 if log.exists(): print(log.name, log.read_text(errors='replace')[-16000:])

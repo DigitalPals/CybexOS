@@ -295,6 +295,7 @@ end
 if power_saver.restore then hl.config(power_saver_config) end
 
 hl.window_rule({ match = { title = [[^Cybex OS Settings$]] }, float = true, center = true })
+hl.window_rule({ match = { title = [[^Software Update$]] }, float = true, center = true })
 hl.window_rule({ match = { class = [[xdg-desktop-portal-gtk]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Properties]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Open.*]] }, float = true })

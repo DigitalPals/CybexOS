@@ -122,7 +122,7 @@ class Engine:
         now = time.time()
         if 'transaction' in values and values['transaction'] != previous.get('transaction'):
             previous = {'schema': 1, 'startedAt': now, 'phase': '', 'error': '', 'notes': '',
-                        'changes': '', 'packageChanges': [], 'reviewToken': None, 'inputs': {},
+                        'changes': '', 'packageChanges': [], 'highlights': None, 'reviewToken': None, 'inputs': {},
                         'recovery': '', 'retry': '', 'restart': '', 'requestId': None,
                         'workerUnit': None, 'software': None}
         if (values.get('state', previous.get('state')) != previous.get('state')
@@ -207,6 +207,13 @@ class Engine:
         except (Failure, KeyError, TypeError, ValueError) as error:
             result['cybexos'] = {'state': 'unavailable', 'installed': read(self.release)['version'], 'error': str(error)}
         return result
+
+    def components(self, system):
+        # A system built before the manifest existed simply lists no components.
+        try:
+            return review.components(self.run('cat', system + '/etc/cybexos/components.json', sensitive=True))
+        except Failure:
+            return {}
 
     def root(self, path, name, tx):
         roots = tx / 'roots'
@@ -322,16 +329,19 @@ class Engine:
                 package_changes = review.compare(
                     self.run('cat', previous_system + '/etc/cybexos/software.json', sensitive=True),
                     self.run('cat', system + '/etc/cybexos/software.json', sensitive=True))
+                highlights = review.highlights(package_changes, self.components(previous_system),
+                                               self.components(system), changes)
                 atomic(tx / 'changes.txt', changes.encode())
                 record = {'id': identifier, 'scope': scope, 'system': system, 'previousSystem': previous_system,
                           'baseline': baseline, 'configDigest': config_digest(config), 'createdAt': int(time.time()),
                           'inputs': {name: inputs.identity(new, name) for name in ('nixpkgs', 'cybexos')},
                           'changeKind': kind, 'requestId': request_id, 'software': selections,
-                          'packageChanges': package_changes}
-                record['reviewToken'] = hashlib.sha256((record['configDigest'] + changes + review.identity(package_changes)).encode()).hexdigest()
+                          'packageChanges': package_changes, 'highlights': highlights}
+                record['reviewToken'] = hashlib.sha256((record['configDigest'] + changes + review.identity(package_changes)
+                                                        + review.identity(highlights)).encode()).hexdigest()
                 atomic(tx / 'deployment.json', record)
                 self.status(state='ready', phase='Built and checked; review changes before applying',
-                            changes=changes, packageChanges=package_changes,
+                            changes=changes, packageChanges=package_changes, highlights=highlights,
                             reviewToken=record['reviewToken'], inputs=record['inputs'],
                             installedVersion=read(self.release)['version'], availableVersion=candidate['version'] if candidate else read(self.release)['version'],
                             notes=candidate['notes'] if candidate else '', software=selections,
@@ -637,8 +647,10 @@ class Engine:
         with locked(self.state / 'operation.lock'):
             status = read(self.status_path, {})
             self.tx(identifier)
+            # A finished failure can be dismissed too; its files and logs stay.
             if (self.pending_path.exists() or status.get('transaction') != identifier
-                    or status.get('state') not in ('ready', 'stale')):
-                raise Failure('Only the current unapplied preview can be discarded. Refresh its status.')
-            self.status(transaction=None, state='idle', phase='Preview discarded. No update was applied.',
-                        changeKind=None, scope=None)
+                    or status.get('state') not in ('ready', 'stale', 'failed', 'interrupted', 'rolled-back')):
+                raise Failure('Only the current unapplied preview or a finished failure can be dismissed. Refresh its status.')
+            self.status(transaction=None, state='idle', changeKind=None, scope=None,
+                        phase='Preview discarded. No update was applied.' if status['state'] in ('ready', 'stale')
+                        else 'Dismissed. The running system was not changed.')

@@ -3,11 +3,18 @@
 - `cybex update check`: independent upstream and authenticated Cybex OS status.
 - `cybex update stage upstream|cybexos|both|local`: build and validate a staged
   complete configuration, preserving the working configuration.
-- `cybex update status`: durable progress, actual closure changes, errors,
-  restart needs, transaction ID and review token.
+- `cybex update status`: durable progress, actual closure changes, the
+  readable `highlights` summary, errors, restart needs, transaction ID, review
+  token and the `automatic` policy.
 - `cybex update apply ID TOKEN`: supervised activation of the reviewed build.
 - `cybex update confirm`: after an explicit reboot and authenticated desktop
   login, check boot/services/Hyprland/Quickshell and retain the known-good system.
+  The signed-in desktop normally requests this itself.
+- `cybex update automatic prepare|confirm on|off`: background preparation and
+  automatic trial-boot confirmation (machine policy; both default on).
+- `cybex update discard ID`: discard an unapplied preview or dismiss a
+  finished failure, keeping its files and logs.
+- `cybexos-software-update`: open the Software Update app.
 - `cybex update history`: retained deployment identities and recovery state.
 - `cybex update rollback [ID]`: restore the pending or selected deployment's
   previous system and configuration. No automatic reboot or application-data

@@ -2,8 +2,9 @@ import QtQuick
 import ".."
 import "../../Common"
 
-// One indicator for confirmed available updates. Errors, recovery and completed
-// transactions remain accessible through Control Center and the launcher.
+// One indicator for confirmed available updates; it opens Software Update.
+// Errors, recovery and completed transactions stay reachable through
+// Control Center and the launcher.
 BarModule {
     id: root
     moduleId: "updates"
@@ -12,7 +13,6 @@ BarModule {
     BarIcon {
         id: chip
         host: root.host
-        panelName: "updates"
         isle: root.isle
         anchorItem: root.groupAnchor ?? chip
         glyph: "deployed_code_update"
@@ -21,7 +21,11 @@ BarModule {
         glyphWidth: Theme.barIconSize
         label: ""
         compact: root.compact
-        tooltip: I18n.tr("System updates available · Review before installing")
+        tooltip: Updates.ready ? I18n.tr("Update ready to install · Open Software Update")
+            : I18n.tr("System updates available · Open Software Update")
         tooltipAlign: 1
+        Accessible.role: Accessible.Button
+        Accessible.name: I18n.tr("Software Update")
+        onClicked: Updates.show()
     }
 }

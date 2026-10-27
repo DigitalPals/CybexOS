@@ -1,0 +1,10 @@
+# The Software Update app: one review surface for system updates, opened from
+# the menubar indicator, Control Center and the launcher.
+AppTile AppTile.qml
+ChangeRow ChangeRow.qml
+ReadyPage ReadyPage.qml
+StatusPage StatusPage.qml
+TechnicalDetails TechnicalDetails.qml
+UpdateButton UpdateButton.qml
+UpdateView UpdateView.qml
+VersionPair VersionPair.qml

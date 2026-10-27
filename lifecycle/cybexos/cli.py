@@ -8,8 +8,9 @@ import sys
 import time
 import uuid
 
+from . import automatic
 from .common import Failure, atomic, digest, locked, read
-from .engine import Engine
+from .engine import Engine, config_digest
 
 LIVE_MARKER = Path('/etc/cybexos/installer')
 PKEXEC = '/run/wrappers/bin/pkexec'
@@ -115,6 +116,7 @@ def update_status(state=Path('/var/lib/cybexos'), working=Path('/etc/nixos')):
             and latest.get('createdAt', 0) < status.get('startedAt', 0)):
         latest = {}
     status['request'] = latest
+    status['automatic'] = automatic.policy(state)
     if (latest.get('id') == status.get('requestId') and latest.get('state') == 'failed'
             and status.get('state') in ('discovering', 'building', 'validating', 'activating', 'recovering')):
         recovery = status['state'] in ('activating', 'recovering')
@@ -199,6 +201,8 @@ def main():
     sub.add_parser('confirm')
     retry = sub.add_parser('retry-failed'); retry.add_argument('transaction')
     discard = sub.add_parser('discard'); discard.add_argument('transaction')
+    choice = sub.add_parser('automatic', help='Prepare updates or confirm restarts automatically')
+    choice.add_argument('name', choices=('prepare', 'confirm')); choice.add_argument('enabled', choices=('on', 'off'))
     args = parser.parse_args()
     if args.command == 'version':
         print(read('/etc/cybexos/release.json')['version']); return
@@ -266,6 +270,7 @@ def main():
         os.execv(PKEXEC, [PKEXEC, '/run/current-system/sw/bin/cybexos-request', 'history'])
     else:
         extra = ([args.scope] if args.action == 'stage' else
+                 [args.name, args.enabled] if args.action == 'automatic' else
                  [args.transaction, args.review_token] if args.action == 'apply' else
                  [args.transaction] if args.action in ('rollback', 'retry-failed', 'log', 'discard') and args.transaction else [])
         os.execv(PKEXEC, [PKEXEC, '/run/current-system/sw/bin/cybexos-request', args.action, *extra])
@@ -305,6 +310,8 @@ def request():
         atomic(state / 'region-request.json', payload)
         subprocess.run(['systemctl', 'start', '--no-block', 'cybexos-region.service'], check=True)
         print(json.dumps({'accepted': True})); return
+    if action == 'automatic' and len(values) == 2 and values[1] in ('on', 'off'):
+        print(json.dumps({'automatic': automatic.choose(state, values[0], values[1] == 'on')})); return
     if action == 'log' and len(values) == 1:
         import re
         if not re.fullmatch('[0-9a-f]{32}', values[0]):
@@ -351,6 +358,11 @@ def admin():
     action, *values = sys.argv[1:]
     if action == 'update' and len(values) == 1:
         run_update(engine, values[0])
+    elif action in ('update-auto', 'update-confirm') and not values:
+        status = lambda: update_status(engine.state, engine.working)
+        result = (automatic.prepare(engine, enqueue_update, status, config_digest) if action == 'update-auto'
+                  else automatic.confirm(engine, enqueue_update, status))
+        print(json.dumps(result))
     elif action in ('software', 'maintenance-policy', 'maintenance') and len(values) == 1:
         import re
         if not re.fullmatch('[a-f0-9]{32}', values[0]):
