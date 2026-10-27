@@ -56,7 +56,7 @@ function command(up, privileged, login) {
     // its HTTPS login URL on stderr, which the caller handles separately.
     args = args.concat(!up ? ["down"] : login === false ? ["up"]
         : ["up", "--json", "--timeout=15s"]);
-    return privileged ? ["pkexec"].concat(args) : args;
+    return privileged ? ["/run/wrappers/bin/pkexec"].concat(args) : args;
 }
 
 if (typeof module !== "undefined")

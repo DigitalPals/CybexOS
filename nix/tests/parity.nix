@@ -33,6 +33,12 @@ let
     titlebars = toString c.environment.etc."cybexos/titlebars.so".source;
     updater = toString c.cybexos.updaterPackage;
     updateWorker = c.systemd.services."cybexos-update@".serviceConfig;
+    ssh = {
+      inherit (c.services.openssh) enable openFirewall ports settings;
+      condition = c.systemd.services.sshd.unitConfig.ConditionPathExists;
+      pam = c.security.pam.services.sshd.text;
+      ui = builtins.fromJSON c.environment.etc."cybexos/ssh-server.json".text;
+    };
     bootBrand = {
       inherit (c.boot.plymouth) enable theme;
       packages = map toString c.boot.plymouth.themePackages;

@@ -43,6 +43,12 @@ NixOS package update. Unavailable sources are explained and excluded from the
 selected scope. Flatpak apps have their own update path; the system review
 covers the NixOS generation and Cybex OS source.
 
+Before the first Cybex OS release is published, HTTP 404 for the initial
+channel document is neutral: the unpublished source is hidden and contributes
+no error. Confirmed NixOS package updates remain selected and can be prepared
+and installed independently. Missing signatures or manifests, invalid metadata
+and the disappearance of a previously authenticated channel remain errors.
+
 An upstream discovery failure keeps `upstream.state` at `unreachable` and
 explains that the Nixpkgs package-source status is unknown. A confirmed GitHub
 API rate-limit response or HTTP 429 suggests retrying later; HTTP 403 without
@@ -124,9 +130,9 @@ publisher trust configuration contained no keys. Desktop/backend fixes cannot
 publish or authenticate a vendor release by themselves. Deployment operators
 must provision the real publisher public keys and publish qualified signed
 release/channel metadata through the documented release procedure. Never
-invent a trust key or fall back to an unauthenticated branch. Until delivery is
-configured, the Cybex OS source reports unavailable; independent NixOS package
-updates remain usable when their source check succeeds.
+invent a trust key or fall back to an unauthenticated branch. An unpublished
+channel is quietly skipped; other delivery failures remain visible. Independent
+NixOS package updates remain usable when their source check succeeds.
 
 See [the investigation](measurements/update-system-audit-2026-10-26.md) for the
 original failures and [the implementation record](measurements/update-system-fix-2026-10-26.md)

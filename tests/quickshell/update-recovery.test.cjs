@@ -12,6 +12,13 @@ test("source scope includes only confirmed and explicitly selected updates", () 
     assert.equal(H.scope(both, ["cybexos"]), "cybexos");
 });
 
+test("an unpublished vendor channel is neutral and leaves NixOS updates selectable", () => {
+    const sources = { ...available, cybexos: {state: "unpublished", installed: "1.0.0-beta.7"} };
+    assert.equal(H.validSources(sources), true);
+    assert.equal(H.scope(sources, ["upstream", "cybexos"]), "upstream");
+    assert.equal(H.capabilities({state: "idle"}, false, true, H.scope(sources, ["upstream"])).prepare, true);
+});
+
 test("failed discovery, zero updates and completed history create no update badge", () => {
     for (const state of ["idle", "done", "failed", "interrupted", "ready", "recovery-failed"]) {
         assert.equal(H.indicator(false, state), false, state);

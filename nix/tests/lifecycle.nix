@@ -45,7 +45,7 @@ in pkgs.testers.runNixOSTest {
     users.users.tester.initialPassword = "qualification-only";
     # Retain the complete candidate and its exact input sources. Staging must
     # use the real Nix/updater path without requiring external delivery in a VM.
-    system.extraDependencies = inputSources ++ [ candidate previewFlake initialLock pkgs.hello ];
+    system.extraDependencies = inputSources ++ [ candidate previewFlake initialLock pkgs.hello pkgs.sshpass ];
     system.stateVersion = "26.05";
     boot.loader.systemd-boot.enable = lib.mkForce false;
   };
@@ -211,5 +211,23 @@ in pkgs.testers.runNixOSTest {
     machine.succeed("test ! -e /var/lib/cybexos/pending.json; grep later-personal-edit /etc/nixos/local/preserved.txt")
     machine.succeed("cp ${previewLocal} /etc/nixos/local/default.nix; rm /etc/nixos/local/interrupted.nix")
     machine.succeed("systemctl start display-manager.service")
+    # The normal NixOS daemon, host keys and PAM must support a real password
+    # login. Settings changes only a persistent switch, without an OS rebuild.
+    ssh = "${pkgs.sshpass}/bin/sshpass -p qualification-only ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PreferredAuthentications=password tester@127.0.0.1 true"
+    assert not json.loads(machine.succeed("cybexos-ssh-server status"))["enabled"]
+    machine.fail("systemctl is-active --quiet sshd.service")
+    machine.succeed("cybexos-ssh-server enable")
+    machine.wait_for_unit("sshd.service")
+    machine.succeed(ssh)
+    # A Ctrl-Alt-Delete reboot is intercepted by the graphical greeter.
+    machine.shutdown()
+    machine.start()
+    machine.wait_for_unit("display-manager.service")
+    machine.wait_for_unit("sshd.service")
+    machine.succeed(ssh)
+    machine.succeed("cybexos-ssh-server disable")
+    machine.succeed("systemctl start sshd.service")
+    machine.fail("systemctl is-active --quiet sshd.service")
+    assert not json.loads(machine.succeed("cybexos-ssh-server status"))["enabled"]
   '';
 }

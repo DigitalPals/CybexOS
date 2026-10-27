@@ -93,3 +93,4 @@ WallpaperPicker WallpaperPicker.qml
 WallpaperPreviewPanel WallpaperPreviewPanel.qml
 WallpaperGrid WallpaperGrid.qml
 WallpaperColourFilter WallpaperColourFilter.qml
+SshServerGroup SshServerGroup.qml

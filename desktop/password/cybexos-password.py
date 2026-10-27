@@ -63,7 +63,7 @@ def submit():
     new.setEnabled(False)
     status.setText('Approve the system authorization prompt. Keep this window open until the password change finishes.')
     payload = json.dumps({'current': current.text(), 'new': new.text()}).encode()
-    process.start('pkexec', [os.environ['CYBEXOS_PASSWORD_WORKER']])
+    process.start('/run/wrappers/bin/pkexec', [os.environ['CYBEXOS_PASSWORD_WORKER']])
     process.write(payload)
     process.closeWriteChannel()
     current.clear()

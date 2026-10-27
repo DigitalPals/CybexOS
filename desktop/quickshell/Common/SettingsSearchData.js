@@ -67,6 +67,7 @@ var ROWS = [
     { page: "accounts", pageLabel: "Online accounts", group: "Online accounts", label: "Use calendars", key: "", terms: "calendar events account sync" },
     { page: "appearance", pageLabel: "Appearance", group: "Theme", label: "Theme", key: "theme", terms: "color scheme palette preset save share nord gruvbox catppuccin tokyo night rose pine everforest kanagawa" },
     // Security (Settings -> Security): system authentication outside shell.json.
+    { page: "security", pageLabel: "Security", group: "SSH Server", label: "Enable SSH Server", key: "", terms: "ssh remote login server openssh access password key" },
     { page: "security", pageLabel: "Security", group: "Fingerprint", label: "Add fingerprint", key: "", terms: "fingerprint reader fprintd enrol enroll finger biometric remove" },
     { page: "security", pageLabel: "Security", group: "Fingerprint", label: "Use fingerprint to unlock and authorise", key: "", terms: "fingerprint lock screen sudo polkit password authentication authorize login" },
     { page: "security", pageLabel: "Security", group: "Security keys", label: "Add security key", key: "", terms: "yubikey fido2 u2f hardware token key lock screen sudo polkit two factor remove" },

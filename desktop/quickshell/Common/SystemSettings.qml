@@ -31,6 +31,7 @@ Singleton {
     readonly property SystemSettingsBackend input: SystemSettingsBackend { domain: "input" }
     readonly property SystemSettingsBackend region: SystemSettingsBackend { domain: "region" }
     readonly property SystemSettingsBackend security: SystemSettingsBackend { domain: "security" }
+    readonly property SystemSettingsBackend sshServer: SystemSettingsBackend { domain: "ssh-server" }
     readonly property SystemSettingsBackend accounts: SystemSettingsBackend {
         domain: "accounts"
         onCompleted: result => { if (result.success) Calendar.refreshDefault(); }

@@ -12,6 +12,7 @@ from .common import Failure, atomic, digest, locked, read
 from .engine import Engine
 
 LIVE_MARKER = Path('/etc/cybexos/installer')
+PKEXEC = '/run/wrappers/bin/pkexec'
 LIVE_UPDATE_REASON = 'System updates are available after installation. Run cybex install to install Cybex OS.'
 
 
@@ -210,7 +211,7 @@ def main():
             print(json.dumps(native.search(args.query))); return
         if args.software_action == 'request':
             print(json.dumps(request_status(args.identifier))); return
-        os.execvp('pkexec', ['pkexec', '/run/current-system/sw/bin/cybexos-request', 'software', args.request])
+        os.execv(PKEXEC, [PKEXEC, '/run/current-system/sw/bin/cybexos-request', 'software', args.request])
     if args.command == 'maintenance':
         require_installed()
         if args.maintenance_action == 'request':
@@ -222,11 +223,11 @@ def main():
                  [args.deployment, args.enabled] if args.maintenance_action == 'pin' else
                  [args.request] if args.maintenance_action == 'policy' else [])
         action = 'maintenance-policy' if args.maintenance_action == 'policy' else 'maintenance-' + args.maintenance_action
-        os.execvp('pkexec', ['pkexec', '/run/current-system/sw/bin/cybexos-request', action, *extra])
+        os.execv(PKEXEC, [PKEXEC, '/run/current-system/sw/bin/cybexos-request', action, *extra])
     if args.command == 'config':
         from .common import parse
         payload = {'field': args.field, 'value': args.value, 'previous': parse(args.previous)}
-        os.execvp('pkexec', ['pkexec', '/run/current-system/sw/bin/cybexos-request', 'region', json.dumps(payload)])
+        os.execv(PKEXEC, [PKEXEC, '/run/current-system/sw/bin/cybexos-request', 'region', json.dumps(payload)])
     if args.command in ('agent', 'assistant', 'backup', 'report'):
         os.execvp('cybexos-' + args.command, ['cybexos-' + args.command, *args.arguments])
     if args.command == 'install':
@@ -262,12 +263,12 @@ def main():
         engine.run = Runner()
         print(json.dumps(engine.check()))
     elif args.action == 'history':
-        os.execvp('pkexec', ['pkexec', '/run/current-system/sw/bin/cybexos-request', 'history'])
+        os.execv(PKEXEC, [PKEXEC, '/run/current-system/sw/bin/cybexos-request', 'history'])
     else:
         extra = ([args.scope] if args.action == 'stage' else
                  [args.transaction, args.review_token] if args.action == 'apply' else
                  [args.transaction] if args.action in ('rollback', 'retry-failed', 'log', 'discard') and args.transaction else [])
-        os.execvp('pkexec', ['pkexec', '/run/current-system/sw/bin/cybexos-request', args.action, *extra])
+        os.execv(PKEXEC, [PKEXEC, '/run/current-system/sw/bin/cybexos-request', args.action, *extra])
 
 
 def request():

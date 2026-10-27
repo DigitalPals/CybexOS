@@ -228,7 +228,7 @@ Singleton {
         { id: "accounts", group: "System", label: I18n.tr("Online accounts"), glyph: "account_circle",
             description: "Connected accounts and calendar access", system: true },
         { id: "security", group: "System", label: I18n.tr("Security"), glyph: "security",
-            description: "Fingerprints and security keys", system: true },
+            description: "SSH Server, fingerprints and security keys", system: true },
         { id: "plugins", group: "System", label: I18n.tr("Omarchy plugins"), glyph: "extension",
             description: "Community widgets, panels and services from Omarchy" },
         { id: "backup", group: "System", label: I18n.tr("Backup & recovery"), glyph: "archive",

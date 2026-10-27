@@ -63,7 +63,8 @@ PanelWindow {
     IpcHandler {
         target: "polkit"
         function status(): string {
-            return JSON.stringify({registered: agent.isRegistered, active: root.active});
+            return JSON.stringify({registered: agent.isRegistered, active: root.active,
+                responseRequired: root.active && agent.flow.isResponseRequired});
         }
     }
 

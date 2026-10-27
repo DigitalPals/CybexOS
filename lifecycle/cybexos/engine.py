@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 
 from .common import CommandFailure, Failure, Runner, atomic, link, locked, parse, read, syncdir
 from . import inputs
-from .trust import Fetcher, discover, version
+from .trust import Fetcher, NoPublishedRelease, discover, version
 from . import review
 
 SCOPES = ('upstream', 'cybexos', 'both', 'local')
@@ -202,6 +202,8 @@ class Engine:
             result['cybexos'] = {'state': 'available' if version(candidate['version']) > version(read(self.release)['version']) else 'current',
                                 'installed': read(self.release)['version'], 'available': candidate['version'],
                                 'revision': candidate['revision'], 'notes': candidate['notes'], 'sequence': sequence}
+        except NoPublishedRelease:
+            result['cybexos'] = {'state': 'unpublished', 'installed': read(self.release)['version']}
         except (Failure, KeyError, TypeError, ValueError) as error:
             result['cybexos'] = {'state': 'unavailable', 'installed': read(self.release)['version'], 'error': str(error)}
         return result

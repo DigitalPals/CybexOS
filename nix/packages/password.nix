@@ -1,4 +1,4 @@
-{ lib, stdenvNoCC, source, updater, python3, makeWrapper, qt6, polkit }:
+{ lib, stdenvNoCC, source, updater, python3, makeWrapper, qt6 }:
 let python = python3.withPackages (p: [ p.pyside6 ]); in
 stdenvNoCC.mkDerivation {
   pname = "cybexos-password";
@@ -16,7 +16,6 @@ stdenvNoCC.mkDerivation {
     makeWrapper ${python}/bin/python3 $out/bin/cybexos-password \
       "''${qtWrapperArgs[@]}" \
       --add-flags "$out/libexec/cybexos-password.py" \
-      --prefix PATH : ${lib.makeBinPath [ polkit ]} \
       --set CYBEXOS_PASSWORD_WORKER ${updater}/bin/cybexos-password-worker \
       --set PYTHONDONTWRITEBYTECODE 1
   '';

@@ -269,7 +269,7 @@ class VM:
         self.command_ready = True
         body=self.process.before
         if self.process.match.group(1) != '0':
-            raise RuntimeError('Guest command failed: '+script[:160]+'\n'+body[-4000:])
+            raise RuntimeError('Guest command failed (exit '+self.process.match.group(1)+'): '+script[:160]+'\n'+body[-4000:])
         return body
 
     def failure_diagnostics(self):
@@ -304,6 +304,8 @@ def run(label, args):
         return ''
 run('updaterStatus', ['cybex', 'update', 'status'])
 prefix = ['runuser', '-u', pwd.getpwuid(1000).pw_name, '--', 'env', 'XDG_RUNTIME_DIR=/run/user/1000', 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus']
+run('welcomeIpc', prefix + ['HOME=/home/cybexqa', 'cybexos-runtime', 'ipc', 'welcome', 'status'])
+run('polkitIpc', prefix + ['HOME=/home/cybexqa', 'cybexos-runtime', 'ipc', 'polkit', 'status'])
 environment = run('environment', prefix + ['systemctl', '--user', 'show-environment'])
 output.pop('environment')
 signature = next((line.split('=', 1)[1] for line in environment.splitlines() if line.startswith('HYPRLAND_INSTANCE_SIGNATURE=')), '')
@@ -516,6 +518,90 @@ if path.exists():
         assert all(flags[key] is False for key in ('hermes', 'remote', 't3', 'gh', 'fusebox'))
 print('Bibata desktop/session cursor, local discovery, firewall, and saved widget defaults passed')
 QA_DEFAULTS''', timeout=60)
+
+    def authorize(self, command, *, payload=None, approve=True):
+        """Run the desktop's unprivileged path and answer its real Polkit UI.
+
+        The transient user unit inherits the managed shell's PATH. Its request
+        and exit code contain no authentication response: the public QA fixture
+        is typed into the actual prompt through QMP, never submitted over IPC.
+        """
+        identifier = os.urandom(6).hex()
+        directory = '/run/user/1000/qa-authorization-' + identifier
+        runner = ('import pathlib, subprocess\n'
+                  + 'result = subprocess.run(' + repr(command) + ', input=' + repr(payload)
+                  + ', text=True, capture_output=True)\n'
+                  + 'base = pathlib.Path(' + repr(directory) + ')\n'
+                  + '(base / "stdout").write_text(result.stdout)\n'
+                  + '(base / "stderr").write_text(result.stderr)\n'
+                  + '(base / "code").write_text(str(result.returncode))\n')
+        self.python('''import os, pathlib, pwd, subprocess
+base = pathlib.Path(DIRECTORY)
+base.mkdir(mode=0o700)
+user = pwd.getpwnam('cybexqa')
+os.chown(base, user.pw_uid, user.pw_gid)
+script = base / 'request.py'
+script.write_text(RUNNER)
+os.chown(script, user.pw_uid, user.pw_gid)
+prefix = ['runuser', '-u', 'cybexqa', '--', 'env', 'XDG_RUNTIME_DIR=/run/user/1000',
+          'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus']
+pid = subprocess.check_output(prefix + ['systemctl', '--user', 'show', 'quickshell.service', '-p', 'MainPID', '--value'], text=True).strip()
+environment = pathlib.Path('/proc', pid, 'environ').read_bytes().split(b'\\0')
+path = next(value[5:].decode() for value in environment if value.startswith(b'PATH='))
+subprocess.run(prefix + ['systemd-run', '--user', '--quiet', '--collect', '--unit=qa-authorization-IDENTIFIER',
+                        '--setenv=PATH=' + path, '/run/current-system/sw/bin/python3', str(script)], check=True)
+'''.replace('DIRECTORY', repr(directory)).replace('RUNNER', repr(runner)).replace('IDENTIFIER', identifier))
+        status_command = ('runuser -u cybexqa -- env XDG_RUNTIME_DIR=/run/user/1000 '
+                          'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus '
+                          'cybexos-runtime ipc polkit status')
+        for attempt in range(90):
+            status = json.loads(self.command(status_command))
+            if status.get('registered') and status.get('active') and status.get('responseRequired'):
+                break
+            if self.command('test -f ' + directory + '/code && cat ' + directory + '/code || true').strip():
+                raise RuntimeError('Authorization request exited before the password prompt: '
+                                   + self.command('cat ' + directory + '/stderr'))
+            time.sleep(0.5)
+        else:
+            raise RuntimeError('Desktop Polkit password prompt did not become ready: ' + json.dumps(status))
+        if approve:
+            self.type_text(PASSWORD)
+            self.press('ret')
+        else:
+            self.press('esc')
+        self.command('for n in $(seq 1 90); do test -f ' + directory + '/code && exit 0; sleep 1; done; exit 1', timeout=120)
+        code = int(self.command('cat ' + directory + '/code').strip())
+        output = self.command('cat ' + directory + '/stdout').strip()
+        if approve and code:
+            raise RuntimeError('Desktop-authorized command failed: ' + output + '\n'
+                               + self.command('cat ' + directory + '/stderr'))
+        self.command('rm -r ' + directory)
+        return code, output
+
+    def authorization(self, evidence):
+        print('Installed desktop: exercising real SSH and updater password prompts', flush=True)
+        script = self.command('cybexos-runtime path quickshell').strip() + '/scripts/system-settings.py'
+        command = ['/run/current-system/sw/bin/python3', '-B', script, 'ssh-server']
+        request = json.dumps({'action': 'set-enabled', 'enabled': True}) + '\n'
+        code, output = self.authorize(command, payload=request, approve=False)
+        cancelled = json.loads(output)
+        assert code == 0 and cancelled.get('success') is False, cancelled
+        assert 'cancelled or denied' in cancelled.get('error', ''), cancelled
+        assert not json.loads(self.command('cybexos-ssh-server status'))['enabled']
+        code, output = self.authorize(command, payload=request)
+        enabled = json.loads(output)
+        assert code == 0 and enabled['enabled'] and enabled['active'], enabled
+        self.authorize(command, payload=json.dumps({'action': 'set-enabled', 'enabled': False}) + '\n')
+        assert not json.loads(self.command('cybexos-ssh-server status'))['enabled']
+        code, output = self.authorize(['/run/current-system/sw/bin/cybex', 'update', 'stage', 'local'])
+        accepted = json.loads(output)
+        assert code == 0 and accepted['accepted'], accepted
+        wait_state(self, ('ready',), timeout=600)
+        candidate = json.loads(self.command('cybex update status'))
+        self.command('cybex update discard ' + candidate['transaction'])
+        wait_state(self, ('idle',), timeout=120)
+        evidence.update(result='passed', sshCancellation=True, sshEnable=True, sshDisable=True,
+                        updateStage=True, passwordPrompts='real Quickshell agent and PAM')
 
     def password_change(self, encrypted, evidence=None):
         evidence = {} if evidence is None else evidence
@@ -864,8 +950,10 @@ def qualify_lifecycle(vm, encrypted, checks=None):
     discovery = json.loads(vm.command('cybex update check', timeout=240).strip())
     if discovery['upstream']['state'] not in ('current', 'available'):
         raise RuntimeError('Cannot qualify independent upstream discovery: ' + json.dumps(discovery))
-    if discovery['cybexos']['state'] != 'unavailable' or not discovery['cybexos'].get('error'):
-        raise RuntimeError('This development test requires an accurately unavailable vendor channel: ' + json.dumps(discovery))
+    vendor = discovery['cybexos']
+    if not ((vendor['state'] == 'unpublished' and not vendor.get('error'))
+            or (vendor['state'] == 'unavailable' and vendor.get('error'))):
+        raise RuntimeError('This development test requires an unpublished or accurately unavailable vendor channel: ' + json.dumps(discovery))
     before = json.loads(vm.command('''python3 - <<'QA'
 from pathlib import Path
 import hashlib, json
@@ -1128,6 +1216,7 @@ QA_SOURCE''').strip())
         except (RuntimeError, ValueError, KeyError, AttributeError) as error:
             milestones['keyboardShortcutsRuntime'] = {'result': 'failed', 'error': str(error)[-4000:]}
         milestones['authenticatedDesktopHealth'] = {'result': 'passed', 'login': 'SDDM automatic login after disk unlock, keyring unlocked' if encrypted else 'SDDM password login'}
+        vm.authorization(milestones.setdefault('desktopAuthorization', {}))
         vm.password_change(encrypted, milestones.setdefault('sharedPasswordChanges', {}))
         if milestones['quietBoot']['result'] != 'passed':
             raise RuntimeError('The installed boot printed console text: ' + json.dumps(milestones['quietBoot']))

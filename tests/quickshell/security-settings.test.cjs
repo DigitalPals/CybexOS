@@ -131,19 +131,19 @@ test("nothing on the page blocks the UI thread", () => {
 
 test("Security is a System page that IPC, the rail and search reach", () => {
     const settings = read("Common/Settings.qml");
-    assert.match(settings, /\{ id: "security", group: "System", label: "Security", glyph: "security",\s*description: "Fingerprints and security keys", system: true \}/);
+    assert.match(settings, /\{ id: "security", group: "System", label: "Security", glyph: "security",\s*description: "SSH Server, fingerprints and security keys", system: true \}/);
     const view = read("Settings/SettingsView.qml");
     assert.match(view, /case "security": return securityPage;/);
     assert.match(view, /Component \{ id: securityPage; SecurityPage \{\} \}/);
     assert.match(read("Settings/qmldir"), /^SecurityPage SecurityPage\.qml$/m);
     const { ROWS, search } = load("SettingsSearchData.js");
     const rows = ROWS.filter(row => row.page === "security");
-    assert.deepEqual(rows.map(row => row.label), ["Add fingerprint",
+    assert.deepEqual(rows.map(row => row.label), ["Enable SSH Server", "Add fingerprint",
         "Use fingerprint to unlock and authorise", "Add security key"]);
     for (const row of rows) {
         assert.equal(row.key, "", "system state, not a shell.json key");
         assert.equal(row.pageLabel, "Security");
     }
-    for (const query of ["fingerprint", "yubikey", "fido2", "sudo", "security key"])
+    for (const query of ["ssh", "remote login", "fingerprint", "yubikey", "fido2", "sudo", "security key"])
         assert.ok(search(query).some(row => row.page === "security"), query);
 });

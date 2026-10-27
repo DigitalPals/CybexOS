@@ -148,6 +148,8 @@ SettingsPage {
             }
         }
 
+        SshServerGroup { width: parent.width }
+
         SettingsGroup {
             width: parent.width
             title: I18n.tr("Fingerprint")

@@ -41,7 +41,7 @@ let
     fi
   '';
 in {
-  imports = [ ./desktop.nix ./security.nix ./hardware.nix ./networking.nix ./lifecycle.nix ./applications.nix ./software.nix ./maintenance.nix ];
+  imports = [ ./desktop.nix ./security.nix ./ssh.nix ./hardware.nix ./networking.nix ./lifecycle.nix ./applications.nix ./software.nix ./maintenance.nix ];
   options.cybexos = {
     enable = mkEnableOption "the Cybex OS desktop";
     installationMedium = mkOption {

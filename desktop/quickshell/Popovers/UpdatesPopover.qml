@@ -108,27 +108,31 @@ Surface {
                         required property string modelData
                         readonly property var source: root.service.sources[modelData]
                         readonly property string name: modelData === "upstream" ? I18n.tr("NixOS packages") : I18n.tr("Cybex OS")
+                        visible: source.state !== "unpublished"
                         width: details.width
                         spacing: 4
                         Row {
                             width: parent.width
                             spacing: 8
-                            Controls.CheckBox {
+                            Toggle {
                                 objectName: sourceRow.modelData === "upstream" ? "updateSelectUpstream" : "updateSelectCybexOS"
                                 visible: sourceRow.source.state === "available"
-                                text: sourceRow.name
-                                palette.text: Theme.textHi
+                                metrics: Theme.switchCompact
                                 checked: root.service.selectedSources.includes(sourceRow.modelData)
                                 enabled: !root.service.runActive
-                                Accessible.name: I18n.tr("Include") + " " + sourceRow.name
-                                onToggled: root.service.selectSource(sourceRow.modelData, checked)
+                                accessibleName: I18n.tr("Include") + " " + sourceRow.name
+                                onToggled: value => root.service.selectSource(sourceRow.modelData, value)
                             }
                             Text {
-                                visible: sourceRow.source.state !== "available"
+                                objectName: sourceRow.modelData === "upstream" ? "updateUpstreamLabel" : "updateCybexOSLabel"
+                                width: parent.width - (sourceRow.source.state === "available" ? Theme.switchCompact.box.width + parent.spacing : 0)
+                                anchors.verticalCenter: parent.verticalCenter
                                 text: sourceRow.name
                                 color: Theme.textHi
                                 font.family: Theme.fontMenu
                                 font.pixelSize: Theme.typography.primary
+                                wrapMode: Text.Wrap
+                                textFormat: Text.PlainText
                             }
                         }
                         Text {

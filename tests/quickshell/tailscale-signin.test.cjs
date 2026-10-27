@@ -125,7 +125,7 @@ test("permissions retry once through graphical authorization using a bounded fix
     flush();
     assert.equal(s.actionProc.privileged, true);
     assert.deepEqual(s.actionProc.command, H.command(true, true));
-    assert.deepEqual(s.actionProc.command.slice(0, 5), ["pkexec", "timeout", "--kill-after=2s", "20s", "tailscale"]);
+    assert.deepEqual(s.actionProc.command.slice(0, 5), ["/run/wrappers/bin/pkexec", "timeout", "--kill-after=2s", "20s", "tailscale"]);
     s.actionProc.running = false;
     s.actionProc.errorText = "Authorization cancelled";
     s.finishAction(126);

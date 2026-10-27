@@ -8,7 +8,7 @@ function pending(request) {
 }
 
 function validSources(value) {
-    const states = ["available", "current", "unavailable", "unreachable", "unknown"];
+    const states = ["available", "current", "unpublished", "unavailable", "unreachable", "unknown"];
     return value && typeof value === "object" && ["upstream", "cybexos"].every(name =>
         value[name] && states.includes(value[name].state)
         && (value[name].state !== "available" || (typeof value[name].available === "string"

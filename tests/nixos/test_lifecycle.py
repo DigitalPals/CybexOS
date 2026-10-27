@@ -72,6 +72,23 @@ class TrustTests(unittest.TestCase):
         with self.assertRaises(Failure): trust.verify(body+b' ',sig,self.trust,'release')
         with self.assertRaises(Failure): trust.verify(body,sig,{'keys':{}},'release')
 
+    def test_only_an_unpublished_initial_channel_404_is_neutral(self):
+        from urllib.error import HTTPError
+        base = trust.CHANNEL_BASE + '/beta.json'
+        with patch('urllib.request.urlopen', side_effect=HTTPError(base, 404, 'Not Found', {}, None)):
+            fetch = trust.Fetcher(self.base / '404-cache')
+            with self.assertRaises(trust.NoPublishedRelease):
+                trust.discover(fetch, self.trust, 'beta', '1.0.0-beta.7', 'x86_64-linux', '26.05')
+            with self.assertRaisesRegex(Failure, 'previously published'):
+                trust.discover(fetch, self.trust, 'beta', '1.0.0-beta.7', 'x86_64-linux', '26.05', 1)
+        class MissingSignature:
+            def get(inner, url):
+                if url == base:
+                    return b'{}'
+                raise trust.EndpointNotFound('missing signature')
+        with self.assertRaises(trust.EndpointNotFound):
+            trust.discover(MissingSignature(), self.trust, 'beta', '1.0.0-beta.7', 'x86_64-linux', '26.05')
+
     def test_interrupted_chunked_metadata_retains_cache_and_independent_upstream_result(self):
         class Interrupted(http.server.BaseHTTPRequestHandler):
             protocol_version = 'HTTP/1.1'
@@ -549,6 +566,19 @@ class EngineTests(unittest.TestCase):
         result=self.engine.check()
         self.assertEqual(result['upstream']['state'],'available')
         self.assertEqual(result['cybexos']['state'],'unavailable')
+
+    def test_unpublished_channel_has_no_error_and_never_blocks_upstream(self):
+        self.engine.channel = lambda: (_ for _ in ()).throw(trust.NoPublishedRelease('No release yet'))
+        result = self.engine.check()
+        self.assertEqual(result['cybexos'], {'state': 'unpublished', 'installed': '1.0.0'})
+        self.assertEqual(result['upstream']['state'], 'available')
+        record = self.engine.stage('upstream')
+        self.assertEqual(read(self.engine.status_path)['state'], 'ready')
+        selected = read(self.engine.tx(record['id']) / 'config/flake.lock')
+        self.assertEqual(inputs.identity(selected, 'cybexos')['rev'], REV_OLD)
+        self.assertEqual(inputs.identity(selected, 'personal')['rev'], REV_OLD)
+        with self.assertRaises(trust.NoPublishedRelease):
+            self.engine.stage('both')
 
     def assert_unknown_upstream(self, result, reason):
         self.assertEqual(result['upstream']['state'], 'unreachable')
@@ -1109,6 +1139,27 @@ class SourceTests(unittest.TestCase):
 
 
 class LiveLifecycleTests(unittest.TestCase):
+    def test_desktop_authorization_uses_the_privileged_nixos_wrapper_with_a_hostile_path(self):
+        from cybexos import cli
+        commands = [
+            ['update', 'stage', 'local'], ['update', 'history'],
+            ['software', 'stage', '{}'], ['maintenance', 'preview'],
+            ['config', 'region', 'timezone', 'UTC', '"UTC"'],
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            for arguments in commands:
+                with self.subTest(arguments=arguments), \
+                     patch.object(cli, 'LIVE_MARKER', Path(temporary) / 'absent'), \
+                     patch.dict(os.environ, {'PATH': '/nix/store/unprivileged/bin'}), \
+                     patch.object(sys, 'argv', ['cybex', *arguments]), \
+                     patch.object(cli.os, 'execv', side_effect=SystemExit(0)) as execute, \
+                     self.assertRaises(SystemExit) as result:
+                    cli.main()
+                self.assertEqual(result.exception.code, 0)
+                self.assertEqual(execute.call_args.args[0], '/run/wrappers/bin/pkexec')
+                self.assertEqual(execute.call_args.args[1][0], '/run/wrappers/bin/pkexec')
+                self.assertEqual(execute.call_args.args[1][1], '/run/current-system/sw/bin/cybexos-request')
+
     def test_live_check_and_status_are_read_only_and_explain_installation(self):
         from cybexos import cli
         with tempfile.TemporaryDirectory() as temporary:
@@ -1118,7 +1169,7 @@ class LiveLifecycleTests(unittest.TestCase):
                 output = io.StringIO()
                 with self.subTest(action=action), patch.object(cli, 'LIVE_MARKER', marker), \
                      patch.object(sys, 'argv', ['cybex', 'update', action]), \
-                     patch.object(cli.Engine, 'check') as check, patch.object(cli.os, 'execvp') as execute, \
+                     patch.object(cli.Engine, 'check') as check, patch.object(cli.os, 'execv') as execute, \
                      contextlib.redirect_stdout(output):
                     cli.main()
                     state = json.loads(output.getvalue())
@@ -1137,7 +1188,7 @@ class LiveLifecycleTests(unittest.TestCase):
                                         (cli.admin, ['admin', 'stage', 'both'])):
                 with self.subTest(function=function.__name__), patch.object(cli, 'LIVE_MARKER', marker), \
                      patch.object(cli.os, 'geteuid', return_value=0), patch.object(sys, 'argv', arguments), \
-                     patch.object(cli.os, 'execvp') as execute, patch.object(cli.subprocess, 'run') as run, \
+                     patch.object(cli.os, 'execv') as execute, patch.object(cli.subprocess, 'run') as run, \
                      self.assertRaisesRegex(Failure, 'after installation'):
                     function()
                 execute.assert_not_called()

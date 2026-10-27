@@ -77,6 +77,7 @@ in stdenv.mkDerivation {
       wrapProgram "$script" "''${gappsWrapperArgs[@]}" \
         --prefix PATH : ${lib.makeBinPath runtimeTools} \
         --prefix PATH : "$out/bin" \
+        --prefix PATH : /run/wrappers/bin \
         --set-default XKB_CONFIG_ROOT ${xkeyboard-config}/etc/X11/xkb \
         --prefix XDG_DATA_DIRS : ${lib.makeSearchPath "share" [ adwaita-icon-theme gnome-online-accounts evolution-data-server ]} \
         --prefix QML_IMPORT_PATH : ${lib.makeSearchPath "lib/qt-6/qml" [ images qt6.qtwebsockets qt6.qtmultimedia qt6.qt5compat ]}

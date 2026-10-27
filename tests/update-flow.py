@@ -6,6 +6,7 @@ The fake helper never authenticates, contacts update sources or changes the host
 Backend worker/build/activation coverage belongs to NixOS qualification.
 """
 import importlib.util
+import argparse
 import json
 import os
 from pathlib import Path
@@ -95,6 +96,9 @@ IPC = '''
             const packages = shell.updateItem("updatePackageChange");
             const chip = shell.updateItem("updateTestIndicator");
             const rect = chip ? chip.mapToItem(null, 0, 0) : null;
+            const sourceLabel = shell.updateItem("updateUpstreamLabel");
+            const toggle = shell.updateItem("updateSelectUpstream");
+            const toggleRect = toggle ? toggle.mapToItem(null, 0, 0) : null;
             return JSON.stringify({loaded: Updates.statusLoaded && Updates.sourcesLoaded,
                 indicator: Updates.showIndicator, hasUpdates: Updates.hasUpdates,
                 state: Updates.deployment.state, error: Updates.error, summary: Updates.summary,
@@ -102,6 +106,9 @@ IPC = '''
                 open: Popouts.open, panel: Popouts.currentName,
                 primary: primary ? {label: primary.label, enabled: primary.enabled, visible: primary.visible} : null,
                 errorCard: error ? error.text : null, package: packages !== null,
+                sourceLabel: sourceLabel ? {color:sourceLabel.color.toString(), expected:Theme.textHi.toString(),
+                    dark:Theme.dark, text:sourceLabel.text} : null,
+                sourceToggle: toggleRect ? {x:toggleRect.x+toggle.width/2,y:toggleRect.y+toggle.height/2} : null,
                 chip: rect ? {x:rect.x+chip.width/2,y:rect.y+chip.height/2} : null});
         }
     }
@@ -168,6 +175,11 @@ def process_guard(runtime=None):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--screenshots', type=Path)
+    args = parser.parse_args()
+    if args.screenshots:
+        args.screenshots.mkdir(parents=True, exist_ok=True)
     process_guard()
     with tempfile.TemporaryDirectory(prefix='cxu-') as temporary:
         base = Path(temporary)
@@ -181,7 +193,7 @@ def main():
         fake.write_text(FAKE)
         fake.chmod(0o700)
         sources = {'installedIdentity':'installed-lock', 'upstream':{'state':'available','available':'new-revision'},
-                   'cybexos':{'state':'unavailable','error':'Cybex OS channel unavailable'}}
+                   'cybexos':{'state':'unpublished'}}
         session.fixture(sources=sources)
         session.status(state='idle')
         mouse = None
@@ -204,6 +216,20 @@ def main():
             mouse.button(True); mouse.button(False)
             session.wait(lambda:session.state().get('open') and session.state().get('panel')=='updates' and session.state().get('primary'),'menubar review')
             assert not session.calls(), session.calls()
+            assert session.state()['error'] == '', session.state()
+            for mode in ('dark', 'light', 'dark'):
+                session.patch_settings(themeMode=mode)
+                session.wait(lambda: (label := session.state().get('sourceLabel'))
+                    and label['dark'] == (mode == 'dark') and label['color'] == label['expected'],
+                    mode + ' readable update source label')
+                if args.screenshots:
+                    session.capture(args.screenshots, 'updates-' + mode + '.png')
+            toggle = session.state()['sourceToggle']
+            mouse.move(toggle['x'], toggle['y'])
+            mouse.button(True); mouse.button(False)
+            session.wait(lambda:session.state()['scope'] == '', 'deselect upstream')
+            mouse.button(True); mouse.button(False)
+            session.wait(lambda:session.state()['scope'] == 'upstream', 'select upstream with unpublished vendor')
             mouse.move(100, 700)
             session.call('popouts','open','control')
             session.wait(lambda:session.state().get('panel')=='control','control center')

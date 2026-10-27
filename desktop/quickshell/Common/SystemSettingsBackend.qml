@@ -67,7 +67,7 @@ Item {
     // Input is polled: no extra compositor socket reader lives beyond the page.
     // Security is polled too; fprintd and the key list change only on request.
     readonly property bool hasMonitor: domain !== "input" && domain !== "keybindings" && domain !== "region"
-        && domain !== "security"
+        && domain !== "security" && domain !== "ssh-server"
     onWatchersChanged: monitor.running = watchers > 0 && hasMonitor
     function run(value) {
         if (busy)

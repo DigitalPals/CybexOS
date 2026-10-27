@@ -19,6 +19,14 @@ CHANNEL_BASE = f'https://digitalpals.github.io/{REPO.split("/")[1]}/channels'
 SEMVER = re.compile(r'^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(beta|rc)\.([1-9][0-9]*))?$')
 
 
+class EndpointNotFound(Failure):
+    """An HTTP 404, distinguished from authentication and network failures."""
+
+
+class NoPublishedRelease(Failure):
+    """The initial channel document has not been published yet."""
+
+
 def version(value):
     match = SEMVER.fullmatch(value) if isinstance(value, str) else None
     if not match:
@@ -59,6 +67,8 @@ class Fetcher:
         except urllib.error.HTTPError as error:
             if error.code == 304 and body.exists():
                 return body.read_bytes()
+            if error.code == 404:
+                raise EndpointNotFound('Release endpoint unavailable (HTTP 404); its status is unknown.') from error
             if error.code in (403, 429):
                 raise Failure('GitHub rate limit reached. Retry later; no account or token is required.') from error
             raise Failure(f'Release endpoint unavailable (HTTP {error.code}); its status is unknown.') from error
@@ -169,7 +179,16 @@ def discover(fetch, trust, channel, installed, architecture, nixos, highest=0):
     if channel not in ('stable', 'beta'):
         raise Failure('Unknown release channel')
     base = f'{CHANNEL_BASE}/{channel}.json'
-    channel_doc = verify(fetch.get(base), fetch.get(base + '.sig'), trust, 'channel')
+    try:
+        body = fetch.get(base)
+    except EndpointNotFound as error:
+        # A fresh development installation has no vendor releases yet. Only
+        # absence of this first document is neutral: signatures, manifests and
+        # previously authenticated channels must still report real failures.
+        if highest:
+            raise Failure('The previously published Cybex OS channel is unavailable (HTTP 404).') from error
+        raise NoPublishedRelease('No Cybex OS release has been published for this channel yet.') from error
+    channel_doc = verify(body, fetch.get(base + '.sig'), trust, 'channel')
     if not isinstance(channel_doc, dict) or set(channel_doc) != {'schema', 'channel', 'sequence', 'expires', 'manifest', 'sha256'} or type(channel_doc['schema']) is not int or channel_doc['schema'] != 1 or channel_doc['channel'] != channel:
         raise Failure('Invalid channel metadata')
     expiry(channel_doc['expires'])
