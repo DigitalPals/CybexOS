@@ -750,7 +750,7 @@ def collect(deadline=DEADLINE):
     for thread in threads:
         thread.start()
     for thread in threads:
-        thread.join(max(0.0, _deadline[0] + 1 - time.monotonic()))
+        thread.join(max(0.0, _deadline[0] + 0.5 - time.monotonic()))
     with lock:
         done = dict(results)
     checks = []

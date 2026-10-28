@@ -129,3 +129,8 @@ is a separate launch requirement.
 
 For scripting, use `cybex maintenance status`, `preview`, `clean REVIEW TOKEN`,
 `pin DEPLOYMENT true|false`, `policy JSON`, `request ID`, and `resume`.
+
+When something on the installed system does not work, `cybex doctor` runs a
+read-only [system check](system-check.md) of drivers, services, sound,
+storage, the clock and the desktop. `cybex report` collects a redacted
+diagnostic bundle for a bug report.

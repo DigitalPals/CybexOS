@@ -28,6 +28,7 @@ file; personal modules and persistent data are separate from vendor releases.
 - [Cybex OS Assistant](docs/assistant.md)
 - [Release publishing and signing keys](docs/releasing.md)
 - [Recovery, persistence and garbage collection](docs/recovery.md)
+- [System check (`cybex doctor`)](docs/system-check.md)
 - [Hardware and security](docs/hardware-security.md)
 - [Validation status](docs/validation.md)
 

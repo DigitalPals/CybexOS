@@ -63,7 +63,8 @@ Every tool call the agent makes passes through the assistant's approval policy
 | Action | Decision |
 | --- | --- |
 | Reading files, searching, web search and fetch | Allowed |
-| Read-only commands (`ls`, `cat`, `rg`, `jq`, `hyprctl -j …`, `cybex update status`, `cybex plugin list`, `systemctl --user status`, …) | Allowed |
+| Read-only commands (`ls`, `cat`, `rg`, `jq`, `hyprctl -j …`, `cybex update status`, `cybex plugin list`, `cybex shell status`, `systemctl --user status`, …) | Allowed |
+| The system check (`cybex doctor`, `cybex doctor --json`; see [System check](system-check.md)) | Allowed |
 | Editing desktop preferences (`~/.config/cybexos/…`) and personal plugins (`~/.local/share/cybexos/plugins/…`) | Allowed; the reply offers **Undo** |
 | Staging a system change (`cybex update stage local`, `cybex software stage …`) | Allowed; administrator authentication is still requested by polkit |
 | Applying a staged change (`cybex update apply …`) | A review card with the actual package changes; **Apply…** then asks for the administrator password |
@@ -171,9 +172,14 @@ Requests:
 protocol or saved in assistant state. `turn.start` returns `-32004` before
 starting a model when the selected installed agent needs sign-in. A CLI that
 rejects an existing credential also marks that agent as requiring sign-in.
-`context` is `{output, speak, language}`: the display the question was asked
-on, whether the reply will be spoken (the agent then keeps it short and
-avoids tables and code), and the shell's language.
+`context` is `{output, speak, language, purpose?}`: the display the question
+was asked on, whether the reply will be spoken (the agent then keeps it short
+and avoids tables and code), and the shell's language. `purpose:
+"system-check"` marks a question asking the assistant to check this computer:
+the turn's note tells the agent to run `cybex doctor --json` first, follow the
+skill's system check reference, and propose fixes without changing anything
+until the person agrees. Any other `purpose` is ignored. The system prompt is
+the same for every turn.
 
 Notifications:
 

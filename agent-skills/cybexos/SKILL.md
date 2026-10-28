@@ -47,6 +47,11 @@ and apply a customization covers this workflow; a diagnostic request does not.
 Never substitute a direct `nixos-rebuild switch` or manual lock refresh for the
 supported lifecycle. Explain required administrator authentication.
 
+When asked to check this computer, or about a hardware, driver, sound,
+storage, service or desktop problem, run the read-only `cybex doctor --json`
+first and read [System check](references/system-check.md). Propose fixes;
+change nothing until the person agrees.
+
 For updates, select `upstream`, `cybexos` or `both` explicitly. Personal inputs
 are updated only on a separate explicit request. A combined failure offers an
 explicit upstream-only retry retaining installed Cybex OS; never remove modules
