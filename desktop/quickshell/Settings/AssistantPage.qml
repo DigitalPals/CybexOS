@@ -53,6 +53,26 @@ SettingsPage {
                 width: parent.width
                 text: I18n.tr("Hover the character or tap Super+I to type. Hold Super+I to talk, and release to send.")
             }
+            // The read-only `cybex doctor` report, and the assistant asked
+            // about it (docs/system-check.md).
+            ValueRow {
+                width: parent.width
+                visible: Settings.assistantConfigured
+                label: I18n.tr("System check")
+                value: Doctor.running ? I18n.tr("Checking this computer…")
+                    : Doctor.report === null ? (Doctor.error || I18n.tr("Not checked yet"))
+                    : Doctor.attention.length === 0 ? I18n.tr("This computer looks good")
+                    : Doctor.attention.length === 1 ? Doctor.sentence(Doctor.attention[0])
+                    : I18n.format("%1 things to look at", [Doctor.attention.length])
+                dotColor: Doctor.report === null ? Theme.textFaint : Doctor.attention.length > 0 ? Theme.amber : Theme.ok
+                Component.onCompleted: Doctor.refreshIfStale()
+
+                SettingsAction {
+                    text: I18n.tr("Ask the assistant")
+                    enabled: Assistant.connected && !Assistant.busy
+                    onTriggered: Assistant.checkSystem()
+                }
+            }
         }
 
         SettingsGroup {
