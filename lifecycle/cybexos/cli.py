@@ -183,8 +183,10 @@ def main():
     config.add_argument('field', choices=('timezone', 'locale'))
     config.add_argument('value')
     config.add_argument('previous', help='JSON value from the current region snapshot')
-    for name in ('agent', 'assistant', 'backup', 'report'):
-        command = commands.add_parser(name); command.add_argument('arguments', nargs=argparse.REMAINDER)
+    # Helpers own their options (cybex doctor --json, --help); REMAINDER alone
+    # cannot start with an option, so those arrive as parse_known_args extras.
+    for name in ('agent', 'assistant', 'backup', 'report', 'doctor'):
+        command = commands.add_parser(name, add_help=False); command.add_argument('arguments', nargs=argparse.REMAINDER)
     plugin = commands.add_parser('plugin'); plugin.add_argument('arguments', nargs=argparse.REMAINDER)
     shell = commands.add_parser('shell'); shell.add_argument('arguments', nargs=argparse.REMAINDER)
     theme = commands.add_parser('theme'); theme.add_argument('arguments', nargs=argparse.REMAINDER)
@@ -203,7 +205,9 @@ def main():
     discard = sub.add_parser('discard'); discard.add_argument('transaction')
     choice = sub.add_parser('automatic', help='Prepare updates or confirm restarts automatically')
     choice.add_argument('name', choices=('prepare', 'confirm')); choice.add_argument('enabled', choices=('on', 'off'))
-    args = parser.parse_args()
+    args, extra = parser.parse_known_args()
+    if extra and args.command not in ('agent', 'assistant', 'backup', 'report', 'doctor'):
+        parser.error('unrecognized arguments: ' + ' '.join(extra))
     if args.command == 'version':
         print(read('/etc/cybexos/release.json')['version']); return
     if args.command == 'software':
@@ -232,8 +236,8 @@ def main():
         from .common import parse
         payload = {'field': args.field, 'value': args.value, 'previous': parse(args.previous)}
         os.execv(PKEXEC, [PKEXEC, '/run/current-system/sw/bin/cybexos-request', 'region', json.dumps(payload)])
-    if args.command in ('agent', 'assistant', 'backup', 'report'):
-        os.execvp('cybexos-' + args.command, ['cybexos-' + args.command, *args.arguments])
+    if args.command in ('agent', 'assistant', 'backup', 'report', 'doctor'):
+        os.execvp('cybexos-' + args.command, ['cybexos-' + args.command, *extra, *args.arguments])
     if args.command == 'install':
         os.execvp('cybexos-install', ['cybexos-install', *(['--terminal'] if args.terminal else [])])
     if args.command in ('plugin', 'shell'):

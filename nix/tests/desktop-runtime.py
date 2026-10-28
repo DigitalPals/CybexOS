@@ -2,6 +2,7 @@
 """Native package dependency smoke; no login, service or hardware qualification."""
 import importlib
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -23,7 +24,7 @@ required_commands = (
     'bluetoothctl', 'upower', 'powerprofilesctl', 'restic', 'ssh', 'age', 'tar', 'zstd',
     'flock', 'kitty', 'secret-tool', 'gdbus', 'gsettings', 'hyprctl', 'systemctl',
     'cybexos-runtime', 'quickshell-reminder', 'cybexos-session-action',
-    'fwupdmgr', 'cybexos-firmware-update',
+    'fwupdmgr', 'cybexos-firmware-update', 'lspci', 'cybexos-doctor',
 )
 missing = [command for command in required_commands if shutil.which(command) is None]
 assert not missing, 'Missing desktop executable dependencies: ' + ', '.join(missing)
@@ -84,4 +85,11 @@ subprocess.run(['python3', '-I', '-c',
                 'import gi, dbus; from PIL import Image; from websockets.sync.client import connect; '
                 'gi.require_version("Fwupd", "2.0"); from gi.repository import Fwupd; assert Fwupd.Client.new()'],
                check=True)
-print('Desktop executable, palette, OCR, image, QR, Node, Python, GI, schema and GIO TLS dependency checks passed')
+# The system check must degrade, not fail, where nothing it reads exists.
+report = json.loads(subprocess.run(['cybexos-doctor', '--json'], check=True, capture_output=True, text=True,
+                                   timeout=30).stdout)
+assert [check['id'] for check in report['checks']] == [
+    'graphics', 'drivers', 'firmware-files', 'services', 'audio', 'secure-boot', 'firmware-updates', 'storage',
+    'battery', 'time', 'desktop'], report
+assert report['overall'] in ('ok', 'suggestion', 'problem') and sum(report['counts'].values()) == 11
+print('Desktop executable, palette, OCR, image, QR, Node, Python, GI, schema and GIO TLS dependency and system check smoke passed')

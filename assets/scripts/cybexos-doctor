@@ -1,0 +1,801 @@
+#!/usr/bin/env python3
+"""Read-only system check of this Cybex OS computer.
+
+cybex doctor looks at graphics, drivers, firmware, services, sound, Secure
+Boot, storage, the battery, the clock and the desktop, and explains what it
+found. It runs as the desktop user: no administrator rights, no network, no
+writes. Each probe has its own time limit and becomes "unknown" rather than
+failing the run. The output names device models, PCI/USB IDs, kernel drivers,
+firmware files and systemd units, never serial numbers, addresses, hostnames,
+network names, user names, home paths or machine IDs.
+
+  cybex doctor           a short readable report
+  cybex doctor --json    the machine-readable report (docs/system-check.md)
+"""
+import argparse
+import datetime
+import json
+import os
+from pathlib import Path
+import pwd
+import re
+import shlex
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import textwrap
+import threading
+import time
+
+VERSION = 1
+SCOPE = 'Read-only checks of this computer. They do not qualify hardware or change anything.'
+CHECKS = (
+    ('graphics', 'Graphics'), ('drivers', 'Drivers'), ('firmware-files', 'Firmware files'),
+    ('services', 'Services'), ('audio', 'Sound'), ('secure-boot', 'Secure Boot'),
+    ('firmware-updates', 'Firmware updates'), ('storage', 'Storage'), ('battery', 'Battery'),
+    ('time', 'Date and time'), ('desktop', 'Desktop'),
+)
+TITLES = dict(CHECKS)
+STATES = ('problem', 'suggestion', 'ok', 'info', 'unknown')
+COMMAND_TIMEOUT = 5
+FIRMWARE_TIMEOUT = 8
+# Every check runs at once; the whole report waits at most this long.
+DEADLINE = 12
+GIB = 1024 ** 3
+GENERIC_HOSTS = {'localhost', 'localhost.localdomain', 'nixos', 'cybexos', 'linux', 'host'}
+EFI_GLOBAL = '8be4df61-93ca-11d2-aa0d-00e098032b8c'
+
+# Filesystem roots, replaced by the tests with fixture trees.
+SYS = Path('/sys')
+ETC = Path('/etc')
+RUN = Path('/run')
+PROC = Path('/proc')
+
+_deadline = [time.monotonic() + DEADLINE]
+
+
+# ---- helpers -----------------------------------------------------------
+
+def run(argv, timeout=None, env=None):
+    """(exit code, stdout, stderr) with a C locale; never raises for a missing tool.
+
+    The command gets its own process group, so a timeout also stops helpers it
+    started instead of leaving them holding the output pipe open.
+    """
+    timeout = max(0.1, min(COMMAND_TIMEOUT if timeout is None else timeout, _deadline[0] - time.monotonic()))
+    environment = {**os.environ, 'LC_ALL': 'C', 'SYSTEMD_COLORS': '0', 'SYSTEMD_PAGER': '', 'NO_COLOR': '1',
+                   **(env or {})}
+    try:
+        process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True, errors='replace', env=environment, start_new_session=True)
+    except FileNotFoundError:
+        return 127, '', f'{argv[0]}: not installed'
+    except OSError as error:
+        return 126, '', f'{argv[0]}: {error}'
+    try:
+        output, errors = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except OSError:
+            process.kill()
+        process.communicate()
+        return 124, '', f'{argv[0]}: timed out after {timeout:.0f} seconds'
+    return process.returncode, output, errors
+
+
+def read(path):
+    try:
+        return Path(path).read_text(errors='replace')
+    except OSError:
+        return ''
+
+
+def number(path):
+    try:
+        return int(read(path).strip())
+    except ValueError:
+        return None
+
+
+def json_or_none(text):
+    try:
+        return json.loads(text)
+    except ValueError:
+        return None
+
+
+def tool(name):
+    """Resolve a packaged Cybex OS helper in the current user's environment."""
+    for candidate in (shutil.which(name), Path.home() / '.local/bin' / name, Path('/run/current-system/sw/bin') / name):
+        if candidate and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return name
+
+
+def plural(count, word, many=None):
+    return f'{count} {word if count == 1 else many or word + "s"}'
+
+
+def listing(names, limit=3):
+    names = list(names)
+    shown = ', '.join(names[:limit])
+    return shown + (f' and {len(names) - limit} more' if len(names) > limit else '')
+
+
+def once(function):
+    """Memoize a probe that several checks share; concurrent callers wait."""
+    lock, value = threading.Lock(), []
+
+    def wrapper():
+        with lock:
+            if not value:
+                value.append(function())
+            return value[0]
+    wrapper.reset = value.clear
+    return wrapper
+
+
+def finding(state, summary, detail='', **facts):
+    return {'state': state, 'summary': summary, 'detail': detail, 'facts': facts}
+
+
+# ---- privacy -----------------------------------------------------------
+
+MAC = re.compile(r'(?<![0-9A-Fa-f:-])(?:[0-9A-Fa-f]{2}[:_-]){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f:-])')
+UUID = re.compile(r'\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b')
+IPV4 = re.compile(r'(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.]*\d)')
+IPV6 = re.compile(r'(?<![\w:.])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![\w:])')
+# Escaped device paths in unit names (dev-disk-by\x2duuid-…, by-id-…serial).
+DEVICE_UNIT = re.compile(r'(by\\x2d(?:id|uuid|partuuid|label|partlabel|path|diskseq)-)[^.@]+')
+
+
+class Scrubber:
+    """Removes the values that identify this person or computer.
+
+    The checks never collect such values on purpose; this is the safety net
+    for text that comes from other programs (unit names, Hyprland errors).
+    """
+
+    def __init__(self):
+        self.homes = {str(Path.home()).rstrip('/')}
+        users = {os.environ.get('USER', ''), os.environ.get('LOGNAME', '')}
+        try:
+            for entry in pwd.getpwall():
+                if entry.pw_uid >= 1000 and entry.pw_name not in ('nobody', 'nfsnobody'):
+                    users.add(entry.pw_name)
+                    self.homes.add(entry.pw_dir.rstrip('/'))
+        except OSError:
+            pass
+        hosts = {socket.gethostname(), read(ETC / 'hostname').strip()}
+        hosts |= {host.split('.', 1)[0] for host in hosts if host}
+        for line in read(ETC / 'machine-info').splitlines():
+            if line.startswith('PRETTY_HOSTNAME='):
+                hosts.add(line.split('=', 1)[1].strip().strip('"'))
+        machine = {read(ETC / 'machine-id').strip(), read(PROC / 'sys/kernel/random/boot_id').strip()}
+        self.homes = sorted((home for home in self.homes if home not in ('', '/')), key=len, reverse=True)
+        self.literals = []
+        for values, label in ((machine, '[machine-id]'), (hosts, '[hostname]'), (users, '[user]')):
+            for value in sorted({value for value in values if value}, key=len, reverse=True):
+                if len(value) < 3 or (label == '[hostname]' and value.lower() in GENERIC_HOSTS):
+                    continue
+                # Unit and device names join words with - _ . @, so only letters
+                # and digits continue a word; brackets keep placeholders stable.
+                self.literals.append((re.compile(r'(?<![A-Za-z0-9\[])' + re.escape(value) + r'(?![A-Za-z0-9\]])'),
+                                      label))
+
+    def text(self, value, addresses=False):
+        for home in self.homes:
+            value = re.sub(re.escape(home) + r'(?=/|\b|$)', '~', value)
+        value = MAC.sub('[mac]', value)
+        value = UUID.sub('[uuid]', value)
+        value = DEVICE_UNIT.sub(r'\1[device]', value)
+        if addresses:
+            value = IPV4.sub('[address]', value)
+            value = IPV6.sub(lambda match: match.group(0) if match.group(0) in ('::', '::1') else '[address]', value)
+        for pattern, label in self.literals:
+            value = pattern.sub(label, value)
+        return value
+
+    def __call__(self, value):
+        if isinstance(value, str):
+            return self.text(value)
+        if isinstance(value, list):
+            return [self(item) for item in value]
+        if isinstance(value, dict):
+            return {key: self(item) for key, item in value.items()}
+        return value
+
+
+# ---- devices -----------------------------------------------------------
+
+@once
+def pci_devices():
+    """Every PCI function from sysfs: slot, class, vendor:device and bound driver."""
+    root = SYS / 'bus/pci/devices'
+    if not root.is_dir():
+        return None
+    devices = []
+    for path in sorted(root.iterdir()):
+        klass, vendor, device = (read(path / name).strip().lower() for name in ('class', 'vendor', 'device'))
+        if not (re.fullmatch(r'0x[0-9a-f]{6}', klass) and re.fullmatch(r'0x[0-9a-f]{4}', vendor)
+                and re.fullmatch(r'0x[0-9a-f]{4}', device)):
+            continue
+        driver = path / 'driver'
+        devices.append({'slot': path.name, 'class': klass[2:6], 'progIf': klass[6:],
+                        'vendorDevice': f'{vendor[2:]}:{device[2:]}',
+                        'driver': os.path.basename(os.readlink(driver)) if driver.is_symlink() else '',
+                        # SR-IOV virtual functions are bound on demand.
+                        'virtual': (path / 'physfn').exists()})
+    return devices
+
+
+VENDORS = {'8086': 'Intel', '1002': 'AMD', '1022': 'AMD', '10de': 'NVIDIA', '14e4': 'Broadcom', '10ec': 'Realtek',
+           '168c': 'Qualcomm Atheros', '17cb': 'Qualcomm', '14c3': 'MediaTek', '1af4': 'Red Hat (virtio)',
+           '1234': 'QEMU', '15ad': 'VMware', '80ee': 'VirtualBox'}
+PCI_ID_SUFFIX = re.compile(r'\s*\[[0-9a-fA-F]{4}\]$')
+
+
+@once
+def pci_names():
+    """Readable names by slot from lspci's PCI ID database, when available."""
+    code, output, _ = run(['lspci', '-D', '-mm', '-nn'])
+    names = {}
+    if code != 0:
+        return names
+    for line in output.splitlines():
+        try:
+            fields = [field for field in shlex.split(line) if not re.fullmatch(r'-[rp][0-9a-fA-F]+', field)]
+        except ValueError:
+            continue
+        if len(fields) >= 4:
+            vendor, device = (PCI_ID_SUFFIX.sub('', field).strip() for field in fields[2:4])
+            names[fields[0]] = ' '.join(part for part in (vendor, device) if part)
+    return names
+
+
+def pci_name(device):
+    name = pci_names().get(device['slot'])
+    if name:
+        return name
+    vendor, _, model = device['vendorDevice'].partition(':')
+    return f"{VENDORS.get(vendor, 'PCI device')} device {vendor}:{model}"
+
+
+def nvidia_selected(etc=None):
+    """Whether a system declares the NVIDIA driver (cybexos.hardware.nvidia)."""
+    components = json_or_none(read((etc or ETC) / 'cybexos/components.json'))
+    if not isinstance(components, dict) or not isinstance(components.get('components'), dict):
+        return None
+    return 'nvidia' in components['components']
+
+
+def nvidia_needs_restart():
+    """The installed system selects the NVIDIA driver; the running boot did not."""
+    booted, current = RUN / 'booted-system', RUN / 'current-system'
+    if not (booted.exists() and current.exists()) or os.path.realpath(booted) == os.path.realpath(current):
+        return False
+    return nvidia_selected(booted / 'etc') is False
+
+
+def check_graphics():
+    devices = pci_devices()
+    if devices is None:
+        return finding('unknown', 'The graphics hardware could not be read.')
+    gpus = [device for device in devices if device['class'].startswith('03')]
+    facts = [{'name': pci_name(gpu), 'vendorDevice': gpu['vendorDevice'], 'driver': gpu['driver'], 'slot': gpu['slot']}
+             for gpu in gpus]
+    selected, restart = nvidia_selected(), nvidia_needs_restart()
+    extra = {'nvidiaDriverSelected': selected, 'restartPending': restart}
+    if not gpus:
+        return finding('info', 'No graphics controller was found.', gpus=facts, **extra)
+    missing = [fact for fact in facts if not fact['driver'] and not fact['vendorDevice'].startswith('10de:')]
+    nvidia = [fact for fact in facts if fact['vendorDevice'].startswith('10de:') and fact['driver'] in ('', 'nouveau')]
+    if missing:
+        return finding('problem', f"{listing(fact['name'] for fact in missing)} "
+                                  f"{'has' if len(missing) == 1 else 'have'} no driver.",
+                       'Without a kernel driver the display runs slowly or not at all. Check '
+                       '`journalctl -k -b` for errors from the graphics driver.', gpus=facts, **extra)
+    if nvidia and selected and not restart:
+        return finding('problem', f"The NVIDIA driver is selected, but {nvidia[0]['name']} is not using it.",
+                       'The open NVIDIA kernel module needs a Turing (GTX 16 or RTX 20) or newer GPU; older '
+                       'GPUs need cybexos.hardware.nvidiaOpen = false. Check `journalctl -k -b | grep -i nvidia`.',
+                       gpus=facts, **extra)
+    if nvidia and selected:
+        return finding('suggestion', 'Restart to start using the NVIDIA driver.',
+                       'The NVIDIA driver is part of the installed system, but this session started before it.',
+                       gpus=facts, **extra)
+    if nvidia:
+        current = 'the basic open-source nouveau driver' if nvidia[0]['driver'] else 'no driver'
+        return finding('suggestion', f"{nvidia[0]['name']} uses {current}.",
+                       'The NVIDIA driver gives full performance and power management. It is an explicit choice '
+                       'in this computer\'s configuration (cybexos.hardware.nvidia), prepared for review with '
+                       '`cybex update stage local`.', gpus=facts, **extra)
+    drivers = ', '.join(sorted({fact['driver'] for fact in facts}))
+    return finding('ok', f"{plural(len(gpus), 'graphics controller')} with a driver ({drivers}).", gpus=facts, **extra)
+
+
+# PCI classes whose devices do nothing without a kernel driver. Bridges,
+# signal processing, system peripherals, instrumentation and vendor-specific
+# (0xff, e.g. fingerprint readers driven by libfprint) are deliberately absent.
+PCI_IMPORTANT = (('02', 'network'), ('0401', 'audio'), ('0403', 'audio'), ('0480', 'multimedia'),
+                 ('01', 'storage'), ('0c03', 'USB'), ('0c0a', 'Thunderbolt'), ('0805', 'SD card reader'))
+USB_IMPORTANT = {'e0': 'wireless', '0e': 'camera', '01': 'audio'}
+
+
+def pci_kind(device):
+    for prefix, kind in PCI_IMPORTANT:
+        if device['class'].startswith(prefix):
+            return kind
+    return None
+
+
+def usb_unbound():
+    """USB Bluetooth/wireless, camera and audio interfaces with no driver."""
+    root = SYS / 'bus/usb/devices'
+    if not root.is_dir():
+        return None
+    found = {}
+    for interface in sorted(root.iterdir()):
+        if ':' not in interface.name:
+            continue
+        klass = read(interface / 'bInterfaceClass').strip().lower()
+        if klass not in USB_IMPORTANT or (interface / 'driver').is_symlink():
+            continue
+        parent = root / interface.name.split(':', 1)[0]
+        if read(parent / 'authorized').strip() == '0':
+            continue
+        vendor, product = read(parent / 'idVendor').strip().lower(), read(parent / 'idProduct').strip().lower()
+        kind = 'Bluetooth' if klass == 'e0' and read(interface / 'bInterfaceSubClass').strip() == '01' \
+            and read(interface / 'bInterfaceProtocol').strip() == '01' else USB_IMPORTANT[klass]
+        name = ' '.join(part for part in (read(parent / 'manufacturer').strip(), read(parent / 'product').strip())
+                        if part) or f'USB device {vendor}:{product}'
+        found.setdefault((parent.name, kind), {'bus': 'usb', 'kind': kind, 'name': name,
+                                               'vendorDevice': f'{vendor}:{product}'})
+    return list(found.values())
+
+
+def check_drivers():
+    devices, usb = pci_devices(), usb_unbound()
+    if devices is None and usb is None:
+        return finding('unknown', 'The device list could not be read.')
+    missing = []
+    for device in devices or []:
+        kind = pci_kind(device)
+        if not kind or device['driver'] or device['virtual']:
+            continue
+        # A USB device-mode (gadget) controller is not needed by a desktop.
+        if device['class'] == '0c03' and device['progIf'] == 'fe':
+            continue
+        # AMD's audio coprocessor driver declines machines without digital
+        # microphones, leaving the function unbound on many healthy systems.
+        if device['class'] == '0480' and device['vendorDevice'].startswith('1022:'):
+            continue
+        missing.append({'bus': 'pci', 'kind': kind, 'name': pci_name(device), 'vendorDevice': device['vendorDevice'],
+                        'class': device['class'], 'slot': device['slot']})
+    missing += usb or []
+    if not missing:
+        return finding('ok', 'Every network, storage, sound, camera and USB device has a driver.', missing=[])
+    names = [f"{device['name']} ({device['kind']})" for device in missing]
+    return finding('problem', f"{plural(len(missing), 'device')} without a driver: {listing(names)}.",
+                   'A device without a kernel driver does not work. The kernel log (`journalctl -k -b`) may say '
+                   'why; some devices need a driver that NixOS packages separately.', missing=missing)
+
+
+# Kernel lines naming a firmware file a driver asked for but did not find.
+FIRMWARE_LINES = (
+    re.compile(r'^(?P<driver>[\w.-]+) (?P<device>\S+): Direct firmware load for (?P<file>\S+) failed with error '
+               r'(?P<error>-?\d+)'),
+    re.compile(r'^(?P<driver>[\w.-]+) (?P<device>\S+): firmware: failed to load (?P<file>\S+) \((?P<error>-?\d+)\)'),
+    re.compile(r'^(?P<driver>[\w.-]+):? .*?\b(?:[Ff]ailed|[Uu]nable) to load (?:[\w-]+ )?firmware(?: file)?:? "?'
+               r'(?P<file>[\w.+-]+(?:/[\w.+-]+)*)"?(?: \((?P<error>-?\d+)\))?'),
+)
+
+
+def check_firmware_files():
+    code, output, _ = run(['journalctl', '-k', '-b', '-o', 'cat', '--no-pager'])
+    lines = output.splitlines()
+    if code != 0 or not lines:
+        return finding('unknown', "This boot's kernel messages could not be read.",
+                       'Members of the wheel group can read the system journal.', readable=False, missing=[])
+    missing = {}
+    for line in lines:
+        for pattern in FIRMWARE_LINES:
+            match = pattern.match(line.strip())
+            if not match:
+                continue
+            name = match.group('file').rstrip('.,:')
+            if not re.search(r'[A-Za-z]', name) or not re.search(r'[./]', name):
+                break
+            key = (match.group('driver').rstrip(':'), name)
+            error = match.group('error')
+            missing.setdefault(key, {'driver': key[0], 'file': name, 'error': int(error) if error else None})
+            break
+    entries = sorted(missing.values(), key=lambda entry: (entry['driver'], entry['file']))[:40]
+    if not entries:
+        return finding('ok', 'No driver reported a missing firmware file.', readable=True, missing=[])
+    drivers = sorted({entry['driver'] for entry in entries})
+    return finding('info', f"{listing(drivers)} asked for {plural(len(missing), 'firmware file')} that "
+                           f"{'is' if len(missing) == 1 else 'are'} not installed.",
+                   'Drivers often try several firmware versions before one that is installed, so this is usually '
+                   'harmless. It matters only when the device does not work.', readable=True, missing=entries)
+
+
+UNIT = re.compile(r'^[\w@:.\\-]+\.(?:service|socket|mount|automount|swap|target|timer|path|slice|scope|device)$')
+
+
+def failed_units(user):
+    code, output, _ = run(['systemctl', *(['--user'] if user else []), '--failed', '--plain', '--no-legend',
+                           '--no-pager'])
+    if code != 0:
+        return None
+    units = []
+    for line in output.splitlines():
+        words = line.replace('●', ' ').split()
+        if words and UNIT.match(words[0]):
+            units.append(words[0])
+    return units
+
+
+def check_services():
+    system, user = failed_units(False), failed_units(True)
+    facts = {'system': system, 'user': user}
+    if system is None and user is None:
+        return finding('unknown', 'The service manager did not answer.', **facts)
+    failed = (system or []) + (user or [])
+    if failed:
+        detail = []
+        if system:
+            detail.append('Run `systemctl status UNIT` and `journalctl -b -u UNIT` to see why a system service failed.')
+        if user:
+            detail.append('For a desktop service use `systemctl --user status UNIT` and `journalctl --user -b -u UNIT`.')
+        return finding('problem', f"{plural(len(failed), 'service')} failed: {listing(failed)}.", ' '.join(detail),
+                       **facts)
+    if system is None or user is None:
+        missing = 'desktop' if user is None else 'system'
+        return finding('ok', f'No failed services; {missing} services could not be checked.', **facts)
+    return finding('ok', 'No failed services.', **facts)
+
+
+def pulse_server():
+    """The sound server's socket, named explicitly so pactl never starts a daemon."""
+    if os.environ.get('PULSE_SERVER'):
+        return os.environ['PULSE_SERVER']
+    runtime = os.environ.get('XDG_RUNTIME_DIR') or f'/run/user/{os.getuid()}'
+    native = Path(runtime) / 'pulse/native'
+    return f'unix:{native}' if native.exists() else None
+
+
+def sinks(server):
+    code, output, _ = run(['pactl', f'--server={server}', '-f', 'json', 'list', 'sinks'])
+    data = json_or_none(output) if code == 0 else None
+    if isinstance(data, list):
+        return [sink for sink in data if isinstance(sink, dict)]
+    # pactl before PulseAudio 16 has no JSON output.
+    code, output, _ = run(['pactl', f'--server={server}', 'list', 'short', 'sinks'])
+    if code != 0:
+        return None
+    return [{'name': fields[1], 'state': fields[-1]} for fields in (line.split('\t') for line in output.splitlines())
+            if len(fields) >= 2]
+
+
+def check_audio():
+    server = pulse_server()
+    found = sinks(server) if server else None
+    cards = [path.name for path in (SYS / 'class/sound').glob('card*')] if (SYS / 'class/sound').is_dir() else []
+    if found is None:
+        return finding('unknown', 'The sound server is not reachable.', soundCards=len(cards), outputs=[])
+    outputs = []
+    for sink in found:
+        name = str(sink.get('name', ''))
+        properties = sink.get('properties') if isinstance(sink.get('properties'), dict) else {}
+        description = str(sink.get('description') or properties.get('device.description') or '')
+        if name == 'auto_null' or properties.get('node.name') == 'auto_null' or description == 'Dummy Output':
+            continue
+        bus = str(properties.get('device.bus') or ('bluetooth' if name.startswith('bluez_') else ''))
+        # Bluetooth names are the person's own ("Anna's headphones").
+        if bus == 'bluetooth':
+            description = 'Bluetooth audio device'
+        outputs.append({'description': description or 'Sound output', 'bus': bus,
+                        'state': str(sink.get('state', '')).lower()})
+    if outputs:
+        return finding('ok', f"{plural(len(outputs), 'sound output')}: {listing(o['description'] for o in outputs)}.",
+                       soundCards=len(cards), outputs=outputs)
+    if not cards:
+        return finding('info', 'This computer has no sound hardware.', soundCards=0, outputs=[])
+    return finding('problem', 'No speakers or headphones found.',
+                   'The sound hardware is present, but the sound server offers only a placeholder output. Check '
+                   '`systemctl --user status wireplumber` and `journalctl -k -b | grep -i snd`.',
+                   soundCards=len(cards), outputs=[])
+
+
+def efivar(name):
+    try:
+        data = (SYS / 'firmware/efi/efivars' / f'{name}-{EFI_GLOBAL}').read_bytes()
+    except OSError:
+        return None
+    return bool(data[4]) if len(data) >= 5 else None
+
+
+def check_secure_boot():
+    loader = json_or_none(read(ETC / 'cybexos/boot.json'))
+    loader = loader.get('loader') if isinstance(loader, dict) and isinstance(loader.get('loader'), str) else None
+    if not (SYS / 'firmware/efi').is_dir():
+        return finding('info', 'This computer started in legacy BIOS mode.',
+                       'Secure Boot needs UEFI mode. Cybex OS installs for UEFI.', mode='legacy', secureBoot=None,
+                       setupMode=None, bootLoader=loader)
+    enabled, setup = efivar('SecureBoot'), efivar('SetupMode')
+    if enabled is None:
+        code, output, _ = run(['bootctl', 'status', '--no-pager'])
+        match = re.search(r'Secure Boot: (enabled|disabled)', output)
+        enabled = match.group(1) == 'enabled' if match else None
+    facts = {'mode': 'uefi', 'secureBoot': enabled, 'setupMode': setup, 'bootLoader': loader}
+    if enabled is None:
+        return finding('unknown', 'The Secure Boot state could not be read.', **facts)
+    if enabled:
+        return finding('ok', 'Secure Boot is on.', **facts)
+    detail = 'Cybex OS currently installs without Secure Boot, so this is expected.'
+    if loader == 'grub':
+        detail += (' Do not turn it on in the firmware settings: this installation\'s boot loader is not signed, '
+                   'so the computer would not start.')
+    return finding('info', 'Secure Boot is off.', detail, **facts)
+
+
+def check_firmware_updates():
+    code, output, _ = run([tool('cybexos-firmware-update'), 'plan'], timeout=FIRMWARE_TIMEOUT)
+    if code == 124:
+        return finding('unknown', 'The firmware update service did not answer in time.', updates=[])
+    if code == 127:
+        return finding('unknown', 'The firmware updater is not installed.', updates=[])
+    plan = json_or_none((output.strip().splitlines() or [''])[-1]) if code == 0 else None
+    if not isinstance(plan, dict) or not isinstance(plan.get('devices'), list):
+        return finding('unknown', 'The firmware update service (fwupd) is not available.', updates=[])
+    updates = [{'name': str(device.get('name', '')), 'vendor': str(device.get('vendor', '')),
+                'from': str(device.get('from', '')), 'to': str(device.get('to', '')),
+                'needsReboot': device.get('needsReboot') is True}
+               for device in plan['devices'] if isinstance(device, dict)]
+    if not updates:
+        return finding('ok', "No firmware updates in fwupd's downloaded list.", updates=[])
+    detail = ('Install them with the firmware action in the Update drawer, which shows each device and asks '
+              'before installing. Firmware changes are not undone by a system rollback.')
+    if any(update['needsReboot'] for update in updates):
+        detail += ' Some finish during the next restart.'
+    return finding('suggestion', f"Firmware updates are available for {plural(len(updates), 'device')}: "
+                                 f"{listing(update['name'] for update in updates)}.", detail, updates=updates)
+
+
+def usage(path):
+    """(size, free for unprivileged users, device) in bytes, or None."""
+    try:
+        stats, device = os.statvfs(path), os.stat(path).st_dev
+    except OSError:
+        return None
+    return stats.f_blocks * stats.f_frsize, stats.f_bavail * stats.f_frsize, device
+
+
+def size(value):
+    return f'{value / 1e9:.1f} GB' if value < 1e12 else f'{value / 1e12:.2f} TB'
+
+
+def check_storage():
+    root = usage('/')
+    if root is None or not root[0]:
+        return finding('unknown', 'Free space could not be read.', filesystems=[])
+    filesystems = []
+    for mount in ('/', '/home', '/nix'):
+        values = root if mount == '/' else usage(mount)
+        # Same filesystem (or a btrfs subvolume sharing its space): already shown.
+        if values is None or not values[0] or (mount != '/' and (values[2] == root[2] or values[:2] == root[:2])):
+            continue
+        total, free, _ = values
+        percent = round(100 * free / total, 1)
+        state = 'problem' if percent < 5 or free < 5 * GIB else 'suggestion' if percent < 15 else 'ok'
+        filesystems.append({'mount': mount, 'sizeBytes': total, 'freeBytes': free, 'freePercent': percent,
+                            'state': state})
+    worst = next((state for state in ('problem', 'suggestion') if any(fs['state'] == state for fs in filesystems)),
+                 'ok')
+    if worst == 'ok':
+        free = ', '.join(f"{size(fs['freeBytes'])} free on {fs['mount']}" for fs in filesystems)
+        return finding('ok', f'Enough free space ({free}).', filesystems=filesystems)
+    low = [fs for fs in filesystems if fs['state'] == worst]
+    summary = '; '.join(f"only {size(fs['freeBytes'])} ({fs['freePercent']:g} %) free on {fs['mount']}" for fs in low)
+    return finding(worst, summary[0].upper() + summary[1:] + '.',
+                   'Updates need room to prepare the next system. Settings → Storage & cleanup reviews old '
+                   'system versions to remove; large files in Downloads and the trash are worth checking too.',
+                   filesystems=filesystems)
+
+
+def check_battery():
+    root = SYS / 'class/power_supply'
+    batteries = []
+    for path in sorted(root.glob('BAT*')) if root.is_dir() else []:
+        if read(path / 'type').strip() != 'Battery' or read(path / 'scope').strip().lower() == 'device':
+            continue
+        full = number(path / 'energy_full') or number(path / 'charge_full')
+        design = number(path / 'energy_full_design') or number(path / 'charge_full_design')
+        capacity = round(100 * full / design, 1) if full and design and design > 0 else None
+        batteries.append({'name': path.name, 'capacityPercent': capacity,
+                          'cycleCount': number(path / 'cycle_count') or None,
+                          'model': read(path / 'model_name').strip(), 'manufacturer': read(path / 'manufacturer').strip(),
+                          'status': read(path / 'status').strip(),
+                          'chargeLimit': number(path / 'charge_control_end_threshold')})
+    if not batteries:
+        return finding('ok', 'No battery.', batteries=[])
+    measured = [battery for battery in batteries if battery['capacityPercent'] is not None]
+    if not measured:
+        return finding('info', 'The battery does not report its capacity.', batteries=batteries)
+    worn = [battery for battery in measured if battery['capacityPercent'] < 60]
+    lowest = min(measured, key=lambda battery: battery['capacityPercent'])
+    if worn:
+        return finding('suggestion', f"The battery holds {lowest['capacityPercent']:g} % of its original capacity.",
+                       'This is normal wear, not a fault. Consider a replacement if it no longer lasts long '
+                       'enough. Battery health in the battery menu, when the battery supports it, limits charging '
+                       'to slow further wear.', batteries=batteries)
+    return finding('ok', f"Battery capacity is {lowest['capacityPercent']:g} % of its original design.",
+                   batteries=batteries)
+
+
+def uptime():
+    try:
+        return float(read(PROC / 'uptime').split()[0])
+    except (IndexError, ValueError):
+        return None
+
+
+def check_time():
+    code, output, _ = run(['timedatectl', 'show', '-p', 'NTP', '-p', 'NTPSynchronized'])
+    values = dict(line.split('=', 1) for line in output.splitlines() if '=' in line) if code == 0 else {}
+    if 'NTPSynchronized' not in values:
+        return finding('unknown', 'The clock service did not answer.')
+    synchronized, enabled = values['NTPSynchronized'] == 'yes', values.get('NTP') == 'yes'
+    seconds = uptime()
+    code, output, _ = run(['nmcli', '-t', '-f', 'CONNECTIVITY', 'general'])
+    online = output.strip() if code == 0 and output.strip() else None
+    facts = {'ntpEnabled': enabled, 'ntpSynchronized': synchronized, 'connectivity': online,
+             'uptimeMinutes': int(seconds // 60) if seconds is not None else None}
+    if synchronized:
+        return finding('ok', 'The clock is synchronized with network time.', **facts)
+    if not enabled:
+        return finding('suggestion', 'Automatic network time is off.',
+                       'A wrong clock breaks secure websites and updates. Check `timedatectl status`.', **facts)
+    if online != 'full':
+        return finding('info', 'The clock synchronizes once the computer is online.', **facts)
+    if seconds is not None and seconds < 900:
+        return finding('info', 'The clock is still synchronizing with network time.', **facts)
+    return finding('suggestion', 'The clock is not synchronized with network time.',
+                   'A wrong clock breaks secure websites and updates. Check `timedatectl timesync-status` and '
+                   '`systemctl status systemd-timesyncd`.', **facts)
+
+
+def hyprland_signature():
+    """This session's Hyprland instance, also for services started before it."""
+    if os.environ.get('HYPRLAND_INSTANCE_SIGNATURE'):
+        return os.environ['HYPRLAND_INSTANCE_SIGNATURE']
+    runtime = os.environ.get('XDG_RUNTIME_DIR')
+    code, output, _ = run(['systemctl', '--user', 'show-environment'])
+    signature = next((line.split('=', 1)[1] for line in output.splitlines()
+                      if line.startswith('HYPRLAND_INSTANCE_SIGNATURE=')), '') if code == 0 else ''
+    return signature if signature and runtime and (Path(runtime) / 'hypr' / signature).is_dir() else ''
+
+
+def check_desktop(scrub):
+    facts = {'hyprland': {'session': False, 'configErrors': None}, 'shell': {'safeMode': None, 'reason': ''}}
+    problems, unknown = [], []
+    signature = hyprland_signature()
+    if signature:
+        facts['hyprland']['session'] = True
+        code, output, _ = run(['hyprctl', '-j', 'configerrors'], env={'HYPRLAND_INSTANCE_SIGNATURE': signature})
+        errors = json_or_none(output) if code == 0 else None
+        if isinstance(errors, list) and all(isinstance(error, str) for error in errors):
+            errors = [scrub.text(error.strip(), addresses=True)[:300] for error in errors if error.strip()]
+            facts['hyprland']['configErrors'] = errors[:10]
+            if errors:
+                problems.append(f"Hyprland reports {plural(len(errors), 'configuration error')}.")
+        else:
+            unknown.append('Hyprland did not answer')
+    else:
+        unknown.append('this is not a Hyprland session')
+    code, output, _ = run([tool('cybex'), 'shell', 'status'])
+    shell = json_or_none(output) if code == 0 else None
+    if isinstance(shell, dict) and isinstance(shell.get('safe'), bool):
+        facts['shell']['safeMode'] = shell['safe']
+        reason = shell.get('reason') if isinstance(shell.get('reason'), str) else ''
+        facts['shell']['reason'] = reason[:200]
+        if shell['safe']:
+            problems.append('The desktop shell is in safe mode' + (f' ({reason.rstrip(".")}).' if reason else '.'))
+    else:
+        unknown.append('the desktop shell status is unavailable')
+    if problems:
+        detail = []
+        if facts['hyprland']['configErrors']:
+            detail.append('See `hyprctl configerrors`; personal Hyprland settings live in '
+                          '~/.config/cybexos/hypr/user.lua.')
+        if facts['shell']['safeMode']:
+            detail.append('`journalctl --user -b -u quickshell` shows why it stopped; `cybex shell recover` '
+                          'retries the full desktop.')
+        return finding('problem', ' '.join(problems), ' '.join(detail), **facts)
+    if unknown:
+        return finding('unknown', f"Could not check everything: {'; '.join(unknown)}.", **facts)
+    return finding('ok', 'Hyprland and the desktop shell report no errors.', **facts)
+
+
+# ---- report ------------------------------------------------------------
+
+def probes(scrub):
+    return {'graphics': check_graphics, 'drivers': check_drivers, 'firmware-files': check_firmware_files,
+            'services': check_services, 'audio': check_audio, 'secure-boot': check_secure_boot,
+            'firmware-updates': check_firmware_updates, 'storage': check_storage, 'battery': check_battery,
+            'time': check_time, 'desktop': lambda: check_desktop(scrub)}
+
+
+def collect(deadline=DEADLINE):
+    """Every check at once, each in its own thread, bounded by one deadline."""
+    _deadline[0] = time.monotonic() + deadline
+    for shared in (pci_devices, pci_names):
+        shared.reset()
+    scrub = Scrubber()
+    functions, results, lock = probes(scrub), {}, threading.Lock()
+
+    def work(identifier):
+        try:
+            value = functions[identifier]()
+        except Exception as error:  # A broken probe must not end the report.
+            value = finding('unknown', 'This check could not run.', error=type(error).__name__)
+        with lock:
+            results[identifier] = value
+
+    threads = [threading.Thread(target=work, args=(identifier,), daemon=True) for identifier, _ in CHECKS]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(max(0.0, _deadline[0] + 1 - time.monotonic()))
+    with lock:
+        done = dict(results)
+    checks = []
+    for identifier, title in CHECKS:
+        value = done.get(identifier) or finding('unknown', 'This check did not finish in time.')
+        state = value['state'] if value.get('state') in STATES else 'unknown'
+        checks.append({'id': identifier, 'state': state, 'title': title, 'summary': scrub(value['summary']),
+                       'detail': scrub(value.get('detail', '')), 'facts': scrub(value.get('facts', {}))})
+    counts = {state: sum(check['state'] == state for check in checks) for state in STATES}
+    overall = 'problem' if counts['problem'] else 'suggestion' if counts['suggestion'] else 'ok'
+    return {'version': VERSION,
+            'checkedAt': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'overall': overall, 'counts': counts, 'checks': checks, 'scope': SCOPE}
+
+
+LABELS = {'problem': 'Problem', 'suggestion': 'Suggestion', 'ok': 'OK', 'info': 'Note', 'unknown': 'Unknown'}
+
+
+def text(report):
+    counts = report['counts']
+    found = [plural(counts['problem'], 'problem'), plural(counts['suggestion'], 'suggestion')]
+    lines = [f"Cybex OS system check: {', '.join(found)}", '']
+    rank = {'problem': 0, 'suggestion': 1}
+    for check in sorted(report['checks'], key=lambda check: rank.get(check['state'], 2)):
+        lines.append(f"{LABELS[check['state']]:<11} {check['title']}: {check['summary']}")
+        if check['state'] in rank and check['detail']:
+            lines += textwrap.wrap(check['detail'], 88, initial_indent=' ' * 12, subsequent_indent=' ' * 12)
+    lines += ['', report['scope']]
+    return '\n'.join(lines) + '\n'
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog='cybex doctor', description=__doc__.splitlines()[0])
+    parser.add_argument('--json', action='store_true', help='print the machine-readable report')
+    args = parser.parse_args(argv)
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(errors='replace')
+    report = collect()
+    if args.json:
+        sys.stdout.write(json.dumps(report, indent=2) + '\n')
+    else:
+        sys.stdout.write(text(report))
+    sys.stdout.flush()
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
