@@ -519,6 +519,8 @@ class Checks(unittest.TestCase):
         self.assertEqual(check['facts']['updates'][1], {'name': 'System Firmware', 'vendor': 'Lenovo',
                                                         'from': '0.1.25', 'to': '0.1.27', 'needsReboot': True})
         self.assertNotIn('a' * 40, json.dumps(check))
+        self.fixture.write('plan.json', json.dumps({'devices': [{'name': 'UEFI dbx', 'needsReboot': True}]}))
+        self.assertTrue(self.check('firmware-updates')['detail'].endswith(' It finishes during the next restart.'))
         self.fixture.flag('fail-firmware')
         self.assertEqual(self.check('firmware-updates')['state'], 'unknown')
 

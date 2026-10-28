@@ -560,8 +560,10 @@ def check_firmware_updates():
         return finding('ok', "No firmware updates in fwupd's downloaded list.", updates=[])
     detail = ('Install them with the firmware action in the Update drawer, which shows each device and asks '
               'before installing. Firmware changes are not undone by a system rollback.')
-    if any(update['needsReboot'] for update in updates):
-        detail += ' Some finish during the next restart.'
+    restart = sum(update['needsReboot'] for update in updates)
+    if restart:
+        who = 'Some' if restart < len(updates) else 'It' if restart == 1 else 'They'
+        detail += f' {who} finish{"es" if who == "It" else ""} during the next restart.'
     return finding('suggestion', f"Firmware updates are available for {plural(len(updates), 'device')}: "
                                  f"{listing(update['name'] for update in updates)}.", detail, updates=updates)
 
