@@ -4,15 +4,19 @@ import QtQuick.Window
 import "../Common"
 
 // The guide's 1280×800 design canvas, drawn like the installer: the top bar
-// with the wordmark, the Wallpaper · Style · Shortcuts steps and the status
-// pills; the step below it, which owns its footer; and the installer-style
-// sheets over everything. Hello and Ready stand outside the three steps, as
-// the installer's welcome and done screens stand outside Disk · You · Review.
+// with the wordmark, the Connect · Wallpaper · Style · Shortcuts steps and the
+// status pills; the step below it, which owns its footer; and the
+// installer-style sheets over everything. Hello and Ready stand outside the
+// numbered steps, as the installer's welcome and done screens stand outside
+// Disk · You · Review. Connect is left out when there is nothing to connect.
 FocusScope {
     id: root
     property bool peeking: false
-    readonly property var stepNames: [I18n.tr("Wallpaper"), I18n.tr("Style"), I18n.tr("Shortcuts")]
-    readonly property int stepperIndex: ["wallpaper", "style", "shortcuts"].indexOf(Welcome.step) + 1
+    readonly property var names: ({connect: I18n.tr("Connect"), wallpaper: I18n.tr("Wallpaper"),
+        style: I18n.tr("Style"), shortcuts: I18n.tr("Shortcuts")})
+    readonly property var numbered: Welcome.steps.filter(id => id in root.names)
+    readonly property var stepNames: root.numbered.map(id => root.names[id])
+    readonly property int stepperIndex: root.numbered.indexOf(Welcome.step) + 1
     readonly property bool sheetOpen: Welcome.sheet !== ""
     width: Kiosk.px(1280)
     height: Kiosk.px(800)
@@ -88,8 +92,8 @@ FocusScope {
             y: topBar.height
             width: parent.width
             height: parent.height - y
-            source: ({hello: "HelloStep.qml", wallpaper: "WallpaperStep.qml", style: "StyleStep.qml",
-                shortcuts: "ShortcutsStep.qml", finish: "FinishStep.qml"})[Welcome.step]
+            source: ({hello: "HelloStep.qml", connect: "ConnectStep.qml", wallpaper: "WallpaperStep.qml",
+                style: "StyleStep.qml", shortcuts: "ShortcutsStep.qml", finish: "FinishStep.qml"})[Welcome.step]
             NumberAnimation { id: fade; target: content; property: "opacity"; from: 0; to: 1; duration: 160 }
         }
     }

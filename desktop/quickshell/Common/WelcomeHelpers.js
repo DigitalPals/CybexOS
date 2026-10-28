@@ -1,5 +1,8 @@
 // Welcome progress and the optional checklist are independent of preferences.
-var STEPS = ["hello", "wallpaper", "style", "shortcuts", "finish"];
+// Connect comes first: the sign-ins it offers make the steps after it easier.
+var STEPS = ["hello", "connect", "wallpaper", "style", "shortcuts", "finish"];
+// The steps between Hello and Ready, which the top bar numbers.
+var MIDDLE = ["connect", "wallpaper", "style", "shortcuts"];
 var ITEMS = ["webapps", "assistant", "fingerprint", "security", "backup", "accounts"];
 function object(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
 function initial(version) {
@@ -38,16 +41,36 @@ function resume(state, requested) {
     if (requested && !STEPS.includes(requested)) return null;
     return visit(state, requested || (state.status === "completed" ? "hello" : state.step));
 }
+// The steps this computer shows: Connect only when it has something to
+// connect (1Password installed, or the assistant).
+function steps(connect) {
+    return connect ? STEPS.slice() : STEPS.filter(id => id !== "connect");
+}
+// Where Continue (+1) or Back (-1) goes from `step` among `route`. A step
+// the route leaves out moves on to its neighbour in the full order.
+function neighbour(route, step, delta) {
+    const index = route.indexOf(step);
+    if (index >= 0) return route[Math.max(0, Math.min(route.length - 1, index + delta))];
+    // A step the route leaves out sits between the route's steps around it.
+    const before = route.filter(id => STEPS.indexOf(id) < STEPS.indexOf(step)).length;
+    return route[Math.max(0, Math.min(route.length - 1, delta > 0 ? before : before - 1))];
+}
 function checklist(facts, later) {
     // Web apps are choices, not a task with a correct answer. The security
     // backend can read registrations, but cannot cheaply detect a FIDO reader.
+    // The assistant has its own step, Connect.
     const rows = [{id: "webapps", page: "applications", done: null}];
-    if (facts.assistantAvailable) rows.push({id: "assistant", page: "assistant", done: !!facts.assistant});
     if (facts.reader) rows.push({id: "fingerprint", page: "security", done: !!facts.fingerprint});
     rows.push({id: "security", page: "security", done: null});
     rows.push({id: "backup", page: "backup", done: facts.backupKnown ? !!facts.backup : null});
     rows.push({id: "accounts", page: "accounts", done: facts.accountsKnown ? !!facts.accounts : null});
     return rows.map(row => Object.assign({}, row, {later: later[row.id] === "later"}));
+}
+// The window a Hyprland openwindow event names: "ADDRESS,WORKSPACE,CLASS,TITLE".
+// The title may hold commas; the class cannot.
+function openedWindow(data) {
+    const fields = String(data || "").split(",");
+    return fields.length >= 3 ? {address: fields[0], windowClass: fields[2]} : null;
 }
 // The GECOS full name, or "" when the account has none.
 function fullName(passwd) {
@@ -60,4 +83,5 @@ function firstName(passwd, username) {
     return (name || String(username || "")).split(/\s+/)[0];
 }
 if (typeof module !== "undefined" && module.exports)
-    module.exports = {STEPS, ITEMS, initial, validate, parse, serialize, visit, resume, checklist, fullName, firstName};
+    module.exports = {STEPS, MIDDLE, ITEMS, initial, validate, parse, serialize, visit, resume, steps, neighbour, checklist,
+        openedWindow, fullName, firstName};

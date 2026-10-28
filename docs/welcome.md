@@ -2,7 +2,8 @@
 
 The welcome guide opens on your focused display after your first desktop
 login. It continues the installer: the same full-screen layout, colours and
-type, and the installer's step indicator, here Wallpaper · Style · Shortcuts.
+type, and the installer's step indicator, here Connect · Wallpaper · Style ·
+Shortcuts.
 Like the installer, it scales its 1280×800 design to the display, so it looks
 the same on every screen size.
 
@@ -12,6 +13,21 @@ Nothing is asked twice. **Change** opens a sheet from the right for the
 language, keyboard or time zone, as in the installer; the network opens
 Settings. The pills in the top bar show the network, keyboard layout and
 language, and the last one closes the guide.
+
+**Connect** offers two optional sign-ins, each on its own card. Both open
+windows, so the guide steps aside while you use them:
+
+- **1Password** comes first, when it is installed, so it can fill in the
+  password for your AI account in the browser. The guide comes back when you
+  close the 1Password window it opened. It cannot tell whether you signed in,
+  so this card never shows a tick.
+- **The AI assistant** (recommended) signs in to Claude Code or Codex with that
+  agent's own sign-in, in a terminal and your browser. The guide comes back by
+  itself once the agent reports you are signed in. Your sign-in stays with the
+  agent; Cybex OS never stores it.
+
+Without a network the step says so and links to the network settings. When
+neither 1Password nor the assistant is installed, the guide leaves Connect out.
 
 **Wallpaper** opens on Wallhaven, with the Cybex OS collection and your own
 pictures one click away. Choosing a tile applies it straight away. A card
@@ -34,10 +50,18 @@ applies; **Keep editing** or Escape returns to the step. Your bindings come
 from the same data as Settings, including changes made there or in
 `user.lua`; an action you disabled shows **Not bound**.
 
-**Ready** sums up your choices and offers optional extras: web apps, the AI
-assistant, fingerprint (when a reader is available), security keys, backups
-and online accounts. Each opens its page in Settings; a tick shows what is
-actually set up.
+**Ready** sums up your choices and shows what the [system check](system-check.md)
+found. It runs `cybex doctor` while you go through the guide: drivers,
+services, sound, Secure Boot, firmware updates, storage, battery, the clock
+and the desktop. Nothing leaves the computer for that. With the assistant
+signed in, **Ask the assistant** hands the check to it: the guide steps
+aside, and the assistant explains what it found and proposes fixes, which
+change nothing until you agree. Without it, **Connect the assistant** goes
+back to Connect.
+
+Ready also offers optional extras: web apps, fingerprint (when a reader is
+available), security keys, backups and online accounts. Each opens its page in
+Settings; a tick shows what is actually set up.
 
 On Wallpaper and Style, hold Space to look at your desktop; release it to
 return. While you type in the Wallhaven search field, Space types a space.
@@ -63,7 +87,7 @@ The shell exposes:
 ```sh
 cybexos-runtime ipc welcome open ''         # resume, or Hello after completion
 cybexos-runtime ipc welcome open wallpaper # open a particular step
-cybexos-runtime ipc welcome status          # JSON: open/status/step/checklist
+cybexos-runtime ipc welcome status          # JSON: open/status/step/steps/checklist/connect/doctor
 cybexos-runtime ipc welcome close           # dismiss, preserving progress
 cybexos-runtime ipc welcome reset           # delete only welcome.json
 ```
@@ -100,6 +124,13 @@ with a test-only IPC target. Shortcut state is served by a fake `hyprctl`
 - a sheet over the guide, which Escape closes without dismissing the guide;
 - Ctrl+PageUp / Ctrl+PageDown, Escape from the wallpaper grid, and the claim
   release;
+- Connect: Hello continues to it; 1Password opens from its desktop entry, the
+  guide steps aside and returns only when that window closes; the assistant's
+  own login command runs in a terminal against the real `cybexos-assistant`
+  service with a scripted Claude Code, and the guide returns by itself once
+  the service reports the sign-in;
+- Ready's system-check card from a fixture `cybex doctor` report, and
+  **Ask the assistant** sending the system-check question to the service;
 - a tour of every step, sheet (including the question about unapplied
   shortcut changes) and the resume pill in English and Dutch at
   1440×900 and 1024×600, saved as `tour-<language>-<size>-<name>.png`.

@@ -77,16 +77,19 @@ Item {
         Item { width: 1; height: Kiosk.px(14) }
         KioskText {
             width: parent.width
-            text: I18n.tr("Three quick choices make this desktop yours. Each one applies the moment you pick it.")
+            text: I18n.tr("A few quick steps make this desktop yours. Each choice applies the moment you pick it.")
             size: 19
             tone: "fog"
             wrapMode: Text.WordWrap
         }
         Item { width: 1; height: Kiosk.px(24) }
         Repeater {
-            model: [[I18n.tr("Wallpaper"), I18n.tr("from Wallhaven, our collection or your pictures")],
+            model: (Welcome.connectAvailable ? [[I18n.tr("Connect"), Welcome.passwordAvailable && Assistant.available
+                    ? I18n.tr("1Password and your AI assistant") : Assistant.available ? I18n.tr("your AI assistant")
+                    : I18n.tr("1Password, if you use it")]] : [])
+                .concat([[I18n.tr("Wallpaper"), I18n.tr("from Wallhaven, our collection or your pictures")],
                 [I18n.tr("Style"), I18n.tr("light or dark, colours and text size")],
-                [I18n.tr("Shortcuts"), I18n.tr("the keys that make Cybex OS fast")]]
+                [I18n.tr("Shortcuts"), I18n.tr("the keys that make Cybex OS fast")]])
             delegate: Row {
                 id: next
                 required property var modelData
@@ -140,7 +143,7 @@ Item {
         Item { width: 1; height: Kiosk.px(18) }
         KioskText {
             width: parent.width
-            text: I18n.tr("About 3 minutes. Everything here is also in Settings.")
+            text: I18n.tr("About 5 minutes. Everything here is also in Settings.")
             size: 14
             tone: "faint"
             wrapMode: Text.WordWrap

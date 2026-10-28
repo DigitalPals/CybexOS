@@ -101,6 +101,13 @@ Singleton {
     // ---- Super+I --------------------------------------------------------------
     property bool shortcutHolding: false
 
+    // ---- the system check ------------------------------------------------------
+    // The question behind "Check this computer". Sending it, however it was
+    // typed or chosen, tells the service this is a system check, so the agent
+    // starts from `cybex doctor` (docs/system-check.md).
+    readonly property string systemCheckQuestion:
+        I18n.tr("Check this computer for missing drivers and other problems.")
+
     signal focusComposer()
 
     // ---- presence ------------------------------------------------------------
@@ -268,13 +275,16 @@ Singleton {
             return;
         }
         stopSpeaking();
+        const context = { output: screenName, speak: Settings.assistantSpeak, language: I18n.language };
+        if (prompt === systemCheckQuestion)
+            context.purpose = "system-check";
         const params = {
             text: prompt,
             agent: root.agent,
             model: AssistantHelpers.modelFor(root.agent, Settings.assistantClaudeModel,
                 Settings.assistantCodexModel),
             screenshot: screenAttached ? screenPath : "",
-            context: { output: screenName, speak: Settings.assistantSpeak, language: I18n.language }
+            context: context
         };
         // The service owns the screenshot from here and deletes it.
         const shot = screenAttached ? screenPath : "";
@@ -307,6 +317,17 @@ Singleton {
     function stop() {
         if (busy)
             request("turn.stop", {});
+    }
+
+    // Asks the assistant to check this computer, from the welcome guide or
+    // the box's first suggestion. Without a signed-in agent the question
+    // waits in the box while setup is shown, like any other.
+    function checkSystem() {
+        if (!available || busy)
+            return;
+        if (!Settings.assistantShown)
+            show(Screens.focused ? Screens.focused.name : "");
+        send(systemCheckQuestion);
     }
 
     function respond(approvalId, decision) {
@@ -381,9 +402,10 @@ Singleton {
 
     // Sign-in stays with the agent. The service only supplies its fixed login
     // command and checks its status; no credential is sent through this socket.
+    // Returns whether the sign-in was asked for.
     function signIn(agentId) {
         if (!connected || authChecking || busy)
-            return;
+            return false;
         Settings.set("assistantAgent", agentId);
         request("auth.login", { agent: agentId }, (result, error) => {
             if (error || !result || !Array.isArray(result.argv)) {
@@ -397,6 +419,7 @@ Singleton {
             authPoll.restart();
             authDeadline.restart();
         });
+        return true;
     }
 
     function refreshAuth() {

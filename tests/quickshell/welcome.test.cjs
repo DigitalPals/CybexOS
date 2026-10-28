@@ -26,17 +26,41 @@ test('dismissal resumes progress, completion starts at hello, explicit steps tak
     assert.equal(W.resume({...saved, status: 'completed'}, 'shortcuts').step, 'shortcuts');
     assert.equal(W.resume(saved, 'bad'), null);
     assert.equal(saved.status, 'dismissed', 'reducers never mutate saved state');
-    assert.deepEqual(W.STEPS, ['hello', 'wallpaper', 'style', 'shortcuts', 'finish']);
+    assert.deepEqual(W.STEPS, ['hello', 'connect', 'wallpaper', 'style', 'shortcuts', 'finish']);
+    assert.deepEqual(W.MIDDLE, W.STEPS.slice(1, -1));
+});
+test('Connect follows Hello only when there is something to connect', () => {
+    const full = W.steps(true), bare = W.steps(false);
+    assert.deepEqual(full, W.STEPS);
+    assert.deepEqual(bare, ['hello', 'wallpaper', 'style', 'shortcuts', 'finish']);
+    assert.equal(W.neighbour(full, 'hello', 1), 'connect');
+    assert.equal(W.neighbour(full, 'connect', 1), 'wallpaper');
+    assert.equal(W.neighbour(full, 'wallpaper', -1), 'connect');
+    assert.equal(W.neighbour(bare, 'hello', 1), 'wallpaper');
+    assert.equal(W.neighbour(bare, 'wallpaper', -1), 'hello');
+    // A saved Connect step on a computer without it moves to its neighbours.
+    assert.equal(W.neighbour(bare, 'connect', 1), 'wallpaper');
+    assert.equal(W.neighbour(bare, 'connect', -1), 'hello');
+    assert.equal(W.neighbour(full, 'finish', 1), 'finish');
+    assert.equal(W.neighbour(full, 'hello', -1), 'hello');
+    const saved = W.visit(W.initial(), 'connect');
+    assert.deepEqual(W.parse(W.serialize(saved)).value.seen, ['connect']);
+});
+test('Hyprland openwindow data names the window class even when the title has commas', () => {
+    assert.deepEqual(W.openedWindow('55d1c0a0,2,1Password,Lock Screen, 1Password'),
+        {address: '55d1c0a0', windowClass: '1Password'});
+    assert.equal(W.openedWindow('55d1c0a0'), null);
+    assert.equal(W.openedWindow(undefined), null);
 });
 test('checklist derives actual readiness independently of Later or opening Settings', () => {
-    const facts = {assistantAvailable: true, assistant: false, reader: false, backupKnown: false, accountsKnown: false};
-    let rows = W.checklist(facts, {assistant: 'later'});
-    assert.equal(rows.find(row => row.id === 'assistant').done, false);
-    assert.equal(rows.find(row => row.id === 'assistant').later, true);
+    const facts = {reader: false, backupKnown: false, accountsKnown: false};
+    let rows = W.checklist(facts, {backup: 'later'});
+    assert.equal(rows.find(row => row.id === 'backup').later, true);
+    assert.equal(rows.some(row => row.id === 'assistant'), false, 'the assistant has its own step');
     assert.equal(rows.some(row => row.id === 'fingerprint'), false);
     assert.equal(rows.find(row => row.id === 'webapps').done, null);
     assert.equal(rows.find(row => row.id === 'backup').done, null);
-    rows = W.checklist({...facts, assistant: true, reader: true, fingerprint: true, backupKnown: true, backup: true,
+    rows = W.checklist({...facts, reader: true, fingerprint: true, backupKnown: true, backup: true,
         accountsKnown: true, accounts: true}, {});
     assert.ok(rows.filter(row => !['webapps', 'security'].includes(row.id)).every(row => row.done));
 });

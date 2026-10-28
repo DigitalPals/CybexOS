@@ -3,22 +3,22 @@ import QtQuick
 import "../Common"
 
 // Ready, as the installer's done screen: the mark, the headline, three
-// numbered cards that recap the choices, and the optional extras as pills.
-// Each extra opens its Settings page and the guide steps aside; a tick shows
-// what the live backends report as done.
+// numbered cards that recap the choices, what the system check found, and
+// the optional extras as pills. Each extra opens its Settings page and the
+// guide steps aside; a tick shows what the live backends report as done.
 Item {
     id: root
-    readonly property var labels: ({webapps: I18n.tr("Web apps"), assistant: I18n.tr("AI assistant"),
+    readonly property var labels: ({webapps: I18n.tr("Web apps"),
         fingerprint: I18n.tr("Fingerprint"), security: I18n.tr("Security keys"), backup: I18n.tr("Backups"),
         accounts: I18n.tr("Online accounts")})
-    readonly property var glyphs: ({webapps: "web", assistant: "sparkles", fingerprint: "passkey", security: "key",
+    readonly property var glyphs: ({webapps: "web", fingerprint: "passkey", security: "key",
         backup: "archive", accounts: "account_circle"})
     readonly property string colours: Settings.paletteMode === "wallpaper" ? I18n.tr("wallpaper colours")
         : Themes.current.value !== "" && !Themes.current.modified ? I18n.format("%1 theme", [Themes.current.label])
         : I18n.tr("your own accent")
     readonly property string textSize: Settings.textScale === "large" ? I18n.tr("Large text")
         : Settings.textScale === "larger" ? I18n.tr("Larger text") : I18n.tr("Default text")
-    Component.onCompleted: { Backup.refresh(); if (!Themes.loaded) Themes.refresh(); }
+    Component.onCompleted: { Backup.refresh(); Doctor.refreshIfStale(); if (!Themes.loaded) Themes.refresh(); }
     Claim { active: root.visible; onClaimed: SystemSettings.security.acquire(); onReleased: SystemSettings.security.release() }
     Claim { active: root.visible; onClaimed: SystemSettings.accounts.acquire(); onReleased: SystemSettings.accounts.release() }
 
@@ -56,7 +56,7 @@ Item {
 
     Column {
         anchors.horizontalCenter: parent.horizontalCenter
-        y: Kiosk.px(64)
+        y: Kiosk.px(40)
         width: Kiosk.px(1000)
         spacing: 0
         Image {
@@ -67,7 +67,7 @@ Item {
             sourceSize.height: Math.ceil(height * 2)
             fillMode: Image.PreserveAspectFit
         }
-        Item { width: 1; height: Kiosk.px(28) }
+        Item { width: 1; height: Kiosk.px(22) }
         KioskText {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
@@ -87,7 +87,7 @@ Item {
             tone: "fog"
             wrapMode: Text.WordWrap
         }
-        Item { width: 1; height: Kiosk.px(34) }
+        Item { width: 1; height: Kiosk.px(26) }
         Row {
             id: summary
             // The three cards share the tallest card's height.
@@ -145,18 +145,110 @@ Item {
                 KioskKeycap { text: "K" } // i18n: untranslated (key name)
             }
         }
-        Item { width: 1; height: Kiosk.px(30) }
+        Item { width: 1; height: Kiosk.px(14) }
+        // What the system check found, in the shell's own words, so it reads
+        // the same without an AI account. The assistant explains it and
+        // offers fixes; the guide steps aside while it works.
+        KioskCard {
+            id: check
+            readonly property bool waiting: Doctor.running || (Doctor.report === null && Doctor.error === "")
+            readonly property int count: Doctor.attention.length
+            readonly property var lines: Doctor.attention.map(item => Doctor.sentence(item))
+            width: parent.width
+            height: Kiosk.px(80)
+            Accessible.role: Accessible.Grouping
+            Accessible.name: I18n.tr("System check")
+            Rectangle {
+                id: checkMark
+                x: Kiosk.px(22)
+                anchors.verticalCenter: parent.verticalCenter
+                width: Kiosk.px(40)
+                height: width
+                radius: width / 2
+                color: check.count > 0 ? Kiosk.amberTint : Kiosk.accentTint
+                KioskIcon {
+                    anchors.centerIn: parent
+                    designSize: 20
+                    name: check.waiting ? "progress_activity" : Doctor.report === null ? "computer"
+                        : check.count > 0 ? "warning" : "check"
+                    color: check.count > 0 ? Kiosk.amber : Kiosk.accent
+                }
+            }
+            Column {
+                anchors.left: checkMark.right
+                anchors.leftMargin: Kiosk.px(16)
+                anchors.right: checkAction.left
+                anchors.rightMargin: Kiosk.px(16)
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Kiosk.px(2)
+                KioskText {
+                    width: parent.width
+                    text: check.waiting ? I18n.tr("Checking this computer…")
+                        : Doctor.report === null ? I18n.tr("The system check could not run")
+                        : check.count === 0 ? I18n.tr("This computer looks good")
+                        : check.count === 1 ? I18n.tr("1 thing to look at")
+                        : I18n.format("%1 things to look at", [check.count])
+                    size: 17
+                    font.weight: Font.Bold
+                    elide: Text.ElideRight
+                }
+                KioskText {
+                    width: parent.width
+                    text: check.waiting ? I18n.tr("Drivers, services, sound, storage and firmware.")
+                        : Doctor.report === null ? Doctor.error
+                        : check.count === 0 ? I18n.tr("Drivers, services, sound, storage and firmware were checked.")
+                        : check.count > 2 ? I18n.format("%1 and %2 more", [check.lines.slice(0, 2).join(" · "), check.count - 2])
+                        : check.lines.join(" · ")
+                    size: 14
+                    tone: "fog"
+                    elide: Text.ElideRight
+                }
+            }
+            Item {
+                id: checkAction
+                anchors.right: parent.right
+                anchors.rightMargin: Kiosk.px(20)
+                anchors.verticalCenter: parent.verticalCenter
+                width: childrenRect.width
+                height: childrenRect.height
+                KioskButton {
+                    objectName: "readyAskAssistant"
+                    visible: Assistant.agentReady && !(Doctor.report === null && !check.waiting)
+                    small: true
+                    kind: check.count > 0 ? "primary" : "ghost"
+                    icon: "sparkles"
+                    text: I18n.tr("Ask the assistant")
+                    enabled: !Assistant.busy
+                    onClicked: {
+                        Welcome.stepAside(false);
+                        Assistant.checkSystem();
+                    }
+                }
+                KioskLink {
+                    objectName: "readyConnectAssistant"
+                    visible: Assistant.available && !Assistant.agentReady && !(Doctor.report === null && !check.waiting)
+                    text: I18n.tr("Connect the assistant")
+                    onClicked: Welcome.leave("connect")
+                }
+                KioskLink {
+                    visible: Doctor.report === null && !check.waiting
+                    text: I18n.tr("Try again")
+                    onClicked: Doctor.refresh()
+                }
+            }
+        }
+        Item { width: 1; height: Kiosk.px(26) }
         KioskKicker {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
             text: I18n.tr("Whenever you like · optional")
         }
         Item { width: 1; height: Kiosk.px(14) }
-        // Up to four extras in one centred row, more in two balanced rows.
+        // Up to five extras in one centred row, more in two balanced rows.
         Column {
             id: extras
             readonly property var items: Welcome.checklist
-            readonly property int split: items.length <= 4 ? items.length : Math.ceil(items.length / 2)
+            readonly property int split: items.length <= 5 ? items.length : Math.ceil(items.length / 2)
             width: parent.width
             spacing: Kiosk.px(10)
             Repeater {

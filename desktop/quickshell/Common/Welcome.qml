@@ -45,7 +45,6 @@ Singleton {
     property string sheet: ""
     property string leaving: ""
     readonly property var checklist: Helpers.checklist({
-        assistantAvailable: Assistant.available, assistant: Assistant.agentReady,
         reader: (SystemSettings.security.snapshot.reader || {}).state === "ready",
         fingerprint: (SystemSettings.security.snapshot.fingers || []).length > 0,
         backupKnown: Backup.statusError === "" && backupRead,
@@ -53,6 +52,18 @@ Singleton {
         accounts: (SystemSettings.accounts.snapshot.accounts || []).length > 0
     }, document.checklist)
     property bool backupRead: false
+    // ---- Connect ---------------------------------------------------------------
+    // 1Password, when the proprietary applications are installed. Its window
+    // tells the guide when the person is done: closing it brings the guide back.
+    readonly property var passwordEntry: DesktopEntries.applications.values.find(entry => entry.id === "1password") ?? null
+    readonly property bool passwordAvailable: passwordEntry !== null
+    property bool passwordOpened: false
+    property string passwordWindow: ""
+    property bool passwordPending: false
+    // A sign-in started here: the guide comes back once the agent is ready.
+    property bool signInPending: false
+    readonly property bool connectAvailable: passwordAvailable || Assistant.available
+    readonly property var steps: Helpers.steps(connectAvailable)
     // The wallpaper on the desktop, named as the guide names it.
     readonly property string wallpaperName: Settings.wall === "" ? WallpaperNames.label("moon-mountains.png", true)
         : /^wallhaven-/.test(Settings.wall) ? "Wallhaven " + WallpaperNames.label(Settings.wall, false).replace(/^wallhaven /, "")
@@ -77,9 +88,12 @@ Singleton {
     }
     function wallpaperReady() { wallpaperDrawn = true; maybeOpen(); }
     function show(requested) {
-        const next = Helpers.resume(document, requested);
+        let next = Helpers.resume(document, requested);
         if (!next) return "unknown";
+        if (!steps.includes(next.step)) next = Helpers.visit(next, Helpers.neighbour(steps, next.step, 1));
         next.version = version;
+        // Ready reports what the check found; it runs while the person goes through the guide.
+        Doctor.refreshIfStale();
         const wasOpen = open;
         if (!wasOpen || !aside) screenName = Screens.focused ? Screens.focused.name : "";
         changed(next);
@@ -130,7 +144,32 @@ Singleton {
         leaving = "";
     }
     function move(delta) {
-        leave(Helpers.STEPS[Math.max(0, Math.min(Helpers.STEPS.length - 1, Helpers.STEPS.indexOf(step) + delta))]);
+        leave(Helpers.neighbour(steps, step, delta));
+    }
+    function openPassword() {
+        if (!passwordEntry) return;
+        stepAside(false);
+        passwordOpened = passwordPending = true;
+        passwordWindow = "";
+        passwordEntry.execute();
+    }
+    // The sign-in opens a terminal and a browser, so the guide steps aside.
+    function signIn(agentId) {
+        if (!Assistant.signIn(agentId)) return;
+        signInPending = true;
+        stepAside(false);
+    }
+    // Hyprland's openwindow and closewindow events while the guide is open.
+    function windowOpened(data) {
+        const window = Helpers.openedWindow(data);
+        if (passwordPending && window && window.windowClass === "1Password" && passwordWindow === "")
+            passwordWindow = window.address;
+    }
+    function windowClosed(address) {
+        if (!passwordPending || address !== passwordWindow) return;
+        passwordPending = false;
+        passwordWindow = "";
+        resume();
     }
     function dismiss() {
         if (!open) return;
@@ -152,7 +191,11 @@ Singleton {
     }
     function status() {
         return JSON.stringify({open: open, aside: aside, sheet: sheet, leaving: leaving, status: document.status, step: step,
-            checklist: checklist});
+            steps: steps, checklist: checklist, connect: {
+                password: !passwordAvailable ? "unavailable" : passwordOpened ? "opened" : "available",
+                assistant: !Assistant.available ? "unavailable" : Assistant.agentReady ? "ready"
+                    : Assistant.signingIn !== "" ? "signing-in" : "required"},
+            doctor: Doctor.status()});
     }
     function reset() {
         open = false;
@@ -207,6 +250,18 @@ Singleton {
         else if (success) saveTimer.restart();
     }
     Connections { target: Backup; function onStatusChanged() { root.backupRead = true; } }
+    Connections {
+        target: Assistant
+        function onAgentReadyChanged() {
+            if (!root.signInPending || !Assistant.agentReady) return;
+            root.signInPending = false;
+            root.resume();
+        }
+        function onSigningInChanged() {
+            // The sign-in gave up (five minutes without completing).
+            if (Assistant.signingIn === "" && !Assistant.agentReady) root.signInPending = false;
+        }
+    }
     Connections { target: Settings; function onLoadedChanged() { root.maybeOpen(); } }
     Timer { id: saveTimer; interval: 120; onTriggered: root.saveNow() }
     Timer {

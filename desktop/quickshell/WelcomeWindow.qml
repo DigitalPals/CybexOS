@@ -9,7 +9,8 @@ import "Welcome" as Guide
 // overlay layer with the installer's palette, its 1280×800 canvas centred
 // and zoomed by the installer's rule. While the person uses something the
 // guide opened, or any window or shell surface appears, the guide steps
-// aside and leaves a resume pill at the bottom of the screen.
+// aside and leaves a resume pill at the bottom of the screen. Closing the
+// 1Password window the Connect step opened brings it back.
 Scope {
     id: root
     readonly property Item contentItem: guide.contentItem
@@ -33,6 +34,9 @@ Scope {
             if (event.name === "openwindow") {
                 resumeLater.stop();
                 Welcome.stepAside(false);
+                Welcome.windowOpened(event.data);
+            } else if (event.name === "closewindow") {
+                Welcome.windowClosed(event.data);
             }
         }
     }

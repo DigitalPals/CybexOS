@@ -90,6 +90,11 @@ ShellRoot {
             Assistant.send(text);
         }
 
+        // "Check this computer": the question that starts from `cybex doctor`.
+        function check(): void {
+            Assistant.checkSystem();
+        }
+
         // Read-only state for diagnostics.
         function status(): string {
             return JSON.stringify({available: Assistant.available, shown: Assistant.shown,

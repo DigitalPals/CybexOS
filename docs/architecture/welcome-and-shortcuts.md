@@ -372,7 +372,11 @@ As built:
 
 Hello and Ready stand outside the step indicator, as the installer's welcome
 and done screens stand outside Disk · You · Review. The indicator shows
-Wallpaper · Style · Shortcuts.
+Connect · Wallpaper · Style · Shortcuts. `Welcome.steps`
+(`WelcomeHelpers.steps`) leaves Connect out when there is nothing to connect:
+1Password's desktop entry is absent and the assistant feature is off. Continue
+and Back follow that route (`WelcomeHelpers.neighbour`), and a saved
+`connect` step on such a computer opens on its neighbour.
 
 1. **`hello`.** The installer's welcome-screen composition: kicker, headline
    ("Welcome home, <first name>."), lead and what comes next on the left, Get
@@ -380,20 +384,43 @@ Wallpaper · Style · Shortcuts.
    read from the live backends: language, keyboard layout, time zone,
    network, account and computer name. Change opens the language, keyboard
    or time zone sheet; the network row steps aside to Settings → Network.
-2. **`wallpaper`.** Wallhaven, the Cybex OS collection or the user's folder,
+2. **`connect`.** Two optional sign-ins as installer cards, both of which
+   step aside because they open windows:
+   - **1Password**, shown when the `1password` desktop entry exists.
+     `Welcome.openPassword()` runs that entry and steps aside. The Hyprland
+     `openwindow` event with class `1Password` records its address; the
+     `closewindow` event for that address resumes the guide. Nothing cheaply
+     tells whether 1Password is signed in, so the card never shows a tick;
+     `connect.password` is `available` or `opened` (this session).
+   - **The AI assistant** (recommended), shown when the assistant feature is
+     on. One button per installed agent runs `Welcome.signIn(id)`, which
+     calls `Assistant.signIn` (the agent's own login in a terminal) and steps
+     aside only if the request started. When `Assistant.agentReady` turns
+     true, the guide resumes by itself. A signed-in agent shows "Connected
+     with …"; a stopped service offers Start the assistant; no installed
+     agent links to Software.
+   - Without a network, a notice links to Settings → Network.
+3. **`wallpaper`.** Wallhaven, the Cybex OS collection or the user's folder,
    opening on Wallhaven. Choosing a tile applies it at once. A card shows the
    wallpaper on a miniature desktop with the colours Matugen read from it.
-3. **`style`.** Dark or light; the accent from the wallpaper, a theme (in a
+4. **`style`.** Dark or light; the accent from the wallpaper, a theme (in a
    sheet) or one accent colour; text size; glass. It writes the same
    `Settings` keys as the Appearance page. A preview drawn with the live
    `Theme` shows each choice.
-4. **`shortcuts`.** The keyboard map and the essentials (§1.7).
-5. **`finish`.** Ready: the installer's done screen. Three numbered cards
-   recap the wallpaper, the style and where the shortcuts are, then the
-   optional extras as pills. Each extra reads its real state (a tick, never
-   set by a click) and opens its Settings page, stepping aside:
+5. **`shortcuts`.** The keyboard map and the essentials (§1.7).
+6. **`finish`.** Ready: the installer's done screen. Three numbered cards
+   recap the wallpaper, the style and where the shortcuts are. A card
+   reports the system check (`Common/Doctor.qml`, which runs
+   `cybex doctor --json`, see [system check](../system-check.md)): it starts
+   when the guide opens and again on Ready if the last report is older than
+   two minutes. Problems come before suggestions, in the shell's own
+   translated words per check id; info and unknown checks are not counted.
+   **Ask the assistant** (with a signed-in agent) steps aside and calls
+   `Assistant.checkSystem()`; otherwise **Connect the assistant** returns to
+   Connect, and a failed run offers Try again. Then the optional extras as
+   pills, up to five in one row. Each extra reads its real state (a tick,
+   never set by a click) and opens its Settings page, stepping aside:
    - web apps;
-   - AI assistant;
    - fingerprint, only when a reader is ready;
    - security keys;
    - backups;
@@ -454,7 +481,11 @@ Integration notes (as implemented):
 
 `open(step: string): string` takes `""` for the saved step and returns `ok`
 or `unknown`. The other calls are `close(): void` and `status(): string`,
-which returns JSON `{ open, aside, sheet, leaving, status, step, checklist }`.
+which returns JSON `{ open, aside, sheet, leaving, status, step, steps,
+checklist, connect: { password, assistant }, doctor: { running, error,
+overall, attention } }`. `connect.password` is `unavailable`, `available` or
+`opened`; `connect.assistant` is `unavailable`, `required`, `signing-in` or
+`ready`; `doctor.attention` lists `id:state` for the checks Ready counts.
 `reset(): void` exists for tests and qualification; it deletes only
 `welcome.json`.
 

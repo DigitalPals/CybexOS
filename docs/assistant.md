@@ -12,7 +12,8 @@ listen or speak unless asked to for one question.
 
 ## Using it
 
-- **Connect an account first.** When the selected agent is not signed in,
+- **Connect an account first.** The welcome guide's Connect step offers it
+  right after Hello (docs/welcome.md). When the selected agent is not signed in,
   opening the assistant shows setup with **Sign in to Claude Code** and
   **Sign in to Codex**. Each button opens that agent's own sign-in in your
   chosen terminal and browser. The box checks for completion automatically;
@@ -26,6 +27,13 @@ listen or speak unless asked to for one question.
   dot for a reply you have not seen. Drag the character anywhere, including to
   another display. It stays where it was left, across sessions, and keeps out
   of the way while game mode is on.
+- **Check this computer.** The box's first suggestion, the welcome guide's
+  Ready step and `cybexos-runtime ipc assistant check` all ask the same question. It
+  tells the service this is a system check, so the agent starts from the
+  read-only [`cybex doctor`](system-check.md), explains what it found and
+  proposes fixes. Nothing changes until you agree; system changes are staged
+  for review as below. The report goes to your AI provider as part of the
+  question, like anything else the agent reads.
 - **Ask** by hovering the character, or tap `Super+I`, then type and press
   Enter. Hovering opens the box without taking the keyboard; clicking it or
   the shortcut does.

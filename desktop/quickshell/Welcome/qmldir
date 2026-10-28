@@ -1,5 +1,6 @@
 # The welcome guide: the step screens, the installer-style sheets and the
 # Kiosk controls that draw the installer's design (installer/kiosk/ui).
+ConnectStep ConnectStep.qml
 DesktopPreview DesktopPreview.qml
 FinishStep FinishStep.qml
 HelloStep HelloStep.qml

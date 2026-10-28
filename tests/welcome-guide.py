@@ -6,6 +6,9 @@ The shell runs from a private git copy of this checkout with one test-only
 IPC target injected, reached through the same `cybexos-runtime` dev-source
 route as an installation. All service probes and writes inherit a private
 HOME/XDG tree; hyprctl is a fake that serves shortcut state from that tree.
+The real cybexos-assistant service runs beside the shell with a scripted
+`claude` (signed out until its login command runs), `cybex doctor` serves a
+fixture report, and 1Password is a desktop entry for a recording script.
 No installed desktop is modified. Only requested screenshots survive
 teardown; failed logs are printed inline.
 """
@@ -17,7 +20,9 @@ from pathlib import Path
 import re
 import shutil
 import signal
+import socket
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -56,6 +61,63 @@ if sys.argv[1:] == ['-j', 'binds']:
 else:
     sys.exit(1)
 '''
+# Claude Code as the assistant service sees it: signed out until its own
+# login command runs, then a stream-json session that records each question.
+FAKE_CLAUDE = r'''
+import json, os, sys
+from pathlib import Path
+home = Path(os.environ["HOME"])
+signed_out = home / "signed-out-claude"
+args = sys.argv[1:]
+if args == ["auth", "status"]:
+    sys.exit(int(signed_out.exists()))
+if args == ["auth", "login"]:
+    signed_out.unlink(missing_ok=True)
+    sys.exit(0)
+def emit(message):
+    sys.stdout.write(json.dumps(message) + "\n")
+    sys.stdout.flush()
+emit({"type": "system", "subtype": "init", "session_id": "welcome-session"})
+for line in sys.stdin:
+    message = json.loads(line)
+    if message.get("type") != "user":
+        continue
+    text = message["message"]["content"][0]["text"]
+    with (home / "claude-questions.jsonl").open("a") as log:
+        log.write(json.dumps(text) + "\n")
+    reply = "I checked this computer." if "cybex doctor" in text else "I can help with Cybex OS."
+    emit({"type": "result", "subtype": "success", "is_error": False, "result": reply, "session_id": "welcome-session"})
+'''
+# `cybex doctor --json` from a fixture; every other cybex call is absent, as
+# on the test host.
+FAKE_CYBEX = r'''
+import os, sys
+from pathlib import Path
+if sys.argv[1:] == ["doctor", "--json"]:
+    sys.stdout.write((Path(os.environ["HOME"]) / "doctor.json").read_text())
+    sys.exit(0)
+sys.exit(127)
+'''
+# The terminal a sign-in opens: record it and run the agent's login command.
+FAKE_APPS = r'''
+import json, os, sys
+from pathlib import Path
+args = sys.argv[1:]
+if args[:1] != ["terminal"]:
+    os.execv(os.environ["CYBEXOS_TEST_REAL_APPS"], [os.environ["CYBEXOS_TEST_REAL_APPS"], *args])
+Path(os.environ["HOME"]).joinpath("terminal-argv.json").write_text(json.dumps(args))
+command = args[args.index("--") + 1:]
+os.execv(command[0], command)
+'''
+DOCTOR = {'version': 1, 'checkedAt': '2026-10-28T12:00:00Z', 'overall': 'suggestion',
+          'counts': {'problem': 0, 'suggestion': 2, 'ok': 8, 'info': 1, 'unknown': 0},
+          'scope': 'Read-only checks of this computer. They do not qualify hardware or change anything.',
+          'checks': [{'id': check, 'state': state, 'title': check, 'summary': '', 'detail': '', 'facts': {}}
+                     for check, state in (('graphics', 'suggestion'), ('drivers', 'ok'), ('firmware-files', 'info'),
+                                          ('services', 'ok'), ('audio', 'ok'), ('secure-boot', 'ok'),
+                                          ('firmware-updates', 'suggestion'), ('storage', 'ok'), ('battery', 'ok'),
+                                          ('time', 'ok'), ('desktop', 'ok'))]}
+SYSTEM_CHECK = 'Check this computer for missing drivers and other problems.'
 # Test-only instrumentation, injected into the private copy only.
 TEST_IPC = '''
     function testFind(item, predicate) {
@@ -98,6 +160,18 @@ TEST_IPC = '''
         function draftShortcut(): string { return String(Keybindings.setKeys("apps.terminal", ["F9"])); }
         function discardShortcuts(): string { return String(Keybindings.discard()); }
         function next(): void { Welcome.move(1); }
+        // Activates a named control the way a click does, when it can be clicked.
+        function press(name: string): string {
+            const item = shell.testItem(name);
+            if (!item || !item.visible || !item.enabled) return "false";
+            item.clicked();
+            return "true";
+        }
+        // Hyprland's window events, which this compositor does not send.
+        function windowEvent(name: string, data: string): void {
+            if (name === "openwindow") Welcome.windowOpened(data);
+            else Welcome.windowClosed(data);
+        }
         function launcher(open: bool): void { Launcher.open = open; }
         function state(): string {
             const view = shell.testItem("welcomeView");
@@ -157,8 +231,17 @@ class Session:
         self.source = base / 'source'
         self.copy_source()
         (base / 'bin').mkdir()
-        (base / 'bin/hyprctl').write_text(FAKE_HYPRCTL)
-        (base / 'bin/hyprctl').chmod(0o700)
+        for name, program in (('hyprctl', FAKE_HYPRCTL), ('cybex', FAKE_CYBEX), ('cybexos-apps', FAKE_APPS),
+                              ('claude', FAKE_CLAUDE), ('fake-1password', 'import os, pathlib\n'
+                              'pathlib.Path(os.environ["HOME"], "1password-launched").touch()\n')):
+            (base / 'bin' / name).write_text(('' if name == 'hyprctl' else f'#!{sys.executable}\n') + program)
+            (base / 'bin' / name).chmod(0o700)
+        applications = self.home / '.local/share/applications'
+        applications.mkdir(parents=True)
+        (applications / '1password.desktop').write_text('[Desktop Entry]\nType=Application\nName=1Password\n'
+                                                         f'Exec={base / "bin/fake-1password"}\n')
+        self.home.joinpath('signed-out-claude').touch()
+        self.home.joinpath('doctor.json').write_text(json.dumps(DOCTOR))
         config = self.home / '.config/cybexos'
         config.mkdir(parents=True)
         (config / 'dev-source').write_text(str(self.source) + '\n')
@@ -175,7 +258,11 @@ class Session:
             'CYBEXOS_THEME_ROOT': str(self.home / '.local/share/cybexos/themes'),
             'QML_IMPORT_PATH': str(imports) + ':' + os.environ.get('CYBEXOS_QML_IMPORT_PATH', ''),
             'PATH': str(base / 'bin') + ':' + str(self.source / 'assets/scripts') + ':' + os.environ['PATH'],
+            'CYBEXOS_TEST_REAL_APPS': str(self.source / 'assets/scripts/cybexos-apps'),
             **shell_fonts.fontconfig(base)}
+        self.service_env = {'PYTHONPATH': str(ROOT / 'desktop/assistant'), 'CYBEXOS_ASSISTANT_CLAUDE': str(base / 'bin/claude'),
+                            'CYBEXOS_ASSISTANT_CODEX': str(base / 'no-codex'),
+                            'CYBEXOS_ASSISTANT_STATUS': str(base / 'no-status.json')}
         for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'SWAYSOCK', 'DBUS_SESSION_BUS_ADDRESS'):
             self.env.pop(key, None)
         self.processes = []
@@ -226,11 +313,11 @@ print('done ' + name, flush=True)
         current.update(values)
         self.write_settings(current)
 
-    def start(self, argv, name):
+    def start(self, argv, name, extra=None):
         log = self.base / name
         self.logs.append(log)
         with log.open('w') as output:
-            process = subprocess.Popen(argv, env=self.env, stdout=output, stderr=subprocess.STDOUT,
+            process = subprocess.Popen(argv, env={**self.env, **(extra or {})}, stdout=output, stderr=subprocess.STDOUT,
                                        start_new_session=True)
         self.processes.append(process)
         return process
@@ -280,6 +367,24 @@ print('done ' + name, flush=True)
 
     def state(self):
         return self.json_call('welcome', 'status')
+
+    def turn(self):
+        """The assistant service's current turn, as its socket reports it."""
+        with socket.socket(socket.AF_UNIX) as client:
+            client.settimeout(10)
+            client.connect(str(self.runtime / 'cybexos/assistant.sock'))
+            client.sendall(json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'hello',
+                                       'params': {'client': 'welcome-test', 'protocol': 1}}).encode() + b'\n')
+            buffer = b''
+            while True:
+                chunk = client.recv(65536)
+                assert chunk, 'the assistant service closed the connection'
+                buffer += chunk
+                *lines, buffer = buffer.split(b'\n')
+                for line in lines:
+                    message = json.loads(line)
+                    if message.get('id') == 1:
+                        return message['result']['turn']
 
     def probe(self):
         return self.json_call('welcome-test', 'state')
@@ -395,6 +500,8 @@ def main():
             # Real seeded web apps, entirely offline and under private HOME.
             subprocess.run([str(session.source / 'assets/scripts/cybexos-webapp'), 'seed'], env=session.env,
                            check=True, capture_output=True)
+            session.start([sys.executable, '-B', '-m', 'cybexos_assistant', 'serve'], 'assistant.log', session.service_env)
+            session.wait(lambda: (session.runtime / 'cybexos/assistant.sock').exists(), 'assistant service')
             session.start_shell('qs-first.log')
             session.wait(lambda: session.state().get('open'), 'first-login auto opening')
             assert session.state()['step'] == 'hello'
@@ -430,14 +537,61 @@ def main():
             assert session.probe()['paletteError'] == ''
             assert session.ipc('open', 'keys') == 'unknown'
             assert session.ipc('open', 'unknown') == 'unknown'
-            for step in ('hello', 'wallpaper', 'style', 'shortcuts', 'finish'):
+            for step in ('hello', 'connect', 'wallpaper', 'style', 'shortcuts', 'finish'):
                 assert session.ipc('open', step) == 'ok'
                 session.wait(lambda: session.state().get('step') == step, step)
+                if step == 'connect':
+                    session.wait(lambda: session.state()['connect'] == {'password': 'available', 'assistant': 'required'},
+                                 'Connect offers 1Password and the assistant sign-in')
+                if step == 'finish':
+                    session.wait(lambda: session.state()['doctor']['attention']
+                                 == ['graphics:suggestion', 'firmware-updates:suggestion'], 'the system check report')
                 if step == 'wallpaper':
                     session.wait(lambda: (p := session.probe()).get('grid') and p.get('tab') == 'online', 'Wallhaven first')
                 if step == 'shortcuts':
                     session.wait(lambda: session.probe().get('keysLoaded'), 'Keybindings loaded')
                 session.capture(shots, 'welcome-' + step + '-en.png')
+
+            # Hello's Continue leads to Connect, and Connect's to Wallpaper.
+            session.ipc('open', 'hello')
+            session.call('welcome-test', 'next')
+            session.wait(lambda: session.state().get('step') == 'connect', 'Hello continues to Connect')
+            assert session.state()['steps'] == ['hello', 'connect', 'wallpaper', 'style', 'shortcuts', 'finish']
+            # 1Password: the guide steps aside for its window and comes back
+            # when that window closes; only the window it opened counts.
+            assert session.call('welcome-test', 'press', 'connectPassword') == 'true'
+            session.wait(lambda: (session.home / '1password-launched').exists(), '1Password launched from its desktop entry')
+            session.wait(lambda: session.state().get('aside'), 'the guide steps aside for 1Password')
+            assert session.state()['connect']['password'] == 'opened'
+            session.call('welcome-test', 'windowEvent', 'openwindow', 'a1b2,1,kitty,Terminal')
+            session.call('welcome-test', 'windowEvent', 'openwindow', 'c3d4,1,1Password,Lock Screen, 1Password')
+            session.call('welcome-test', 'windowEvent', 'closewindow', 'a1b2')
+            time.sleep(.5)
+            assert session.state()['aside'], 'another window closing does not bring the guide back'
+            session.call('welcome-test', 'windowEvent', 'closewindow', 'c3d4')
+            session.wait(lambda: not session.state().get('aside'), 'closing 1Password brings the guide back')
+            assert session.state()['step'] == 'connect'
+            session.capture(shots, 'welcome-connect-opened-en.png')
+            # The assistant: its own login command runs in a terminal, and the
+            # guide returns by itself once the service reports the sign-in.
+            assert session.call('welcome-test', 'press', 'connectAgent-claude') == 'true'
+            session.wait(lambda: session.state().get('aside'), 'the guide steps aside for the sign-in')
+            argv = json.loads((session.home / 'terminal-argv.json').read_text())
+            assert argv[0] == 'terminal' and argv[-3:] == [str(base / 'bin/claude'), 'auth', 'login'], argv
+            session.wait(lambda: not session.state().get('aside') and session.state()['connect']['assistant'] == 'ready',
+                         'the guide comes back once the assistant is signed in', timeout=40)
+            assert session.state()['step'] == 'connect'
+            session.capture(shots, 'welcome-connect-ready-en.png')
+            # Ready: the check's findings, and the assistant asked about them.
+            session.ipc('open', 'finish')
+            session.wait(lambda: session.state()['doctor']['overall'] == 'suggestion', 'the system check report')
+            session.capture(shots, 'welcome-finish-check-en.png')
+            assert session.call('welcome-test', 'press', 'readyAskAssistant') == 'true'
+            session.wait(lambda: session.state().get('aside'), 'the guide steps aside for the system check')
+            turn = session.wait(lambda: (t := session.turn()) and t['status'] == 'completed' and t, 'the system check turn')
+            assert turn['prompt'] == SYSTEM_CHECK, turn
+            session.ipc('open', '')
+            session.wait(lambda: not session.state().get('aside'), 'resume after the system check')
 
             # Keycaps come from Keybindings: the remapped launcher, a
             # disabled action, and Close window marked "Not bound".
@@ -617,7 +771,7 @@ def main():
                 session.start_shell(f'qs-tour-{language}.log')
                 for size, (width, height) in (('normal', (1440, 900)), ('small', (1024, 600))):
                     session.output(width, height)
-                    for step in ('hello', 'wallpaper', 'style', 'shortcuts', 'finish'):
+                    for step in ('hello', 'connect', 'wallpaper', 'style', 'shortcuts', 'finish'):
                         assert session.ipc('open', step) == 'ok'
                         session.wait(lambda: session.state().get('step') == step and session.guide_rect(), step)
                         session.capture_guide(shots, f'tour-{language}-{size}-{step}.png')
@@ -674,7 +828,9 @@ def main():
                               'otherWallpaperDifference': round(other_diff, 2),
                               'peekDifference': round(peek_diff, 2), 'applied': applied['wall']}))
             print('PASS: fresh-install default wallpaper behind the full-screen guide, installer zoom at four '
-                  'output sizes, first login, all five steps, Keybindings keycaps (remapped/unbound) and claim '
+                  'output sizes, first login, all six steps, Connect (1Password aside and return on its window closing, '
+                  'the assistant\'s own sign-in and automatic return), the system check on Ready and the question it asks, '
+                  'Keybindings keycaps (remapped/unbound) and claim '
                   'lifecycle, stepping aside for the launcher, tile apply, Space typing in search, Space peek '
                   'versus the desktop-only frame, sheets and Escape, Finish, keyboard navigation, '
                   'dismissal/resume across restart, Dutch, protected invalid state, reset and environment suppression')

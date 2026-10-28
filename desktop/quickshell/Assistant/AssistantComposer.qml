@@ -17,6 +17,7 @@ AssistantSurface {
     readonly property bool transcribing: Assistant.transcribing
     readonly property var suggestions: {
         const list = [
+            { text: I18n.tr("Check this computer"), check: true },
             { text: I18n.tr("What can you do?"), screen: false },
             { text: I18n.tr("Make the menubar transparent"), screen: false },
             { text: I18n.tr("Create a CPU temperature widget"), screen: false }
@@ -408,7 +409,9 @@ AssistantSurface {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        if (chip.modelData.screen)
+                        if (chip.modelData.check)
+                            Assistant.checkSystem();
+                        else if (chip.modelData.screen)
                             Assistant.askAboutScreen(chip.modelData.text);
                         else
                             Assistant.send(chip.modelData.text);
