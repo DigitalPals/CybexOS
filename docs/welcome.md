@@ -28,6 +28,12 @@ windows, so the guide steps aside while you use them:
   itself once the agent reports you are signed in. Your sign-in stays with the
   agent; Cybex OS never stores it.
 
+When you leave the guide, it closes the windows these sign-ins opened, as
+their close buttons would: a 1Password window still open, and the
+sign-in's terminal and browser window. A window you opened yourself stays,
+and so does a sign-in you have not finished. Closing the guide from its pill
+leaves everything open, since you are using it.
+
 Without a network the step says so and links to the network settings. When
 neither 1Password nor the assistant is installed, the guide leaves Connect out.
 
@@ -133,7 +139,8 @@ with a test-only IPC target. Shortcut state is served by a fake `hyprctl`
   while the guide shows; the assistant's
   own login command runs in a terminal against the real `cybexos-assistant`
   service with a scripted Claude Code, and the guide returns by itself once
-  the service reports the sign-in;
+  the service reports the sign-in; Finish asks to close exactly the 1Password
+  window left open and the sign-in's windows, and not one the person opened;
 - Ready's system-check card from a fixture `cybex doctor` report, and
   **Ask the assistant** sending the system-check question to the service;
 - a tour of every step, sheet (including the question about unapplied

@@ -52,6 +52,21 @@ test('Hyprland openwindow data names the window class even when the title has co
     assert.equal(W.openedWindow('55d1c0a0'), null);
     assert.equal(W.openedWindow(undefined), null);
 });
+test('a sign-in owns every window it opens; 1Password only its own', () => {
+    assert.deepEqual(W.connectWindow('a1,1,kitty,claude auth login', 'sign-in'), {address: 'a1', signIn: true});
+    assert.deepEqual(W.connectWindow('b2,1,brave-browser,Claude', 'sign-in'), {address: 'b2', signIn: true});
+    assert.deepEqual(W.connectWindow('c3,1,1Password,Lock Screen, 1Password', 'password'), {address: 'c3', signIn: false});
+    assert.deepEqual(W.connectWindow('c4,1,1password,1Password', 'password'), {address: 'c4', signIn: false});
+    assert.equal(W.connectWindow('d4,1,thunderbird,Inbox', 'password'), null, 'mail opened for a code stays');
+    assert.equal(W.connectWindow('e5,1,1Password,1Password', ''), null, 'not while the guide shows');
+    assert.equal(W.connectWindow('f6', 'sign-in'), null);
+});
+test('leaving closes the Connect windows, but not a sign-in still waiting', () => {
+    const windows = [{address: 'c3', signIn: false}, {address: 'a1', signIn: true}, {address: 'b2', signIn: true}];
+    assert.deepEqual(W.windowsToClose(windows, false), ['c3', 'a1', 'b2']);
+    assert.deepEqual(W.windowsToClose(windows, true), ['c3']);
+    assert.deepEqual(W.windowsToClose(undefined, false), []);
+});
 test('checklist derives actual readiness independently of Later or opening Settings', () => {
     const facts = {reader: false, backupKnown: false, accountsKnown: false};
     let rows = W.checklist(facts, {backup: 'later'});

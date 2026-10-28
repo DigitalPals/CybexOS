@@ -72,6 +72,27 @@ function openedWindow(data) {
     const fields = String(data || "").split(",");
     return fields.length >= 3 ? {address: fields[0], windowClass: fields[2]} : null;
 }
+// 1Password's windows. Its entry names the X11 class 1Password; an app id
+// taken from its desktop file would be 1password, so case does not count.
+function isPassword(windowClass) {
+    return /^1password$/i.test(String(windowClass || ""));
+}
+// A window opened for a Connect action, or null for one the guide leaves
+// alone. While the guide stands aside for a sign-in ("sign-in"), every new
+// window is part of it: its terminal, the browser it opens, 1Password asked
+// to unlock. While it stands aside for 1Password ("password"), only
+// 1Password's own windows are.
+function connectWindow(data, action) {
+    const window = openedWindow(data);
+    if (!window || window.address === "") return null;
+    if (action === "sign-in") return {address: window.address, signIn: true};
+    if (action === "password" && isPassword(window.windowClass)) return {address: window.address, signIn: false};
+    return null;
+}
+// Leaving the guide closes those windows, except a sign-in's while it still waits.
+function windowsToClose(windows, signInPending) {
+    return (windows || []).filter(window => !(window.signIn && signInPending)).map(window => window.address);
+}
 // The GECOS full name, or "" when the account has none.
 function fullName(passwd) {
     const fields = String(passwd || "").trim().split(":");
@@ -84,4 +105,4 @@ function firstName(passwd, username) {
 }
 if (typeof module !== "undefined" && module.exports)
     module.exports = {STEPS, MIDDLE, ITEMS, initial, validate, parse, serialize, visit, resume, steps, neighbour, checklist,
-        openedWindow, fullName, firstName};
+        openedWindow, isPassword, connectWindow, windowsToClose, fullName, firstName};

@@ -63,9 +63,10 @@ else:
     sys.exit(1)
 '''
 # Claude Code as the assistant service sees it: signed out until its own
-# login command runs, then a stream-json session that records each question.
+# login command runs and the test approves it, as the person does in the
+# browser, then a stream-json session that records each question.
 FAKE_CLAUDE = r'''
-import json, os, sys
+import json, os, sys, time
 from pathlib import Path
 home = Path(os.environ["HOME"])
 signed_out = home / "signed-out-claude"
@@ -73,6 +74,11 @@ args = sys.argv[1:]
 if args == ["auth", "status"]:
     sys.exit(int(signed_out.exists()))
 if args == ["auth", "login"]:
+    deadline = time.monotonic() + 60
+    while not (home / "approve-sign-in").exists():
+        if time.monotonic() > deadline:
+            sys.exit(1)
+        time.sleep(.1)
     signed_out.unlink(missing_ok=True)
     sys.exit(0)
 def emit(message):
@@ -121,6 +127,12 @@ DOCTOR = {'version': 1, 'checkedAt': '2026-10-28T12:00:00Z', 'overall': 'suggest
 SYSTEM_CHECK = 'Check this computer for missing drivers and other problems.'
 # Test-only instrumentation, injected into the private copy only.
 TEST_IPC = '''
+    // What the guide asked Hyprland to close, which this compositor cannot.
+    property var testClosed: []
+    Connections {
+        target: Welcome
+        function onCloseWindows(addresses) { shell.testClosed = shell.testClosed.concat(addresses); }
+    }
     function testFind(item, predicate) {
         if (!item) return null;
         if (predicate(item)) return item;
@@ -191,7 +203,7 @@ TEST_IPC = '''
                 paletteMode: Settings.paletteMode, paletteReady: TestCommon.Palette.ready, paletteBusy: TestCommon.Palette.busy,
                 paletteError: TestCommon.Palette.error, paletteActive: Theme.paletteActive,
                 paletteIdentity: TestCommon.Palette.wallpaperIdentity, primary: TestCommon.Palette.primary.toString(),
-                themeMode: Settings.themeMode,
+                themeMode: Settings.themeMode, closed: shell.testClosed,
                 requests: OnlineWallpapers.requestTimes.length});
         }
     }
@@ -571,7 +583,7 @@ def main():
             assert session.state()['aside'], 'another window closing does not bring the guide back'
             session.call('welcome-test', 'windowEvent', 'closewindow', 'c3d4')
             session.wait(lambda: not session.state().get('aside'), 'closing 1Password brings the guide back')
-            assert session.state()['step'] == 'connect'
+            assert session.state()['step'] == 'connect' and session.state()['connectWindows'] == []
             session.capture(shots, 'welcome-connect-opened-en.png')
             # 1Password's database with no account leaves the card as it is; the
             # sign-in finishing while the guide shows gives it a tick.
@@ -588,15 +600,31 @@ def main():
             session.wait(lambda: session.state()['connect']['password'] == 'ready', '1Password signed in', timeout=15)
             onepassword.close()
             session.capture(shots, 'welcome-connect-signed-in-en.png')
+            # Back to the guide with 1Password still open: its window is the
+            # guide's to close on the way out; one the person opened is not.
+            assert session.call('welcome-test', 'press', 'connectPassword') == 'true'
+            session.wait(lambda: session.state().get('aside'), 'the guide steps aside for 1Password again')
+            session.call('welcome-test', 'windowEvent', 'openwindow', 'c5d6,1,1Password,1Password')
+            session.call('welcome-test', 'windowEvent', 'openwindow', 'e7f8,1,org.gnome.Nautilus,Files')
+            session.ipc('open', 'connect')
+            session.wait(lambda: not session.state().get('aside'), 'Resume')
+            assert session.state()['connectWindows'] == ['c5d6'], session.state()
             # The assistant: its own login command runs in a terminal, and the
             # guide returns by itself once the service reports the sign-in.
             assert session.call('welcome-test', 'press', 'connectAgent-claude') == 'true'
             session.wait(lambda: session.state().get('aside'), 'the guide steps aside for the sign-in')
+            session.wait(lambda: (session.home / 'terminal-argv.json').exists(), 'the sign-in terminal')
             argv = json.loads((session.home / 'terminal-argv.json').read_text())
             assert argv[0] == 'terminal' and argv[-3:] == [str(base / 'bin/claude'), 'auth', 'login'], argv
+            # Every window the sign-in opens is the guide's to close.
+            session.call('welcome-test', 'windowEvent', 'openwindow', '0a1b,1,kitty,claude auth login')
+            session.call('welcome-test', 'windowEvent', 'openwindow', '2c3d,1,brave-browser,Claude')
+            assert session.state()['connect']['assistant'] == 'signing-in', session.state()
+            session.home.joinpath('approve-sign-in').touch()
             session.wait(lambda: not session.state().get('aside') and session.state()['connect']['assistant'] == 'ready',
                          'the guide comes back once the assistant is signed in', timeout=40)
             assert session.state()['step'] == 'connect'
+            assert session.state()['connectWindows'] == ['c5d6', '0a1b', '2c3d'], session.state()
             session.capture(shots, 'welcome-connect-ready-en.png')
             # Ready: the check's findings, and the assistant asked about them.
             session.ipc('open', 'finish')
@@ -642,6 +670,9 @@ def main():
             session.key('-k', 'Return')
             session.wait(lambda: session.state().get('status') == 'completed', 'Finish')
             assert not session.state()['open']
+            # Leaving for the desktop closes what Connect opened, and only that.
+            assert session.probe()['closed'] == ['c5d6', '0a1b', '2c3d'], session.probe()
+            assert session.state()['connectWindows'] == [], session.state()
             session.wait(lambda: session.probe().get('watchers') == 0, 'Keybindings claim released on close')
             session.ipc('open', '')
             assert session.state()['step'] == 'hello'
@@ -853,7 +884,7 @@ def main():
                   'the assistant\'s own sign-in and automatic return), the system check on Ready and the question it asks, '
                   'Keybindings keycaps (remapped/unbound) and claim '
                   'lifecycle, stepping aside for the launcher, tile apply, Space typing in search, Space peek '
-                  'versus the desktop-only frame, sheets and Escape, Finish, keyboard navigation, '
+                  'versus the desktop-only frame, sheets and Escape, Finish closing exactly the windows Connect opened, keyboard navigation, '
                   'dismissal/resume across restart, Dutch, protected invalid state, reset and environment suppression')
         except Exception:
             for log in session.logs:
