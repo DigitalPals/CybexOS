@@ -23,6 +23,8 @@ ShellRoot {
         function close(): void { Welcome.dismiss(); }
         function status(): string { return Welcome.status(); }
         function reset(): void { Welcome.reset(); }
+        // Connect's buttons: "password", "claude" or "codex"; ok, unavailable or unknown.
+        function connect(item: string): string { return Welcome.connect(item); }
     }
 
     SettingsWindow {}

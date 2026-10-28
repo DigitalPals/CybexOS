@@ -90,6 +90,7 @@ cybexos-runtime ipc welcome open wallpaper # open a particular step
 cybexos-runtime ipc welcome status          # JSON: open/status/step/steps/checklist/connect/doctor
 cybexos-runtime ipc welcome close           # dismiss, preserving progress
 cybexos-runtime ipc welcome reset           # delete only welcome.json
+cybexos-runtime ipc welcome connect password # Connect's buttons: password, claude or codex
 ```
 
 For implementation and integration interfaces, see the

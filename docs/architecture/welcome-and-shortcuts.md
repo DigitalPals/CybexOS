@@ -487,7 +487,10 @@ overall, attention } }`. `connect.password` is `unavailable`, `available` or
 `opened`; `connect.assistant` is `unavailable`, `required`, `signing-in` or
 `ready`; `doctor.attention` lists `id:state` for the checks Ready counts.
 `reset(): void` exists for tests and qualification; it deletes only
-`welcome.json`.
+`welcome.json`. So does `connect(item: string): string`, which runs a Connect
+button: `password` opens 1Password, `claude` or `codex` starts that agent's
+sign-in. It returns `ok`, `unavailable` (not installed, or the sign-in could
+not start) or `unknown`.
 
 The old Fedora-era wallpaper calls `popular`, `results` and `pick`, and
 `WallhavenHelpers.ipcItems`, were made for the removed out-of-process window.

@@ -10,10 +10,16 @@
 # go. A click on it must still open the box, and the desktop must still
 # receive clicks once it is put away.
 #
+# First, the welcome guide's Connect step on the same session: a stand-in
+# 1Password (a terminal window of class 1Password) must make the guide step
+# aside on Hyprland's openwindow event and return on its closewindow event.
+# The real `cybex doctor` runs inside the session, and Ready reports it.
+#
 # Test-only settings: SDDM signs the user in directly (Cybex OS's own
 # automatic login requires verified LUKS), the display is fixed at 1280×800
-# and the character starts at a known place. This is VM qualification of the
-# session's input handling, not of physical pointer hardware.
+# and the character starts at a known place, and 1Password is a stand-in.
+# This is VM qualification of the session's input handling, not of physical
+# pointer hardware or of 1Password itself.
 { pkgs, module }:
 let
   python = pkgs.python3.interpreter;
@@ -65,6 +71,12 @@ in pkgs.testers.runNixOSTest {
     networking.hostName = "machine";
     users.users.tester.initialPassword = "qualification-only";
     services.displayManager.autoLogin = { enable = true; user = "tester"; };
+    # 1Password's desktop entry id, opening a window of its class.
+    environment.systemPackages = [ (pkgs.makeDesktopItem {
+      name = "1password";
+      desktopName = "1Password";
+      exec = "${pkgs.kitty}/bin/kitty --class 1Password ${pkgs.coreutils}/bin/sleep 1777";
+    }) ];
     # The character's place before the first sign-in, right of the probe
     # window and below the bar, as tests/assistant-overlay.py seeds it.
     systemd.tmpfiles.rules = [
@@ -169,7 +181,44 @@ in pkgs.testers.runNixOSTest {
     machine.screenshot("session")
 
     # The first sign-in shows the welcome guide over everything.
-    assert wait(lambda: json.loads(user("cybexos-runtime ipc welcome status"))["open"], 60)
+    def welcome():
+        return json.loads(user("cybexos-runtime ipc welcome status"))
+    assert wait(lambda: welcome()["open"], 60)
+
+    # ---- Connect and the system check -------------------------------------------
+    assert user("cybexos-runtime ipc welcome open connect").strip() == "ok"
+    assert wait(lambda: welcome()["step"] == "connect" and "qs-welcome" in layer_names(), 15), welcome()
+    connect = welcome()["connect"]
+    assert connect["password"] == "available" and connect["assistant"] in ("required", "ready"), connect
+    machine.screenshot("connect")
+    assert user("cybexos-runtime ipc welcome connect password").strip() == "ok"
+    assert wait(lambda: any(c["class"] == "1Password" for c in hypr("clients")), 60), hypr("clients")
+    assert wait(lambda: welcome()["aside"] and "qs-welcome-resume" in layer_names(), 15), (welcome(), layer_names())
+    machine.screenshot("connect-1password")
+    # Another window closing leaves the guide aside; the 1Password one brings it back.
+    user("${pkgs.kitty}/bin/kitty --class cxo-other ${pkgs.coreutils}/bin/sleep 1888 >/dev/null 2>&1 &")
+    assert wait(lambda: any(c["class"] == "cxo-other" for c in hypr("clients")), 60), hypr("clients")
+    machine.succeed("pkill -f '[s]leep 1888'")
+    assert wait(lambda: not any(c["class"] == "cxo-other" for c in hypr("clients")), 15), hypr("clients")
+    time.sleep(1)
+    assert welcome()["aside"], welcome()
+    machine.succeed("pkill -f '[s]leep 1777'")
+    assert wait(lambda: not welcome()["aside"] and "qs-welcome" in layer_names(), 15), (welcome(), layer_names())
+    assert welcome()["step"] == "connect" and welcome()["connect"]["password"] == "opened", welcome()
+    machine.screenshot("connect-returned")
+
+    # The system check the guide runs, in this session, and Ready's report of it.
+    IDS = ["graphics", "drivers", "firmware-files", "services", "audio", "secure-boot", "firmware-updates",
+           "storage", "battery", "time", "desktop"]
+    report = json.loads(user("cybex doctor --json"))
+    (out / "doctor.json").write_text(json.dumps(report, indent=2) + "\n")
+    assert [check["id"] for check in report["checks"]] == IDS, report
+    assert report["overall"] in ("ok", "suggestion", "problem"), report
+    assert user("cybexos-runtime ipc welcome open finish").strip() == "ok"
+    doctor = wait(lambda: (lambda d: d if d["overall"] and not d["running"] else None)(welcome()["doctor"]), 60)
+    assert doctor and doctor["error"] == "", welcome()["doctor"]
+    machine.log("doctor: " + report["overall"] + " " + json.dumps(doctor["attention"]))
+    machine.screenshot("ready")
     user("cybexos-runtime ipc welcome close")
     assert wait(lambda: not layer_names() & {"qs-welcome", "qs-welcome-resume"}, 30), layer_names()
     user("cybexos-runtime ipc assistant show")

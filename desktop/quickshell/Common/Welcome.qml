@@ -159,6 +159,19 @@ Singleton {
         signInPending = true;
         stepAside(false);
     }
+    // The Connect step's actions as its buttons run them, for the IPC call
+    // qualification uses: "password", or an agent id to sign in to.
+    function connect(item) {
+        if (item === "password") {
+            if (!passwordAvailable) return "unavailable";
+            openPassword();
+            return "ok";
+        }
+        if (item !== "claude" && item !== "codex") return "unknown";
+        if (!Assistant.available) return "unavailable";
+        signIn(item);
+        return signInPending ? "ok" : "unavailable";
+    }
     // Hyprland's openwindow and closewindow events while the guide is open.
     function windowOpened(data) {
         const window = Helpers.openedWindow(data);
