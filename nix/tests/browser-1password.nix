@@ -1,0 +1,117 @@
+# Connects the browser to the 1Password desktop app as on a fresh
+# installation: the welcome guide's Connect step opens the real 1Password,
+# then Brave Origin starts an extension with 1Password's extension id and
+# asks for 1Password's native messaging host.
+#
+# 1Password writes that host only into the browser profiles it knows; Origin
+# reads its own profile and Chromium's system directory, where Cybex OS puts
+# the same entry. The host must be found, start through the NixOS setgid
+# helper, accept Brave Origin's executable and reach the running app, and the
+# entry must match the one this 1Password writes for its own browsers.
+#
+# Test-only settings: SDDM signs the user in directly, Brave does not fetch
+# the store extension (the VM has no network), and the probe carries the
+# store extension's public key, which gives an unpacked extension the same
+# id. 1Password is not signed in, and its window does not draw in this VM;
+# the browser link needs neither. This is VM qualification of the browser
+# link, not of a 1Password account or of autofill.
+{ pkgs, module }:
+let
+  # The `key` of 1Password's Chrome Web Store manifest: its public key, whose
+  # hash is the id aeblfdkhhhdcdjpifhhbdiojplfjncoa.
+  key = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnHpaUll4uWujpAdbIXOQY2WE6hk8PllsYsnoUaj5qHXwv4IB6A9pONqGaTL2KL20u6E6XVhncY6Ae6SQSBQqiIkgjPsiG0NDNsDlju/kzBnfimKFC/bpzOrqFqbhswQHifnet5uHlpG97whTzLO3ka0M5aqB9V9mD/0qVXvNgAVVnSTULH254YqpeCcAhmsKiFZSL6OrOZmCp8kZ/OeOUK9iYWYylL7VcOXVrZf10EPrlaCNXzVk7K35dPuQ7svhA0Pgju3kngB4RLa5Iojhw3IT+B5+m8pisjOSd1oKMrRmhGs7rDhF5IEtAiVxqVp7uOOMPQj3vrbMDAzf7vqLtQIDAQAB";
+  probe = pkgs.linkFarm "cybexos-1password-probe" {
+    "manifest.json" = pkgs.writeText "manifest.json" (builtins.toJSON {
+      manifest_version = 3;
+      name = "Cybex OS 1Password probe";
+      version = "1";
+      inherit key;
+      permissions = [ "nativeMessaging" ];
+      background.service_worker = "probe.js";
+    });
+    # Holds the host open as the extension does, and reports whether it stayed.
+    "probe.js" = pkgs.writeText "probe.js" ''
+      const port = chrome.runtime.connectNative("com.1password.1password");
+      let open = true;
+      port.onDisconnect.addListener(() => {
+        open = false;
+        console.log("CXO-PROBE closed: " + (chrome.runtime.lastError && chrome.runtime.lastError.message));
+      });
+      setTimeout(() => { if (open) console.log("CXO-PROBE open"); }, 8000);
+    '';
+  };
+  launchBrave = pkgs.writeShellScript "cybexos-1password-brave" ''
+    exec brave --no-first-run --disable-features=DisableLoadExtensionCommandLineSwitch \
+      --load-extension=${probe} --enable-logging=stderr about:blank > /home/tester/brave.log 2>&1
+  '';
+in pkgs.testers.runNixOSTest {
+  name = "cybexos-browser-1password";
+  nodes.machine = { lib, ... }: {
+    imports = [ module ];
+    cybexos = { enable = true; primaryUser = "tester"; features = { proprietary = true; steam = false; docker = false; }; };
+    # The probe takes the store extension's id; the VM cannot fetch that one.
+    cybexos.browser.bravePolicies.ExtensionInstallForcelist = lib.mkForce [ ];
+    networking.hostName = "machine";
+    users.users.tester.initialPassword = "qualification-only";
+    services.displayManager.autoLogin = { enable = true; user = "tester"; };
+    virtualisation = {
+      memorySize = 8192;
+      cores = 8;
+      graphics = true;
+      diskSize = 4096;
+      qemu.options = [ "-no-user-config" "-device virtio-vga,xres=1280,yres=800" ];
+    };
+    system.stateVersion = "26.05";
+    boot.loader.systemd-boot.enable = lib.mkForce false;
+  };
+  testScript = ''
+    import json
+
+    HOST = "com.1password.1password.json"
+    LOGS = "/home/tester/.config/1Password/logs"
+
+    machine.start()
+    machine.wait_for_unit("display-manager.service")
+    uid = machine.succeed("id -u tester").strip()
+    session = f"XDG_RUNTIME_DIR=/run/user/{uid} HOME=/home/tester DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus"
+
+    def user(command):
+        return machine.succeed(f"runuser -u tester -- env {session} {command}")
+
+    def host(path):
+        entry = json.loads(machine.succeed(f"cat {path}"))
+        return {**entry, "allowed_origins": sorted(entry["allowed_origins"])}
+
+    machine.wait_until_succeeds(f"runuser -u tester -- env {session} systemctl --user is-active quickshell.service", timeout=600)
+    machine.wait_until_succeeds(f"runuser -u tester -- env {session} cybexos-runtime ipc welcome status", timeout=300)
+
+    # The guide's Connect step opens 1Password from its desktop entry.
+    assert user("cybexos-runtime ipc welcome open connect").strip() == "ok"
+    assert user("cybexos-runtime ipc welcome connect password").strip() == "ok"
+    machine.wait_until_succeeds(f"grep -q 'Starting IPC listener on 1Password-BrowserSupport' {LOGS}/1Password_rCURRENT.log", timeout=180)
+
+    # 1Password's own entries leave Origin's profile out; the system one is the same entry.
+    machine.succeed(f"test -f /home/tester/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts/{HOST}")
+    machine.fail(f"test -e /home/tester/.config/BraveSoftware/Brave-Origin/NativeMessagingHosts/{HOST}")
+    ours = host(f"/etc/chromium/native-messaging-hosts/{HOST}")
+    theirs = host(f"/home/tester/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts/{HOST}")
+    assert ours == theirs, (ours, theirs)
+    machine.succeed("test -g /run/wrappers/bin/1Password-BrowserSupport")
+
+    # Brave Origin finds the host, 1Password accepts the browser, and the app answers.
+    user("hyprctl -i 0 dispatch 'hl.dsp.exec_cmd(\"${launchBrave}\")'")
+    machine.wait_until_succeeds("grep -q CXO-PROBE /home/tester/brave.log", timeout=180)
+    probe = machine.succeed("grep CXO-PROBE /home/tester/brave.log")
+    assert "CXO-PROBE open" in probe, probe
+    # The kernel shortens the helper's command name, so match its arguments.
+    helper = machine.succeed("ps -eo egid=,args= | grep '[1]Password-BrowserSupport chrome-extension'")
+    assert "chrome-extension://aeblfdkhhhdcdjpifhhbdiojplfjncoa/" in helper, helper
+    assert helper.split()[0] == machine.succeed("getent group onepassword | cut -d: -f3").strip(), helper
+    support = machine.succeed(f"cat {LOGS}/BrowserSupport/1Password_rCURRENT.log")
+    assert "brave-origin" in support and "verified successfully" in support, support
+    assert "Connected to the desktop app" in support, support
+    machine.succeed(f"grep -q 'Extension connecting' {LOGS}/1Password_rCURRENT.log")
+    machine.screenshot("brave")
+    machine.succeed("pkill -u tester -x brave")
+  '';
+}

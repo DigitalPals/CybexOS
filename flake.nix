@@ -130,6 +130,11 @@
         };
         boot = import ./nix/tests/boot.nix { inherit pkgs module; };
         hyprland-pointer = import ./nix/tests/hyprland-pointer.nix { inherit pkgs module; };
+        # 1Password and Brave Origin are the proprietary application choice.
+        browser-1password = import ./nix/tests/browser-1password.nix {
+          inherit module;
+          pkgs = import nixpkgs { inherit system; overlays = [ compatibility ]; config.allowUnfree = true; };
+        };
       });
       devShells = each (system: let pkgs = import nixpkgs { inherit system; overlays = [ compatibility ]; }; in {
         default = pkgs.mkShell {

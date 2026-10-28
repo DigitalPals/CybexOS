@@ -18,9 +18,10 @@ language, and the last one closes the guide.
 windows, so the guide steps aside while you use them:
 
 - **1Password** comes first, when it is installed, so it can fill in the
-  password for your AI account in the browser. The guide comes back when you
-  close the 1Password window it opened. It cannot tell whether you signed in,
-  so this card never shows a tick.
+  password for your AI account in the browser. Its extension in Brave connects
+  to the app while 1Password is running, so the browser needs no sign-in of its
+  own. The guide comes back when you close the 1Password window it opened. It
+  cannot tell whether you signed in, so this card never shows a tick.
 - **The AI assistant** (recommended) signs in to Claude Code or Codex with that
   agent's own sign-in, in a terminal and your browser. The guide comes back by
   itself once the agent reports you are signed in. Your sign-in stays with the
