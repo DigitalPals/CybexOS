@@ -72,10 +72,21 @@ def build(today=None, release_path="/etc/cybexos/release.json", feature_dir="/et
     return "\n".join(lines)
 
 
+PURPOSE_NOTES = {
+    "system-check": (
+        "The person asked you to check this computer. Run `cybex doctor --json` first and follow the "
+        "cybexos skill's system check reference. Explain what you found in plain words, most important "
+        "first; propose fixes, but change nothing until the person agrees."),
+}
+
+
 def turn_text(text, context=None, screenshot=False):
     """The person's words, preceded by a Cybex OS note when there is one."""
     context = context if isinstance(context, dict) else {}
     notes = []
+    purpose = context.get("purpose")
+    if isinstance(purpose, str) and purpose in PURPOSE_NOTES:
+        notes.append(PURPOSE_NOTES[purpose])
     output = context.get("output")
     if screenshot:
         where = f" ({output})" if isinstance(output, str) and output else ""

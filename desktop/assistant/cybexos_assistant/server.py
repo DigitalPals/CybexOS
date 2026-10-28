@@ -40,6 +40,15 @@ LANGUAGE = re.compile(r"^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?$")
 RESTARTED = "The assistant service restarted."
 
 
+def turn_context(value):
+    """turn.start's context for the per-turn note; an unknown purpose is dropped."""
+    value = value if isinstance(value, dict) else {}
+    context = {key: value[key] for key in ("output", "speak", "language") if key in value}
+    if isinstance(value.get("purpose"), str) and value["purpose"] in prompt.PURPOSE_NOTES:
+        context["purpose"] = value["purpose"]
+    return context
+
+
 class Client:
     """One connection; frames are queued so a slow reader never blocks the others."""
 
@@ -295,7 +304,7 @@ class Server:
             model = None
         elif not isinstance(model, str) or not MODEL.fullmatch(model):
             raise RpcFault(-32602, "Invalid model")
-        context = params.get("context") if isinstance(params.get("context"), dict) else {}
+        context = turn_context(params.get("context"))
         shot = self.screenshot(params.get("screenshot"))
         statuses = await self.agent_status()
         # Auth probing yields to other clients; a second start may have won.

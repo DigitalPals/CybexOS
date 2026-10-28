@@ -82,7 +82,9 @@ while True:
         continue
     content = message["message"]["content"]
     text = content[0]["text"]
-    if "bash" in text:
+    if text.endswith("echo me"):
+        finish(text)
+    elif "bash" in text:
         answer = ask("r1", "Bash", {"command": "rm -rf ~/x"})
         say("allowed" if answer["behavior"] == "allow" else "denied")
         finish("")
@@ -506,7 +508,8 @@ class PolicyTest(unittest.TestCase):
                         "cybex update status", "systemctl --user status quickshell.service",
                         "journalctl --user -u quickshell -n 50", "jq .bar ~/.config/cybexos/shell.json",
                         "git status", "bash -c 'ls -la'", "rg -n foo ~/.config 2>/dev/null",
-                        "cd ~/.config && ls", "uname -a; id", "cybex plugin list", "cat $HOME/.bashrc"):
+                        "cd ~/.config && ls", "uname -a; id", "cybex plugin list", "cat $HOME/.bashrc",
+                        "cybex doctor", "cybex doctor --json", "cybex doctor --json | jq .overall"):
             self.assertEqual(self.decide(command).action, "allow", command)
 
     def test_staging_is_allowed_and_applying_needs_review(self):
@@ -532,6 +535,7 @@ class PolicyTest(unittest.TestCase):
                         "sort -o out in", "git push", "hyprctl dispatch exec kitty", "cat $FOO",
                         "ls & rm x", "ls && rm x", "bash -c 'rm x'", "journalctl --vacuum-size=1M",
                         "./ls", "cybex plugin enable personal.x", "yq -i .a f", "uniq a b",
+                        "cybex doctor --json > /tmp/doctor.json", "cybex doctor --fix",
                         # Evaluation can read the environment, fetch and build.
                         "nix eval --expr 'builtins.getEnv \"HOME\"'", "nix eval nixpkgs#hello.version",
                         "nix search nixpkgs hello", "nix-instantiate --eval -E 1",
@@ -675,6 +679,14 @@ class TextTest(unittest.TestCase):
         self.assertTrue(noted.startswith("[Cybex OS: A screenshot of the display the person is looking at (DP-1)"))
         self.assertIn("read aloud", noted)
         self.assertTrue(noted.endswith("]\nWhy?"))
+        check = prompt.turn_text("Check this computer", {"purpose": "system-check", "speak": True})
+        self.assertTrue(check.startswith("[Cybex OS: The person asked you to check this computer. "
+                                         "Run `cybex doctor --json` first"), check)
+        self.assertIn("change nothing until the person agrees. Your reply will be read aloud.]\n", check)
+        self.assertTrue(check.endswith("]\nCheck this computer"))
+        for purpose in ("other", ["system-check"], None):
+            self.assertEqual(prompt.turn_text("Hi", {"purpose": purpose}), "Hi")
+        self.assertNotIn("cybex doctor", prompt.build(release_path="/nonexistent", feature_dir="/nonexistent"))
 
 
 class ClaudeTest(ServiceTest):
@@ -789,6 +801,16 @@ class ClaudeTest(ServiceTest):
         outside.write_bytes(b"x")
         rejected = await self.client.call("turn.start", {"text": "x", "screenshot": str(outside)})
         self.assertEqual(rejected["error"]["code"], -32602)
+
+    async def test_system_check_purpose_reaches_the_agent_and_others_are_dropped(self):
+        await self.ask("echo me", context={"purpose": "system-check", "language": "nl"})
+        done = await self.client.finished()
+        self.assertTrue(done["text"].startswith("[Cybex OS: The person asked you to check this computer."))
+        self.assertTrue(done["text"].endswith("]\necho me"))
+        for context in ({"purpose": "install-everything"}, {"purpose": 3}, "system-check"):
+            self.client.notifications.clear()
+            await self.ask("echo me", context=context)
+            self.assertEqual((await self.client.finished())["text"], "echo me", context)
 
     async def test_missing_agent_and_invalid_requests(self):
         self.harness.server.env["CYBEXOS_ASSISTANT_CLAUDE"] = str(self.harness.bin / "absent")

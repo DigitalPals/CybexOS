@@ -318,7 +318,7 @@ def systemctl_read_only(args):
 
 def cybex_read_only(args):
     verbs = list(args)
-    if verbs == ["version"]:
+    if verbs in (["version"], ["doctor"], ["doctor", "--json"]):
         return True
     head = verbs[:2]
     return (head[:1] == ["update"] and head[1:] in (["status"], ["check"], ["history"], ["log"])
