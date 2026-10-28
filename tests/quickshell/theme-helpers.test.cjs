@@ -276,13 +276,14 @@ test("no palette, however hostile, produces unreadable text", () => {
 
 test("Theme.qml draws the theme palette only in its mode, with fixed accents", () => {
     const theme = read("Common/Theme.qml");
-    assert.match(theme, /readonly property bool themePaletteActive: !paletteActive\s+&& Settings\.paletteMode === "fixed"\s+&& Settings\.themePalette\.mode === \(dark \? "dark" : "light"\)/);
-    assert.match(theme, /themeColors: themePaletteActive\s+\? SettingsHelpers\.themeSurfaces\(Settings\.themePalette\) : null/);
+    // Through the effective values, which the Mac-like desktop style overrides.
+    assert.match(theme, /readonly property bool themePaletteActive: !paletteActive\s+&& Settings\.effectivePaletteMode === "fixed"\s+&& Settings\.effectiveThemePalette\.mode === \(dark \? "dark" : "light"\)/);
+    assert.match(theme, /themeColors: themePaletteActive\s+\? SettingsHelpers\.themeSurfaces\(Settings\.effectiveThemePalette\) : null/);
     for (const [token, key] of [["background", "background"], ["popBg", "surface"],
         ["menuBg", "surfaceRaised"]])
         assert.match(theme, new RegExp(`readonly property color ${token}: paletteActive[^]*?`
             + `: themePaletteActive \\? themeColors\\.${key}\\n`), token);
-    assert.match(theme, /: themePaletteActive\s+\? SettingsHelpers\.themeTextPalette\(copyReferenceBg\.toString\(\), Settings\.themePalette\)/);
+    assert.match(theme, /: themePaletteActive\s+\? SettingsHelpers\.themeTextPalette\(copyReferenceBg\.toString\(\), Settings\.effectiveThemePalette\)/);
     for (const token of ["textHi", "textMid", "textLow", "textDim", "textFaint", "icon"])
         assert.match(theme, new RegExp(`readonly property color ${token}: textPalette \\? textPalette\\.${token}`));
     assert.match(theme, /: themePaletteActive\s+\? SettingsHelpers\.ensureContrast\(themeColors\.red, copyReferenceBg\.toString\(\), 4\.5\)/);

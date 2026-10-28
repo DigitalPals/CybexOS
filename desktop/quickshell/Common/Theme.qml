@@ -42,17 +42,21 @@ Singleton {
     }
 
     readonly property bool dark: Settings.themeMode !== "light"
+    // The Mac-like desktop style (Settings.desktopStyle). Its colours and font
+    // reach this file through Settings' effective values; the flag itself
+    // selects its bar and control metrics below.
+    readonly property bool macStyle: Settings.macStyle
     readonly property bool paletteActive:
-        Settings.paletteMode === "wallpaper" && Common.Palette.ready
+        Settings.effectivePaletteMode === "wallpaper" && Common.Palette.ready
     // A named theme's explicit palette (Settings.themePalette) replaces the
     // fixed references below — surfaces, text and status hues — while it was
     // made for the current mode and the accent source is fixed. Every floor
     // still applies to it. Without one, nothing here changes.
     readonly property bool themePaletteActive: !paletteActive
-        && Settings.paletteMode === "fixed"
-        && Settings.themePalette.mode === (dark ? "dark" : "light")
+        && Settings.effectivePaletteMode === "fixed"
+        && Settings.effectiveThemePalette.mode === (dark ? "dark" : "light")
     readonly property var themeColors: themePaletteActive
-        ? SettingsHelpers.themeSurfaces(Settings.themePalette) : null
+        ? SettingsHelpers.themeSurfaces(Settings.effectiveThemePalette) : null
 
     // ---- reference surfaces (opaque; used for contrast math) --------------
     // The dark references are the edge-drawer redesign's warm charcoal: the
@@ -88,7 +92,7 @@ Singleton {
     // panel, menu, and group surface. A theme's surfaces can be spaced far
     // wider than these, so a themed shell takes its worst one instead.
     readonly property color copyReferenceBg: themePaletteActive
-        ? SettingsHelpers.themeReference(Settings.themePalette, chipHoverAlpha)
+        ? SettingsHelpers.themeReference(Settings.effectiveThemePalette, chipHoverAlpha)
         : dark
         ? (paletteActive ? Common.Palette.surfaceContainerHigh : popBg)
         : SettingsHelpers.mixHex(background.toString(),
@@ -118,7 +122,7 @@ Singleton {
     // Rendering uses semantic surface tokens. The raw glass colours above
     // remain the translucent variants; disabling glass swaps in opaque
     // references without making nested chip/tile fills opaque.
-    readonly property bool glassActive: Settings.glassEnabled && !Settings.highContrast
+    readonly property bool glassActive: Settings.effectiveGlass && !Settings.highContrast
     readonly property color barSurface: glassActive ? glass : barBg
     readonly property color surfaceStrong: glassActive ? glassStrong : popBg
     readonly property color surfaceMenu: glassActive ? glassMenu : menuBg
@@ -300,7 +304,7 @@ Singleton {
         ? SettingsHelpers.semanticPalette(copyReferenceBg.toString(),
             Common.Palette.surfaceInk.toString(), Common.Palette.surfaceVariantInk.toString())
         : themePaletteActive
-        ? SettingsHelpers.themeTextPalette(copyReferenceBg.toString(), Settings.themePalette)
+        ? SettingsHelpers.themeTextPalette(copyReferenceBg.toString(), Settings.effectiveThemePalette)
         : null
     readonly property color textHi: textPalette ? textPalette.textHi
         : dark ? darkTextHi : lightTextHi
@@ -439,14 +443,15 @@ Singleton {
     // directly; a view that named it would be opting out of the setting.
     readonly property string fontSans: "JetBrainsMono Nerd Font"
     readonly property string fontMenu: {
-        const choice = Settings.fontChoices.find(f => f.id === Settings.font);
+        const choice = Settings.fontChoices.find(f => f.id === Settings.effectiveFont);
         return choice ? choice.family : fontSans;
     }
     readonly property string fontMono: "JetBrainsMono Nerd Font"
     // Numeric readings — the clock, percentages, meters, resets. The
     // edge-drawer redesign sets these in Geist Mono against Figtree UI copy,
     // so a reading is recognisably an instrument value rather than prose.
-    readonly property string fontNumeric: Settings.font === "mono" ? fontMono : "Geist Mono"
+    readonly property string fontNumeric: Settings.effectiveFont === "mono" ? fontMono
+        : macStyle ? fontMenu : "Geist Mono"
     // Bundled Tabler icons. Sym owns name resolution, font loading and the
     // consistent outline rendering; views must not draw icon codepoints directly.
     readonly property string fontIcon: "Cybex OS Tabler Outline"
@@ -467,7 +472,7 @@ Singleton {
     // comfortably at 1.45 in the proportional faces runs together in JetBrains
     // Mono. The step is per-face rather than global: raising it for everyone
     // would loosen prose that is already correct.
-    readonly property real proseLineHeight: Settings.font === "mono" ? 1.55 : 1.45
+    readonly property real proseLineHeight: Settings.effectiveFont === "mono" ? 1.55 : 1.45
 
     // Standard font weights match Omarchy's regular copy and bold headings.
     readonly property int weightRegular: 400
@@ -492,9 +497,13 @@ Singleton {
     // Bar geometry is settings-driven. Hug and attached styles meet the
     // screen edge; floating restores the screenshot's slightly wider side
     // inset while continuing to use the configurable gap and radius.
-    readonly property int barHeight: Math.max(Settings.barHeight, chipHeight + 8)
-    readonly property bool barFloating: Settings.barStyle === "floating"
-    readonly property bool barHug: Settings.barStyle === "hug"
+    // The Mac-like menubar is a thin full-width strip, just taller than its
+    // controls, whatever height and style the Bar page holds; those come back
+    // with the Cybex style.
+    readonly property int barHeight: macStyle ? chipHeight + 2
+        : Math.max(Settings.barHeight, chipHeight + 8)
+    readonly property bool barFloating: Settings.effectiveBarStyle === "floating"
+    readonly property bool barHug: Settings.effectiveBarStyle === "hug"
     readonly property int barTopMargin: barFloating ? Settings.gap : 0
     readonly property int barSideMargin: barFloating ? Settings.gap + 4 : 0
     readonly property int clusterRadius: barFloating ? Settings.barRadius : 0

@@ -91,7 +91,10 @@ test("Appearance exposes live glass, wallpaper accents, and independent bar colo
 test("glass switches every shell surface through semantic fills", () => {
     const theme = read("Common/Theme.qml");
     assert.match(theme,
-        /readonly property bool glassActive:\s*Settings\.glassEnabled && !Settings\.highContrast/);
+        /readonly property bool glassActive:\s*Settings\.effectiveGlass && !Settings\.highContrast/);
+    // The Mac-like desktop style is glass whatever the stored choice.
+    assert.match(read("Common/Settings.qml"),
+        /readonly property bool effectiveGlass: glassEnabled \|\| macStyle/);
     assert.match(theme,
         /readonly property color barSurface:\s*glassActive \? glass : barBg/);
     assert.match(theme,
@@ -166,7 +169,8 @@ test("the named Hyprland blur rule persists and applies without remapping surfac
     const settings = read("Common/Settings.qml");
 
     assert.match(look, /local function persisted_glass_enabled\(\)/);
-    assert.match(look, /return enabled\("glassEnabled"\) and not enabled\("highContrast"\)/);
+    assert.match(look, /return \(enabled\("glassEnabled"\) or mac\) and not enabled\("highContrast"\)/);
+    assert.match(look, /local mac = contents:match\('\[,\{\]%s\*"desktopStyle"%s\*:%s\*"mac"'\) ~= nil/);
     assert.match(look,
         /quickshell_blur_rule = hl\.layer_rule\(\{[\s\S]*?enabled = persisted_glass_enabled\(\)/);
     assert.match(look,
@@ -176,7 +180,7 @@ test("the named Hyprland blur rule persists and applies without remapping surfac
     assert.match(settings, /exitSeen \? lastExit : ProcHelpers\.NOT_STARTED/,
         "a missing hyprctl binary must surface as an apply error");
     assert.match(settings,
-        /if \(root\.dispatchedGlassEnabled !== \(root\.glassEnabled && !root\.highContrast\)\)\s*glassReplayTimer\.restart\(\)/,
+        /if \(root\.dispatchedGlassEnabled !== \(root\.effectiveGlass && !root\.highContrast\)\)\s*glassReplayTimer\.restart\(\)/,
         "a second toggle while hyprctl is busy must be replayed");
 
     for (const file of ["Bar/Bar.qml", "Bar/BarPopoutWindow.qml", "LauncherWindow.qml",

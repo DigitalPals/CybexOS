@@ -32,6 +32,9 @@ COLOR_KEYS = (
     'green',            # Theme.ok
 )
 
+# SettingsHelpers.DESKTOP_STYLES.
+STYLES = ('cybex', 'mac')
+
 HEX = re.compile(r'^#[0-9a-f]{6}$')
 # Font families end up inside quoted config values. Letters, digits, spaces
 # and a little punctuation cover every family the shell offers.
@@ -113,6 +116,11 @@ def validate(raw):
     glass = raw.get('glass')
     if not isinstance(glass, bool):
         raise TokenError('glass is not a boolean')
+    # Absent in tokens saved by an older shell: the Cybex style, which renders
+    # exactly what the targets rendered before the style was exported.
+    style = raw.get('style', 'cybex')
+    if style not in STYLES:
+        raise TokenError('style is neither cybex nor mac')
     return {
         'v': VERSION,
         'mode': mode,
@@ -122,6 +130,7 @@ def validate(raw):
                  'size': _size(font.get('size'))},
         'radius': radius,
         'glass': glass,
+        'style': style,
         'wallpaper': _path(raw.get('wallpaper', '')),
     }
 

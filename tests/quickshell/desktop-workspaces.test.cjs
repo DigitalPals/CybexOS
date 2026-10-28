@@ -447,7 +447,9 @@ test("dock activates named windows, avoids unsupported minimize, and minimizes a
     desktop.Hyprland.toplevels.values[0].workspace = { id: 1, name: "research" };
     const dock = { appByKey: { editor: { key: "editor", windows: ["abc"], recent: "abc" } },
         activeAddress: "", pins: [], DesktopWorkspaces: desktop, DockHelpers: load("DockHelpers.js"),
-        Hyprland: desktop.Hyprland, I18n: { tr: text => text } };
+        Hyprland: desktop.Hyprland, I18n: { tr: text => text },
+        // Outside the Mac-like style, Minimizer minimizes at once.
+        Minimizer: { minimize: address => desktop.minimize(address) } };
     vm.createContext(dock);
     for (const name of ["isLive", "activate", "menuActions"])
         vm.runInContext(functionSource(read("Common/Dock.qml"), name), dock);

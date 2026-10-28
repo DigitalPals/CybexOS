@@ -140,7 +140,11 @@ function fitBar(options) {
         center: Math.max(0, options.widths && options.widths.center || 0),
         right: Math.max(0, options.widths && options.widths.right || 0)
     };
-    var asymmetricCenter = !!options.centerExtents;
+    // `split`: the Mac-like menubar, whose centre lane sits at the right end
+    // beside the right lane. Everything then only has to fit side by side;
+    // there is no centre to pin, so nothing shifts.
+    var split = !!options.split;
+    var asymmetricCenter = !split && !!options.centerExtents;
     var center = asymmetricCenter ? {
         left: Math.max(0, Number(options.centerExtents.left) || 0),
         right: Math.max(0, Number(options.centerExtents.right) || 0)
@@ -173,6 +177,10 @@ function fitBar(options) {
     }
 
     function geometry() {
+        if (split) {
+            var start = available - widths.right - center.left - center.right;
+            return { desired: start, rightX: start, fits: widths.left + gutter <= start };
+        }
         // Pin the semantic center (the clock slot), not the midpoint of a
         // center cluster whose left and right contents can have different
         // widths. Revealing quick actions then grows outward from the clock.
@@ -207,7 +215,7 @@ function fitBar(options) {
 
     var centerX = state.desired;
     var shifted = false;
-    if (!state.fits) {
+    if (!state.fits && !split) {
         var minX = widths.left + gutter;
         var maxX = state.rightX - gutter - center.left - center.right;
         if (maxX >= minX) {
@@ -244,7 +252,7 @@ function fitBar(options) {
             state = geometry();
             centerX = state.desired;
             shifted = false;
-            if (!state.fits) {
+            if (!state.fits && !split) {
                 var overflowMinX = widths.left + gutter;
                 var overflowMaxX = state.rightX - gutter - center.left - center.right;
                 if (overflowMaxX >= overflowMinX) {

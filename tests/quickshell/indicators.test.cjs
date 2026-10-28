@@ -122,7 +122,7 @@ test("inactive disclosure and persistent active actions use separate animated bl
     assert.doesNotMatch(bar, /centerPinBias\s*=/,
         "the deferred fit pass must not assign the clock pin a frame late");
     assert.match(bar,
-        /id:\s*centerCluster[\s\S]*?x:\s*parent\.width \/ 2 - barWindow\.currentClockPin\(\)/,
+        /id:\s*centerCluster[\s\S]*?x:\s*Theme\.macStyle \? parent\.width - Theme\.barPadding - width\s*:\s*parent\.width \/ 2 - barWindow\.currentClockPin\(\)/,
         "center placement must use the clock pin directly, without cancelling two changing widths");
     assert.match(bar, /function itemCenterXWithin\([\s\S]*?position \+= current\.x/,
         "clock placement must react to each intermediate Row layout position");

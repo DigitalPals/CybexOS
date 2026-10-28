@@ -24,6 +24,12 @@ def initialize(home, defaults, share, proprietary, developer=False):
     if not model.exists() and not model.is_symlink():
         model.symlink_to('/etc/cybexos/models/ggml-base.bin')
     seed('.gitconfig', f'[include]\n  path = {defaults}/gitconfig\n')
+    # The shell renders the desktop style's GTK rules (theme_gtk.py) into its
+    # theme state; GTK reads them through these personal stylesheets.
+    state = Path(os.environ.get('XDG_STATE_HOME') or home / '.local/state') / 'cybexos/theme'
+    for version in ('3.0', '4.0'):
+        seed(f'.config/gtk-{version}/gtk.css', f'@import url("file://{state}/gtk-{version}.css");\n'
+             '/* Personal rules belong below this line. */\n')
     nvim = home / '.config/nvim'
     if developer and not nvim.exists() and not nvim.is_symlink():
         shutil.copytree(defaults / 'nvim', nvim)

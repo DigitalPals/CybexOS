@@ -26,6 +26,31 @@ function themeKeys() {
     return [...block[1].matchAll(/"([\w.]+)"/g)].map(m => m[1]);
 }
 
+// The desktop style's shapes: plain numbers and one pair. Every other theme
+// key is a colour.
+const SHAPE_KEYS = ["decoration.rounding_power", "decoration.shadow.range",
+    "decoration.shadow.render_power", "decoration.shadow.offset"];
+
+function colorKeys() {
+    return themeKeys().filter(key => !SHAPE_KEYS.includes(key));
+}
+
+// {dotted key: literal} for the shape keys of a rendered file.
+function shapes(lua) {
+    const values = {};
+    const stack = [];
+    for (const line of lua.split("\n")) {
+        let m;
+        if ((m = line.match(/^\s*(\w+) = \{$/)))
+            stack.push(m[1]);
+        else if ((m = line.match(/^\s*(\w+) = (\d+|\{ \d+, \d+ \}),$/)))
+            values[[...stack, m[1]].join(".")] = m[2];
+        else if (/^\s*\},?$/.test(line))
+            stack.pop();
+    }
+    return values;
+}
+
 // {dotted key: value} for a rendered file. The format is small and fixed:
 // one `key = {` or `key = "value",` per line.
 function leaves(lua) {
@@ -59,12 +84,13 @@ test("the theme renders a data-only table of exactly the keys looknfeel accepts"
         // No calls, no expressions: nothing but tables and colour strings.
         assert.doesNotMatch(code.replace(/"[^"\n]*"/g, '""'), /[()[\]+\-*/.:;#~^]/);
         const values = leaves(lua);
-        assert.deepEqual(Object.keys(values).sort(), [...keys].sort());
+        assert.deepEqual([...Object.keys(values), ...Object.keys(shapes(lua))].sort(), [...keys].sort());
         for (const [key, value] of Object.entries(values))
             assert.match(value, COLOR, key);
-        // Rounding is Theme.surfaceRadius, never the theme's to change, and
-        // glass and power saver own blur and animations.
-        assert.doesNotMatch(code, /rounding|blur|animations|border_size/);
+        // The corner radius is Theme.surfaceRadius, never the theme's to
+        // change (the style shapes only its curve), and glass and power saver
+        // own blur and animations.
+        assert.doesNotMatch(code, /\brounding =|blur|animations|border_size/);
     }
 });
 
@@ -87,6 +113,25 @@ test("the compositor colours follow the shell's tokens", () => {
     assert.equal(light["group.groupbar.text_color_inactive"], "rgb(43415a)");
     // A light shadow is the ink, faint; never the pale base nearly opaque.
     assert.equal(light["decoration.shadow.color"], "rgba(1f1d2b30)");
+});
+
+test("the desktop style shapes corners and shadows; the Cybex style restores Hyprland's", () => {
+    const cybex = shapes(render(darkTokens()));
+    assert.deepEqual(cybex, { "decoration.rounding_power": "2", "decoration.shadow.range": "4",
+        "decoration.shadow.render_power": "3", "decoration.shadow.offset": "{ 0, 0 }" });
+    for (const tokens of [darkTokens(), lightTokens()]) {
+        tokens.style = "mac";
+        const lua = render(tokens);
+        assert.deepEqual(shapes(lua), { "decoration.rounding_power": "3", "decoration.shadow.range": "34",
+            "decoration.shadow.render_power": "3", "decoration.shadow.offset": "{ 0, 12 }" });
+        const colors = leaves(lua);
+        // Black, deeper on the focused window than on the others.
+        assert.match(colors["decoration.shadow.color"], /^rgba\(000000[0-9a-f]{2}\)$/);
+        assert.ok(parseInt(colors["decoration.shadow.color"].slice(11, 13), 16)
+            > parseInt(colors["decoration.shadow.color_inactive"].slice(11, 13), 16));
+        // Borders and groups keep following the tokens.
+        assert.equal(colors["general.col.active_border"], `rgb(${tokens.colors.accent.slice(1)})`);
+    }
 });
 
 test("looknfeel's vendor colours are the theme for the default dark tokens", () => {
@@ -123,7 +168,7 @@ function runLook(t, driver, files, env) {
 local look = ${JSON.stringify(look)}
 local home = ${JSON.stringify(home)}
 local theme_file = home .. "/.local/state/cybexos/theme/hyprland.lua"
-local keys = { ${themeKeys().map(k => JSON.stringify(k)).join(", ")} }
+local keys = { ${colorKeys().map(k => JSON.stringify(k)).join(", ")} }
 local expected = {
   dark = { ${Object.entries(expected.dark).map(([k, v]) => `["${k}"] = "${v}"`).join(", ")} },
   light = { ${Object.entries(expected.light).map(([k, v]) => `["${k}"] = "${v}"`).join(", ")} },

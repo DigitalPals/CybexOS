@@ -30,6 +30,7 @@ MediaPopover MediaPopover.qml
 NotesPopover NotesPopover.qml
 NotifsPopover NotifsPopover.qml
 OverflowPopover OverflowPopover.qml
+MacMenuPopover MacMenuPopover.qml
 ReminderPopover ReminderPopover.qml
 PopoutPanel PopoutPanel.qml
 SectionLabel SectionLabel.qml

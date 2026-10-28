@@ -7,10 +7,17 @@ import "Popovers"
 // Compact eight-row tabbed command palette. LauncherProviders owns routing,
 // asynchronous work and activation; this permanently warm view renders each
 // normalized row on one line and scrolls longer result sets in-place.
+//
+// The Mac-like desktop style draws it as Spotlight: wider, without the tab
+// strip (the prefixes and Ctrl+Tab still switch providers), and led by one
+// large search field.
 Surface {
     id: root
 
-    implicitWidth: Theme.fitWidth(Theme.scaled(460, Theme.contentScale), availableWidth > 0 ? availableWidth : Theme.scaled(460, Theme.contentScale))
+    readonly property bool spotlight: Theme.macStyle
+    readonly property int preferredWidth: spotlight ? Theme.scaled(640, Theme.contentScale)
+        : Theme.scaled(460, Theme.contentScale)
+    implicitWidth: Theme.fitWidth(preferredWidth, availableWidth > 0 ? availableWidth : preferredWidth)
 
     readonly property int maxResults: LauncherProviders.maxResults
     readonly property int tabHeight: Theme.scaled(34)
@@ -19,8 +26,12 @@ Surface {
     readonly property int resultIconSize: Theme.scaled(28)
     // A selected clipboard image grows its row to show the picture under it.
     readonly property int previewRowHeight: rowHeight * 4
-    readonly property int fullHeight: padding * 2 + tabHeight + searchHeight
-        + maxResults * rowHeight + spacing * 2
+    // Spotlight's single search field, with no tab strip above it.
+    readonly property int spotlightSearchHeight: Theme.scaled(54)
+    readonly property int fullHeight: spotlight
+        ? padding * 2 + spotlightSearchHeight + maxResults * rowHeight + spacing
+        : padding * 2 + tabHeight + searchHeight
+            + maxResults * rowHeight + spacing * 2
     property int selected: 0
     readonly property string query: search.text
     readonly property bool inputActiveFocus: search.activeFocus
@@ -256,6 +267,7 @@ Surface {
 
     // ---- Provider tabs ---------------------------------------------------
     Rectangle {
+        visible: !root.spotlight
         width: parent.width
         height: root.tabHeight
         radius: Theme.chipRadius
@@ -342,9 +354,9 @@ Surface {
     // ---- Search tile -----------------------------------------------------
     Rectangle {
         width: parent.width
-        height: root.searchHeight
+        height: root.spotlight ? root.spotlightSearchHeight : root.searchHeight
         radius: Theme.chipRadius
-        color: Theme.chip
+        color: root.spotlight ? "transparent" : Theme.chip
 
         Behavior on color {
             ColorAnimation { duration: Theme.surfaceDuration }
@@ -354,19 +366,20 @@ Surface {
             id: searchGlyph
             x: 16
             anchors.verticalCenter: parent.verticalCenter
-            name: root.argumentMode ? root.pendingAction.glyph : root.provider.glyph
-            size: 18
+            name: root.argumentMode ? root.pendingAction.glyph
+                : root.spotlight && root.provider.id === "apps" ? "search" : root.provider.glyph
+            size: root.spotlight ? Theme.iconLarge : 18
             color: Theme.textDim
         }
 
         TextInput {
             id: search
             anchors.verticalCenter: parent.verticalCenter
-            x: 44
+            x: root.spotlight ? 50 : 44
             width: parent.width - x - (modeChip.visible ? modeChip.width + 24 : 16)
                 - (clipboardHint.visible ? clipboardHint.implicitWidth + 12 : 0)
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.typography.heading
+            font.pixelSize: root.spotlight ? Theme.typography.display : Theme.typography.heading
             font.weight: Theme.weightRegular
             color: Theme.textHi
             clip: true

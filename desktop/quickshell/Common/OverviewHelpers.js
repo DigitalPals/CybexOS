@@ -170,6 +170,137 @@ function gridLayout(count, width, height, aspect, options) {
     };
 }
 
+// Mission Control, the Mac-like desktop style's overview: the other
+// workspaces as a strip of small tiles along the top, and the current one
+// (`currentIndex`) filling the room below them, where its windows are spread
+// out side by side (exposeRects). The cells have gridLayout's shape; the
+// current one carries no label.
+function missionLayout(count, currentIndex, width, height, aspect, options) {
+    var o = options || {};
+    var spacing = Math.max(0, finite(o.spacing, 24));
+    var label = Math.max(0, finite(o.labelHeight, 24));
+    var share = Math.min(0.4, Math.max(0.05, finite(o.stripShare, 0.16)));
+    var n = Math.max(0, Math.floor(finite(count, 0)));
+    var current = Math.floor(finite(currentIndex, -1));
+    var ratio = finite(aspect, 0) > 0 ? Number(aspect) : 16 / 9;
+    if (current < 0 || current >= n)
+        return gridLayout(count, width, height, aspect, options);
+    if (!(width > 0) || !(height > 0))
+        return { columns: 0, rows: 0, tileWidth: 0, tileHeight: 0, labelHeight: label, cells: [] };
+
+    var others = n - 1;
+    var tileHeight = Math.max(1, Math.floor(height * share));
+    var tileWidth = Math.max(1, Math.floor(tileHeight * ratio));
+    if (others > 0 && others * tileWidth + (others - 1) * spacing > width) {
+        tileWidth = Math.max(1, Math.floor((width - (others - 1) * spacing) / others));
+        tileHeight = Math.max(1, Math.floor(tileWidth / ratio));
+    }
+    var stripHeight = others > 0 ? label + tileHeight + spacing : 0;
+    var stripWidth = others * tileWidth + Math.max(0, others - 1) * spacing;
+    var left = (width - stripWidth) / 2;
+    var cells = [];
+    var slot = 0;
+    for (var index = 0; index < n; index++) {
+        if (index === current) {
+            cells.push({ x: 0, y: Math.round(stripHeight), width: Math.round(width),
+                height: Math.max(1, Math.round(height - stripHeight)), tileY: 0,
+                tileHeight: Math.max(1, Math.round(height - stripHeight)) });
+            continue;
+        }
+        cells.push({ x: Math.round(left + slot * (tileWidth + spacing)), y: 0,
+            width: tileWidth, height: label + tileHeight, tileY: label, tileHeight: tileHeight });
+        slot++;
+    }
+    return { columns: Math.max(1, others), rows: others > 0 ? 2 : 1, tileWidth: tileWidth,
+        tileHeight: tileHeight, labelHeight: label, cells: cells };
+}
+
+// Windows spread out side by side in width × height, as Mission Control
+// shows a workspace: each keeps its proportions, none overlaps another or
+// grows past its real size, and the rows are centred. Rows run in reading
+// order of where the windows are. The arrangement with the largest total
+// area wins. { address: { x, y, width, height, z } }
+function exposeRects(windows, width, height, options) {
+    var gap = Math.max(0, finite(options && options.gap, 24));
+    var boxWidth = Math.max(1, finite(width, 1));
+    var boxHeight = Math.max(1, finite(height, 1));
+    var list = (Array.isArray(windows) ? windows : []).filter(function(window) {
+        return window && window.address;
+    }).map(function(window) {
+        var at = pair(window.at) || [0, 0];
+        var size = pair(window.size);
+        var valid = size !== null && size[0] > 0 && size[1] > 0;
+        return { address: window.address, x: at[0], y: at[1],
+            width: valid ? size[0] : 1600, height: valid ? size[1] : 1000 };
+    });
+    list.sort(function(a, b) {
+        return a.y - b.y || a.x - b.x || (a.address < b.address ? -1 : 1);
+    });
+    var n = list.length;
+    var out = {};
+    if (n === 0)
+        return out;
+
+    var best = null;
+    for (var rows = 1; rows <= n; rows++) {
+        var columns = Math.ceil(n / rows);
+        var cellWidth = (boxWidth - gap * (columns - 1)) / columns;
+        var cellHeight = (boxHeight - gap * (rows - 1)) / rows;
+        if (!(cellWidth > 0) || !(cellHeight > 0))
+            continue;
+        var area = 0;
+        for (var i = 0; i < n; i++) {
+            var scale = Math.min(1, cellWidth / list[i].width, cellHeight / list[i].height);
+            area += list[i].width * list[i].height * scale * scale;
+        }
+        if (best === null || area > best.area + 0.5)
+            best = { rows: rows, columns: columns, cellWidth: cellWidth, cellHeight: cellHeight, area: area };
+    }
+    if (best === null)
+        return out;
+
+    var top = 0;
+    var rowHeights = [];
+    for (var row = 0; row < best.rows; row++) {
+        var tallest = 0;
+        for (var c = 0; c < best.columns; c++) {
+            var item = list[row * best.columns + c];
+            if (!item)
+                break;
+            var s = Math.min(1, best.cellWidth / item.width, best.cellHeight / item.height);
+            tallest = Math.max(tallest, item.height * s);
+        }
+        rowHeights.push(tallest);
+    }
+    var used = rowHeights.reduce(function(sum, value) { return sum + value; }, 0)
+        + gap * Math.max(0, rowHeights.length - 1);
+    top = Math.max(0, (boxHeight - used) / 2);
+    for (var r = 0; r < best.rows; r++) {
+        var members = list.slice(r * best.columns, (r + 1) * best.columns);
+        if (members.length === 0)
+            break;
+        var sizes = members.map(function(member) {
+            var k = Math.min(1, best.cellWidth / member.width, best.cellHeight / member.height);
+            return { width: member.width * k, height: member.height * k };
+        });
+        var rowWidth = sizes.reduce(function(sum, size) { return sum + size.width; }, 0)
+            + gap * (members.length - 1);
+        var x = (boxWidth - rowWidth) / 2;
+        for (var m = 0; m < members.length; m++) {
+            out[members[m].address] = {
+                x: Math.round(x),
+                y: Math.round(top + (rowHeights[r] - sizes[m].height) / 2),
+                width: Math.max(1, Math.round(sizes[m].width)),
+                height: Math.max(1, Math.round(sizes[m].height)),
+                z: 0
+            };
+            x += sizes[m].width + gap;
+        }
+        top += rowHeights[r] + gap;
+    }
+    return out;
+}
+
 // A box of `aspect` centred in width × height: a workspace on a monitor of
 // another shape than the overview's own sits letterboxed in its cell.
 function fitAspect(width, height, aspect) {
@@ -433,6 +564,8 @@ var exported = {
     newWorkspaceId: newWorkspaceId,
     workspaceEntries: workspaceEntries,
     gridLayout: gridLayout,
+    missionLayout: missionLayout,
+    exposeRects: exposeRects,
     fitAspect: fitAspect,
     windowRects: windowRects,
     cellAt: cellAt,

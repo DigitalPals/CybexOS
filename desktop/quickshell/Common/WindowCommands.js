@@ -126,6 +126,17 @@ function desktopMinimize(address) {
     return key ? 'require("workspaces").minimize("0x' + key + '")' : "";
 }
 
+function desktopToggleFloating(address) {
+    var key = bareAddress(address);
+    return key ? 'require("workspaces").toggle_floating("0x' + key + '")' : "";
+}
+
+function fullscreenWindow(address) {
+    var selector = windowSelector(address);
+    return selector === "" ? "" : 'hl.dsp.window.fullscreen({ mode = "fullscreen", action = "toggle", window = '
+        + selector + ' })';
+}
+
 function desktopNew(monitor) {
     var name = luaString(monitor);
     return name ? 'require("workspaces").new_workspace(' + name + ')' : "";
@@ -187,6 +198,8 @@ var exported = {
     desktopMove: desktopMove,
     desktopActivate: desktopActivate,
     desktopMinimize: desktopMinimize,
+    desktopToggleFloating: desktopToggleFloating,
+    fullscreenWindow: fullscreenWindow,
     desktopNew: desktopNew,
     desktopNewAndMove: desktopNewAndMove,
     desktopNext: desktopNext,

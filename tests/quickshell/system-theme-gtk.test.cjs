@@ -17,6 +17,9 @@ const which = name => spawnSync("sh", ["-c", "command -v " + name], { encoding: 
 const bash = which("bash");
 const grep = which("grep");
 const SCHEMA = "org.gnome.desktop.interface";
+const WM = "org.gnome.desktop.wm.preferences";
+// The desktop style's two keys, Cybex style: GNOME's defaults.
+const STYLE_RECORD = { [`${SCHEMA} font-name`]: null, [`${WM} button-layout`]: null };
 
 // A gsettings that knows accent-color (GNOME 47+) unless `accent` is false,
 // and fails every `set` when `failSet` is given.
@@ -40,19 +43,40 @@ function gsettingsCalls(stub) {
 
 test("render records the dark and light settings deterministically", () => {
     const dark = renderTarget("gtk", darkTokens());
-    assert.deepEqual(Object.keys(dark), ["gtk.json"]);
+    assert.deepEqual(Object.keys(dark), ["gtk.json", "gtk-3.0.css", "gtk-4.0.css"]);
     assert.deepEqual(JSON.parse(dark["gtk.json"]), {
         "accent-color": "blue", "color-scheme": "prefer-dark", "gtk-theme": "adw-gtk3-dark",
-        "text-scaling-factor": "1.00",
+        "text-scaling-factor": "1.00", ...STYLE_RECORD,
     });
+    // The Cybex style's stylesheets hold no rules.
+    for (const name of ["gtk-3.0.css", "gtk-4.0.css"])
+        assert.doesNotMatch(dark[name].replace(/\/\*[^]*?\*\//g, ""), /\S/);
     assert.ok(dark["gtk.json"].endsWith("}\n"));
     assert.deepEqual(renderTarget("gtk", darkTokens()), dark);
 
     const light = JSON.parse(renderTarget("gtk", lightTokens())["gtk.json"]);
     assert.deepEqual(light, {
         "accent-color": "blue", "color-scheme": "prefer-light", "gtk-theme": "adw-gtk3",
-        "text-scaling-factor": "1.00",
+        "text-scaling-factor": "1.00", ...STYLE_RECORD,
     });
+});
+
+test("the Mac-like style renders traffic lights, Inter and left-hand window buttons", () => {
+    for (const [tokens, backdrop] of [[darkTokens(), "#4b4b4f"], [lightTokens(), "#d2d2d5"]]) {
+        tokens.style = "mac";
+        const files = renderTarget("gtk", tokens);
+        const record = JSON.parse(files["gtk.json"]);
+        assert.equal(record[`${SCHEMA} font-name`], "Inter 11");
+        assert.equal(record[`${WM} button-layout`], "close,minimize,maximize:");
+        // libadwaita draws a window button's circle on its image; GTK 3 on
+        // the title button itself. Both turn grey out of focus.
+        assert.match(files["gtk-4.0.css"], /windowcontrols > button\.close > image \{ background-color: #ff5f57; \}/);
+        assert.match(files["gtk-4.0.css"], /windowcontrols > button\.minimize > image \{ background-color: #febc2e; \}/);
+        assert.match(files["gtk-4.0.css"], /windowcontrols > button\.maximize > image \{ background-color: #28c840; \}/);
+        assert.match(files["gtk-3.0.css"], /button\.titlebutton\.close \{ background-color: #ff5f57; \}/);
+        for (const name of ["gtk-3.0.css", "gtk-4.0.css"])
+            assert.ok(files[name].includes(`background-color: ${backdrop}`), name);
+    }
 });
 
 
@@ -94,27 +118,29 @@ test("apply sets exactly the interface keys, once per change", t => {
         `gsettings set ${SCHEMA} color-scheme prefer-dark`,
         `gsettings set ${SCHEMA} gtk-theme adw-gtk3-dark`,
         `gsettings set ${SCHEMA} accent-color blue`,
+        `gsettings list-keys ${WM}`,
     ]);
 
     // Unchanged tokens leave gsettings alone; only --force reapplies them.
     const again = apply(state, darkTokens(), stub.bin);
     assert.equal(again.report.targets.gtk.changed, false);
-    assert.equal(gsettingsCalls(stub).length, 4);
+    assert.equal(gsettingsCalls(stub).length, 5);
     apply(state, darkTokens(), stub.bin, ["--force"]);
-    assert.equal(gsettingsCalls(stub).length, 8);
+    assert.equal(gsettingsCalls(stub).length, 10);
 
     const light = lightTokens();
     light.colors.accent = "#a992e0";
     assert.equal(apply(state, light, stub.bin).report.targets.gtk.error, null);
-    assert.deepEqual(gsettingsCalls(stub).slice(8), [
+    assert.deepEqual(gsettingsCalls(stub).slice(10), [
         `gsettings list-keys ${SCHEMA}`,
         `gsettings set ${SCHEMA} color-scheme prefer-light`,
         `gsettings set ${SCHEMA} gtk-theme adw-gtk3`,
         `gsettings set ${SCHEMA} accent-color purple`,
+        `gsettings list-keys ${WM}`,
     ]);
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(state, "gtk.json"), "utf8")), {
         "accent-color": "purple", "color-scheme": "prefer-light", "gtk-theme": "adw-gtk3",
-        "text-scaling-factor": "1.00",
+        "text-scaling-factor": "1.00", ...STYLE_RECORD,
     });
 });
 
@@ -126,7 +152,70 @@ test("a schema without accent-color is left without one", t => {
         `gsettings list-keys ${SCHEMA}`,
         `gsettings set ${SCHEMA} color-scheme prefer-light`,
         `gsettings set ${SCHEMA} gtk-theme adw-gtk3`,
+        `gsettings list-keys ${WM}`,
     ]);
+});
+
+// Both schemas' style keys, holding GNOME's defaults until set.
+function styleGsettings(t) {
+    const stub = stubBin(t, {
+        gsettings: "store=\"${0%/*}/$2.$3.value\"\n"
+            + "case \"$1\" in\n"
+            + "  list-keys) if [ \"$2\" = " + WM + " ]; then printf '%s\\n' button-layout;"
+            + " else printf '%s\\n' color-scheme gtk-theme font-name; fi ;;\n"
+            + "  get) if [ -s \"$store\" ]; then read -r value <\"$store\"; printf '%s\\n' \"$value\";"
+            + " elif [ \"$3\" = button-layout ]; then printf '%s\\n' \"'appmenu:close'\";"
+            + " else printf '%s\\n' \"'Adwaita Sans 11'\"; fi ;;\n"
+            + "  set) printf \"'%s'\\n\" \"$4\" >\"$store\" ;;\n"
+            + "  reset) : >\"$store\" ;;\n"
+            + "esac",
+    });
+    return {
+        ...stub,
+        value: (schema, key) => {
+            const file = path.join(stub.bin, `${schema}.${key}.value`);
+            const text = fs.existsSync(file) ? fs.readFileSync(file, "utf8").trim() : "";
+            return text === "" ? null : text;
+        },
+        userSets: (schema, key, value) =>
+            fs.writeFileSync(path.join(stub.bin, `${schema}.${key}.value`), `'${value}'\n`),
+    };
+}
+
+test("the Mac-like style sets its keys only while GNOME's default or its own value holds them", t => {
+    const state = scratch(t);
+    const stub = styleGsettings(t);
+    const mac = { ...darkTokens(), style: "mac" };
+    assert.equal(apply(state, mac, stub.bin).report.targets.gtk.error, null);
+    assert.equal(stub.value(WM, "button-layout"), "'close,minimize,maximize:'");
+    assert.equal(stub.value(SCHEMA, "font-name"), "'Inter 11'");
+
+    // Back to the Cybex style: GNOME's defaults return.
+    assert.equal(apply(state, darkTokens(), stub.bin).report.targets.gtk.error, null);
+    assert.equal(stub.value(WM, "button-layout"), null);
+    assert.equal(stub.value(SCHEMA, "font-name"), null);
+
+    // A layout of the user's own is never replaced or reset.
+    stub.userSets(WM, "button-layout", "close:");
+    apply(state, mac, stub.bin);
+    assert.equal(stub.value(WM, "button-layout"), "'close:'");
+    assert.equal(stub.value(SCHEMA, "font-name"), "'Inter 11'");
+    apply(state, darkTokens(), stub.bin);
+    assert.equal(stub.value(WM, "button-layout"), "'close:'");
+    assert.equal(stub.value(SCHEMA, "font-name"), null);
+});
+
+test("an interface font the user chose before the style survives switching back", t => {
+    const state = scratch(t);
+    const stub = styleGsettings(t);
+    stub.userSets(SCHEMA, "font-name", "Inter 11");
+    apply(state, { ...darkTokens(), style: "mac" }, stub.bin);
+    assert.equal(stub.value(WM, "button-layout"), "'close,minimize,maximize:'");
+    // Already the style's value, but not set by it: never handed back.
+    assert.ok(!stub.calls().some(line => line.includes("set org.gnome.desktop.interface font-name")));
+    apply(state, darkTokens(), stub.bin);
+    assert.equal(stub.value(SCHEMA, "font-name"), "'Inter 11'");
+    assert.equal(stub.value(WM, "button-layout"), null);
 });
 
 test("a failing gsettings is reported in a short message", t => {

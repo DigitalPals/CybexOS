@@ -66,7 +66,7 @@ PanelWindow {
     // The bar edge's y inside this window: hugging the anchored screen edge
     // with the configured gap on either position.
     readonly property real barY: BarGeometry.barY({
-        style: Settings.barStyle,
+        style: Settings.effectiveBarStyle,
         gap: Settings.gap,
         height: Theme.barHeight,
         position: Settings.position,
@@ -77,7 +77,7 @@ PanelWindow {
     // the same gap as outside it. Auto-hide and "reserve space" off both drop
     // the zone entirely.
     exclusiveZone: BarGeometry.exclusiveZone({
-        style: Settings.barStyle,
+        style: Settings.effectiveBarStyle,
         gap: Settings.gap,
         height: Theme.barHeight,
         autoHide: Settings.autoHide,
@@ -104,7 +104,7 @@ PanelWindow {
     property bool revealed: true
     readonly property bool hidden: Settings.autoHide && !revealed && !popoutActive
     property real hideShift: hidden ? BarGeometry.hideShift({
-        style: Settings.barStyle,
+        style: Settings.effectiveBarStyle,
         gap: Settings.gap,
         height: Theme.barHeight,
         position: Settings.position
@@ -610,6 +610,7 @@ PanelWindow {
                         ? overflowButton.width + Theme.barSpacing : 0), "right", entries)
             },
             centerExtents: centerExtents,
+            split: Theme.macStyle,
             entries: entries,
             overflowWidth: Theme.chipHeight + Theme.barSpacing
         });
@@ -621,6 +622,11 @@ PanelWindow {
     }
 
     onWidthChanged: fitTimer.restart()
+
+    Connections {
+        target: Theme
+        function onMacStyleChanged() { barWindow.scheduleFit(); }
+    }
 
     Timer {
         id: fitTimer
@@ -835,7 +841,7 @@ PanelWindow {
         }
 
         RectangularShadow {
-            visible: Theme.barFloating && !Settings.glassEnabled
+            visible: Theme.barFloating && !Theme.glassActive
             anchors.fill: barSlab
             radius: Theme.clusterRadius
             blur: 16
@@ -919,6 +925,9 @@ PanelWindow {
         DragHandler {
             id: widgetDrag
             target: null
+            // The Mac-like menubar moves the centre widgets to the right end,
+            // where a drop position would not mean what it shows.
+            enabled: !Theme.macStyle
             acceptedButtons: Qt.LeftButton
             // Wider than the platform default. The bar is short and dense, and
             // a hand that shifts a few pixels while clicking a widget means to
@@ -952,7 +961,69 @@ PanelWindow {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Theme.barSpacing
 
+            // The Mac-like desktop style's menus: the system menu behind the
+            // Cybex symbol, the front app's menu under its name in bold, and
+            // the Window menu (Common/MacDesktop.qml). They replace the
+            // launcher button; Super Space and the search glyph still open it.
+            BarChip {
+                id: macSystemMenu
+                visible: Theme.macStyle
+                host: barWindow
+                panelName: Theme.macStyle ? "macsystem" : ""
+                isle: "left"
+                hPadding: 9
+                tooltip: ""
+                Accessible.role: Accessible.MenuItem
+                Accessible.name: I18n.tr("Cybex OS menu")
+                BarBrandIcon {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Theme.barIconSize
+                    height: Theme.barIconSize
+                    name: "cybexos"
+                    highlighted: macSystemMenu.held || macSystemMenu.hovered
+                }
+            }
+
+            BarChip {
+                id: macAppMenu
+                visible: Theme.macStyle
+                host: barWindow
+                panelName: Theme.macStyle ? "macapp" : ""
+                isle: "left"
+                hPadding: 8
+                Accessible.role: Accessible.MenuItem
+                Accessible.name: Theme.macStyle ? MacDesktop.appName : ""
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: Theme.macStyle ? MacDesktop.appName : ""
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.barTextSize
+                    font.weight: Theme.weightBold
+                    color: Theme.barTextHi
+                }
+            }
+
+            BarChip {
+                id: macWindowMenu
+                visible: Theme.macStyle
+                host: barWindow
+                panelName: Theme.macStyle ? "macwindow" : ""
+                isle: "left"
+                hPadding: 8
+                Accessible.role: Accessible.MenuItem
+                Accessible.name: I18n.tr("Window")
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: I18n.tr("Window")
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.barTextSize
+                    font.weight: Theme.weightMedium
+                    color: Theme.barTextHi
+                }
+            }
+
             BarIcon {
+                visible: !Theme.macStyle
                 host: barWindow
                 shape: "pill"
                 glyph: "apps"
@@ -994,8 +1065,11 @@ PanelWindow {
             // but as one binding it cannot render between the two halves of
             // that cancellation. The clock's local center is the only moving
             // input while indicators disclose on its left.
-            x: parent.width / 2 - barWindow.currentClockPin()
-                + barWindow.animatedCenterShift
+            // The Mac-like menubar keeps the time at the right end, after the
+            // status widgets, instead of centred.
+            x: Theme.macStyle ? parent.width - Theme.barPadding - width
+                : parent.width / 2 - barWindow.currentClockPin()
+                    + barWindow.animatedCenterShift
             anchors.verticalCenter: parent.verticalCenter
             onImplicitWidthChanged: barWindow.scheduleFit()
 
@@ -1019,6 +1093,7 @@ PanelWindow {
             id: rightSection
             anchors.right: parent.right
             anchors.rightMargin: Theme.barPadding
+                + (Theme.macStyle ? centerCluster.width + Theme.barSpacing : 0)
             anchors.verticalCenter: parent.verticalCenter
             spacing: Theme.barSpacing
 
@@ -1058,6 +1133,24 @@ PanelWindow {
                     size: Theme.barIconSize
                     color: overflowButton.fg
                 }
+            }
+
+            // The Mac-like menubar opens the launcher from a search glyph
+            // beside the time, where its left-hand button used to be.
+            BarIcon {
+                visible: Theme.macStyle
+                host: barWindow
+                shape: "pill"
+                glyph: "search"
+                glyphSize: Theme.barIconSize
+                glyphWeight: 500
+                idleColor: Theme.barIcon
+                restFill: Launcher.open && Launcher.screen === barWindow.screen
+                    ? Theme.barChipHover : "transparent"
+                hPadding: 5
+                tooltip: I18n.tr("Search  ·  Super Space")
+                tooltipAlign: 1
+                onClicked: Launcher.toggle(barWindow.screen)
             }
 
         }

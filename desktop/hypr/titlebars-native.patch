@@ -1,56 +1,6 @@
---- a/main.cpp
-+++ b/main.cpp
-@@ -19,6 +19,8 @@
- 
- #include <algorithm>
- 
-+#include "cybexosBuildId.hpp"
-+
- #include "barDeco.hpp"
- #include "globals.hpp"
- 
-@@ -190,8 +192,26 @@
-   return 0;
- }
- 
-+// Configuration/theme hooks can replace the complete button set without
-+// accumulating duplicates or retaining textures from the previous theme.
-+static int clearOmarchyFloatingLuaButtons(lua_State *L) {
-+  g_pOmarchyFloatingGlobalState->buttons.clear();
-+  for (auto &bar : g_pOmarchyFloatingGlobalState->bars) {
-+    if (!bar)
-+      continue;
-+    bar->m_bButtonsDirty = true;
-+    bar->damageEntire();
-+  }
-+  return 0;
-+}
-+
- static PLUGIN_DESCRIPTION_INFO initializeOmarchyFloating(HANDLE handle) {
-+  // A Nixpkgs rebuild may keep the source/API hash while changing
-+  // the executable ABI. Never enter plugin state against another ELF build.
-+  if (cybexosHyprlandBuildId() != CYBEXOS_HYPRLAND_BUILD_ID)
-+    throw std::runtime_error("[hyprbars] Nixpkgs Hyprland build ID mismatch; rebuild native titlebars");
-+
-   OMARCHY_FLOATING_PHANDLE = handle;
- 
-   const std::string HASH = __hyprland_api_get_hash();
-   const std::string CLIENT_HASH = __hyprland_api_get_client_hash();
-@@ -277,8 +297,10 @@
- 
-   if (Config::mgr()->type() == Config::CONFIG_LEGACY)
-     HyprlandAPI::addConfigKeyword(OMARCHY_FLOATING_PHANDLE, "plugin:hyprbars:hyprbars-button", onNewOmarchyFloatingButton, Hyprlang::SHandlerOptions{});
--  else
-+  else {
-     HyprlandAPI::addLuaFunction(OMARCHY_FLOATING_PHANDLE, "hyprbars", "add_button", ::newOmarchyFloatingLuaButton);
-+    HyprlandAPI::addLuaFunction(OMARCHY_FLOATING_PHANDLE, "hyprbars", "clear_buttons", ::clearOmarchyFloatingLuaButtons);
-+  }
-   static auto P4 = Event::bus()->m_events.config.preReload.listen([&] { onPreConfigReload(); });
-   static auto P5 = Event::bus()->m_events.config.reloaded.listen([&] { onConfigReloaded(); });
- 
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -18,6 +18,10 @@
+@@ -18,6 +18,10 @@ set_target_properties(titlebars PROPERTIES PREFIX "")
  # Hyprland exposes inline globals through its headers, so whole-library hidden
  # visibility breaks the host API. Our own types/globals have unique OmarchyFloating names.
  target_compile_options(titlebars PRIVATE -fno-gnu-unique)
@@ -61,6 +11,58 @@
  
  find_package(PkgConfig REQUIRED)
  pkg_check_modules(deps REQUIRED IMPORTED_TARGET
+--- a/barDeco.cpp
++++ b/barDeco.cpp
+@@ -390,7 +390,9 @@ void COmarchyFloatingHyprBar::renderBarTitle(const Vector2D &bufferSize, const f
+     return;
+   }
+ 
+-  const CHyprColor COLOR = m_bForcedTitleColor.value_or(configColor(COLORVAL));
++  const auto INACTIVETEXT = g_pOmarchyFloatingGlobalState->config.inactiveTextColor->value();
++  const auto TEXTCOLOR = !m_bTitleHasFocus && INACTIVETEXT != 0 ? INACTIVETEXT : COLORVAL;
++  const CHyprColor COLOR = m_bForcedTitleColor.value_or(configColor(TEXTCOLOR));
+   m_pTextTex = g_pHyprRenderer->renderText(m_szLastTitle, COLOR, scaledSize, false, FONT, maxWidth, WEIGHT.m_value);
+ }
+ 
+@@ -433,7 +435,9 @@ void COmarchyFloatingHyprBar::renderBarButtons(CBox *barBox, const float scale,
+     auto color = button.bgcol;
+ 
+     if (INACTIVECOLOR > 0) {
+-      color = m_bWindowHasFocus ? color : configColor(INACTIVECOLOR);
++      // Cybex OS: a Mac shows an unfocused window's buttons in colour while
++      // the pointer is over them.
++      color = m_bWindowHasFocus || m_iButtonHoverState > 0 ? color : configColor(INACTIVECOLOR);
+       if (INVALIDATEICONS && button.userfg && button.iconTex)
+         button.iconTex = nullptr;
+     }
+@@ -637,6 +641,16 @@ void COmarchyFloatingHyprBar::renderPass(PHLMONITOR pMonitor, const float &a) {
+   std::string title = omarchyAppName(PWINDOW->m_class);
+   if (title.empty())
+     title = PWINDOW->m_title;
++  // Cybex OS: redraw the title when its colour changes, with focus or with a
++  // live theme change, not only when the title or the size does.
++  const auto INACTIVETITLE = g_pOmarchyFloatingGlobalState->config.inactiveTextColor->value();
++  const bool titleFocus = INACTIVETITLE == 0 || PWINDOW == Desktop::focusState()->window();
++  const int64_t titleColor = titleFocus ? g_pOmarchyFloatingGlobalState->config.textColor->value() : INACTIVETITLE;
++  if (titleFocus != m_bTitleHasFocus || titleColor != m_iTitleColor) {
++    m_bTitleHasFocus = titleFocus;
++    m_iTitleColor = titleColor;
++    m_bTitleColorChanged = true;
++  }
+   if (ENABLETITLE && (m_szLastTitle != title || m_bWindowSizeChanged || !m_pTextTex || m_pTextTex->m_texID == 0 || m_bTitleColorChanged)) {
+     m_szLastTitle = title;
+     renderBarTitle(BARBUF, pMonitor->m_scale);
+--- a/barDeco.hpp
++++ b/barDeco.hpp
+@@ -67,6 +67,8 @@ private:
+   bool m_bTitleColorChanged = false;
+   bool m_bLastEnabledState = false;
+   bool m_bWindowHasFocus = false;
++  bool m_bTitleHasFocus = true;
++  int64_t m_iTitleColor = -1;
+   std::optional<CHyprColor> m_bForcedBarColor;
+   std::optional<CHyprColor> m_bForcedTitleColor;
+ 
 --- /dev/null
 +++ b/cybexosBuildId.hpp
 @@ -0,0 +1,44 @@
@@ -108,3 +110,81 @@
 +  }, &result);
 +  return result; // No build ID is a mismatch too.
 +}
+--- a/globals.hpp
++++ b/globals.hpp
+@@ -30,7 +30,7 @@ struct SOmarchyFloatingGlobalState {
+   uint32_t titleColorRuleIdx = 0;
+ 
+   struct {
+-    SP<Config::Values::CColorValue> barColor, textColor, inactiveBarColor, inactiveButtonColor, buttonBorderColor;
++    SP<Config::Values::CColorValue> barColor, textColor, inactiveTextColor, inactiveBarColor, inactiveButtonColor, buttonBorderColor;
+     SP<Config::Values::CIntValue> barHeight;
+     SP<Config::Values::CIntValue> barTextSize;
+     SP<Config::Values::CFontWeightValue> barTextWeight;
+--- a/main.cpp
++++ b/main.cpp
+@@ -19,6 +19,8 @@
+ 
+ #include <algorithm>
+ 
++#include "cybexosBuildId.hpp"
++
+ #include "barDeco.hpp"
+ #include "globals.hpp"
+ 
+@@ -190,7 +192,25 @@ int newOmarchyFloatingLuaButton(lua_State *L) {
+   return 0;
+ }
+ 
++// Configuration/theme hooks can replace the complete button set without
++// accumulating duplicates or retaining textures from the previous theme.
++static int clearOmarchyFloatingLuaButtons(lua_State *L) {
++  g_pOmarchyFloatingGlobalState->buttons.clear();
++  for (auto &bar : g_pOmarchyFloatingGlobalState->bars) {
++    if (!bar)
++      continue;
++    bar->m_bButtonsDirty = true;
++    bar->damageEntire();
++  }
++  return 0;
++}
++
+ static PLUGIN_DESCRIPTION_INFO initializeOmarchyFloating(HANDLE handle) {
++  // A Nixpkgs rebuild may keep the source/API hash while changing
++  // the executable ABI. Never enter plugin state against another ELF build.
++  if (cybexosHyprlandBuildId() != CYBEXOS_HYPRLAND_BUILD_ID)
++    throw std::runtime_error("[hyprbars] Nixpkgs Hyprland build ID mismatch; rebuild native titlebars");
++
+   OMARCHY_FLOATING_PHANDLE = handle;
+ 
+   const std::string HASH = __hyprland_api_get_hash();
+@@ -213,6 +233,9 @@ static PLUGIN_DESCRIPTION_INFO initializeOmarchyFloating(HANDLE handle) {
+ 
+   g_pOmarchyFloatingGlobalState->config.barColor = makeShared<Config::Values::CColorValue>("plugin:hyprbars:bar_color", "Change the bar color", 0x88333333);
+   g_pOmarchyFloatingGlobalState->config.textColor = makeShared<Config::Values::CColorValue>("plugin:hyprbars:col.text", "Change the text color", 0xffffffff);
++  // Cybex OS: unfocused windows can dim their title, as a Mac's do.
++  g_pOmarchyFloatingGlobalState->config.inactiveTextColor =
++      makeShared<Config::Values::CColorValue>("plugin:hyprbars:col.text_inactive", "Title color of unfocused windows; transparent means use col.text", 0x00000000);
+   g_pOmarchyFloatingGlobalState->config.inactiveBarColor =
+       makeShared<Config::Values::CColorValue>("plugin:hyprbars:bar_color_inactive", "Inactive title bar color; transparent means use bar_color", 0x00000000);
+   g_pOmarchyFloatingGlobalState->config.inactiveButtonColor = makeShared<Config::Values::CColorValue>(
+@@ -253,6 +276,7 @@ static PLUGIN_DESCRIPTION_INFO initializeOmarchyFloating(HANDLE handle) {
+ 
+   HyprlandAPI::addConfigValueV2(OMARCHY_FLOATING_PHANDLE, g_pOmarchyFloatingGlobalState->config.barColor);
+   HyprlandAPI::addConfigValueV2(OMARCHY_FLOATING_PHANDLE, g_pOmarchyFloatingGlobalState->config.textColor);
++  HyprlandAPI::addConfigValueV2(OMARCHY_FLOATING_PHANDLE, g_pOmarchyFloatingGlobalState->config.inactiveTextColor);
+   HyprlandAPI::addConfigValueV2(OMARCHY_FLOATING_PHANDLE, g_pOmarchyFloatingGlobalState->config.inactiveBarColor);
+   HyprlandAPI::addConfigValueV2(OMARCHY_FLOATING_PHANDLE, g_pOmarchyFloatingGlobalState->config.inactiveButtonColor);
+   HyprlandAPI::addConfigValueV2(OMARCHY_FLOATING_PHANDLE, g_pOmarchyFloatingGlobalState->config.barHeight);
+@@ -277,8 +301,10 @@ static PLUGIN_DESCRIPTION_INFO initializeOmarchyFloating(HANDLE handle) {
+ 
+   if (Config::mgr()->type() == Config::CONFIG_LEGACY)
+     HyprlandAPI::addConfigKeyword(OMARCHY_FLOATING_PHANDLE, "plugin:hyprbars:hyprbars-button", onNewOmarchyFloatingButton, Hyprlang::SHandlerOptions{});
+-  else
++  else {
+     HyprlandAPI::addLuaFunction(OMARCHY_FLOATING_PHANDLE, "hyprbars", "add_button", ::newOmarchyFloatingLuaButton);
++    HyprlandAPI::addLuaFunction(OMARCHY_FLOATING_PHANDLE, "hyprbars", "clear_buttons", ::clearOmarchyFloatingLuaButtons);
++  }
+   static auto P4 = Event::bus()->m_events.config.preReload.listen([&] { onPreConfigReload(); });
+   static auto P5 = Event::bus()->m_events.config.reloaded.listen([&] { onConfigReloaded(); });
+ 

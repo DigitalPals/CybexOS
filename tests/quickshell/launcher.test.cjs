@@ -141,7 +141,9 @@ test("the launcher uses the compact single-line geometry", () => {
     const resultSection = view.slice(view.indexOf("// ---- Results"),
         view.indexOf("// ---- Empty state"));
 
-    assert.match(view, /implicitWidth:\s*Theme\.fitWidth\(Theme\.scaled\(460, Theme\.contentScale\)/);
+    // 460 wide; the Mac-like style's Spotlight is wider.
+    assert.match(view, /readonly property int preferredWidth: spotlight \? Theme\.scaled\(640, Theme\.contentScale\)\s*: Theme\.scaled\(460, Theme\.contentScale\)/);
+    assert.match(view, /implicitWidth:\s*Theme\.fitWidth\(preferredWidth/);
     for (const [name, value] of Object.entries({
         tabHeight: 34,
         searchHeight: 44,
@@ -151,7 +153,7 @@ test("the launcher uses the compact single-line geometry", () => {
         assert.match(view, new RegExp(`property int ${name}: Theme\\.scaled\\(${value}\\)`));
     assert.match(providers, /property int maxResults:\s*8\b/);
     assert.match(view,
-        /fullHeight:\s*padding \* 2 \+ tabHeight \+ searchHeight\s*\+ maxResults \* rowHeight \+ spacing \* 2/);
+        /fullHeight: spotlight\s*\? padding \* 2 \+ spotlightSearchHeight \+ maxResults \* rowHeight \+ spacing\s*: padding \* 2 \+ tabHeight \+ searchHeight\s*\+ maxResults \* rowHeight \+ spacing \* 2/);
     assert.match(window,
         /\(root\.outputHeight - launcherView\.fullHeight\) \/ 2/);
 

@@ -101,8 +101,9 @@ test("settings-driven tokens default to the selected menu face", () => {
     assert.equal(menuChoice.family, "JetBrainsMono Nerd Font");
 
     assert.match(theme,
-        /readonly property int barHeight:\s*Math\.max\(Settings\.barHeight, chipHeight \+ 8\)/);
-    assert.match(theme, /readonly property bool barFloating:\s*Settings\.barStyle === "floating"/);
+        /readonly property int barHeight:\s*macStyle \? chipHeight \+ 2\s*: Math\.max\(Settings\.barHeight, chipHeight \+ 8\)/);
+    // Through the effective value, which the Mac-like desktop style overrides.
+    assert.match(theme, /readonly property bool barFloating:\s*Settings\.effectiveBarStyle === "floating"/);
     assert.match(theme, /readonly property int clusterRadius:\s*barFloating \? Settings\.barRadius : 0/);
     assert.match(theme, /readonly property color accent:\s*paletteActive \? Common\.Palette\.primary/);
     assert.match(theme, /Settings\.fontChoices/);

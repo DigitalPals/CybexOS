@@ -398,7 +398,7 @@ ShellRoot {
         model: Screens.layerSurfaceModel.filter(output => {
             const monitor = Hyprland.monitorFor(output.screen);
             const active = monitor ? monitor.activeWorkspace : null;
-            return DockHelpers.showOnWorkspace(Settings.dock, active,
+            return DockHelpers.showOnWorkspace(Settings.effectiveDock, active,
                 DesktopWorkspaces.workspace(active ? active.id : 0));
         })
 
@@ -407,6 +407,7 @@ ShellRoot {
 
     LauncherWindow {}
     OverviewWindow {}
+    MinimizeOverlay {}
     NetworkOverlayWindow {}
     NotificationToasts {}
     OsdWindow {}

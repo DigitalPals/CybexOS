@@ -267,11 +267,31 @@ local function titlebars()
       assert(type(document.font.ui) == "string" and #document.font.ui <= 64 and document.font.ui:match("^[%w ._+%-]+$"))
       return { background = "rgb(" .. document.colors.surfaceRaised:sub(2) .. ")",
         foreground = "rgb(" .. document.colors.text:sub(2) .. ")", font = document.font.ui,
-        size = data.integer(document.font.size, 6, 96) and document.font.size or 14 }
+        size = data.integer(document.font.size, 6, 96) and document.font.size or 14,
+        style = document.style == "mac" and "mac" or "cybex",
+        mode = document.mode == "light" and "light" or "dark" }
     end) or {}
   end
   local colors = rawget(_G, "__cybexos_titlebar_colors") or state.titlebar_theme
   local background, foreground = colors.background or "rgb(292b31)", colors.foreground or "rgb(e4e4e7)"
+  -- The Mac-like desktop style (Settings → Appearance): traffic-light buttons
+  -- on the left that show their symbols while the pointer is over any of
+  -- them and turn grey with the window out of focus, a centred semibold
+  -- title, and a lighter bar and dimmed title on unfocused windows.
+  local mac = colors.style == "mac"
+  local light = colors.mode == "light"
+  local style = mac and {
+    height = 28, align = "center", buttons = "left", weight = 600, padding = 12,
+    background = light and "rgb(e8e8ea)" or "rgb(3a3a3d)",
+    inactive = light and "rgb(f6f6f7)" or "rgb(2c2c2e)",
+    text = light and "rgb(1d1d1f)" or "rgb(f5f5f7)",
+    text_inactive = light and "rgba(1d1d1f59)" or "rgba(f5f5f766)",
+    button_inactive = light and "rgb(d2d2d5)" or "rgb(4b4b4f)",
+  } or {
+    height = 30, align = "left", buttons = "right", weight = 400, padding = 10,
+    background = background, inactive = "rgba(00000000)", text = foreground,
+    text_inactive = "rgba(00000000)", button_inactive = "rgba(00000000)",
+  }
   local signature = data.encode(colors)
   local theme_changed = signature ~= state.titlebars_signature
   if not theme_changed and rendering == state.titlebars_rendering then state.capabilities.titlebars = true; return end
@@ -281,18 +301,34 @@ local function titlebars()
       return
     end
     hl.config({ plugin = { hyprbars = { enabled = rendering, workspace_tag = floating.FLOATING,
-      bar_height = 30, bar_color = background, col = { text = foreground },
-      bar_text_font = colors.font or "sans-serif", bar_text_size = math.floor((colors.size or 14) * 12 / 14), bar_text_align = "left",
-      bar_buttons_alignment = "right", bar_part_of_window = true,
-      bar_precedence_over_border = true, bar_padding = 10, bar_button_padding = 8,
+      bar_height = style.height, bar_color = style.background, bar_color_inactive = style.inactive,
+      col = { text = style.text, text_inactive = style.text_inactive },
+      inactive_button_color = style.button_inactive, icon_on_hover = mac,
+      bar_text_font = colors.font or "sans-serif", bar_text_size = math.floor((colors.size or 14) * 12 / 14),
+      bar_text_weight = style.weight, bar_text_align = style.align,
+      bar_buttons_alignment = style.buttons, bar_part_of_window = true,
+      bar_precedence_over_border = true, bar_padding = style.padding, bar_button_padding = 8,
       on_double_click = [[hyprctl dispatch 'hl.dsp.window.fullscreen({mode="maximized",action="toggle",window="address:%WINDOW%"})']] } } })
     if plugin.clear_buttons then plugin.clear_buttons(); state.buttons_added = false end
     if not state.buttons_added then
-      for _, button in ipairs({
-        { "×", [[hyprctl dispatch 'hl.dsp.window.close({window="address:%WINDOW%"})']] },
-        { "□", [[hyprctl dispatch 'hl.dsp.window.fullscreen({mode="maximized",action="toggle",window="address:%WINDOW%"})']] },
-        { "−", [[hyprctl eval 'require("workspaces").minimize("%WINDOW%")']] },
-      }) do plugin.add_button({ bg_color = background, fg_color = foreground, size = 20, icon = button[1], action = button[2] }) end
+      local close = [[hyprctl dispatch 'hl.dsp.window.close({window="address:%WINDOW%"})']]
+      local zoom = [[hyprctl dispatch 'hl.dsp.window.fullscreen({mode="maximized",action="toggle",window="address:%WINDOW%"})']]
+      local minimize = [[hyprctl eval 'require("workspaces").minimize("%WINDOW%")']]
+      if mac then
+        -- Left-aligned buttons are laid out from the left edge in this order.
+        -- The shell draws the minimize animation, then minimizes; without a
+        -- running shell the compositor minimizes directly.
+        minimize = [[cybexos-runtime ipc window minimize "%WINDOW%" >/dev/null 2>&1 || ]] .. minimize
+        for _, button in ipairs({
+          { "×", close, "rgb(ff5f57)", "rgb(4d0000)" },
+          { "−", minimize, "rgb(febc2e)", "rgb(985700)" },
+          { "+", zoom, "rgb(28c840)", "rgb(006500)" },
+        }) do plugin.add_button({ bg_color = button[3], fg_color = button[4], size = 12, icon = button[1], action = button[2] }) end
+      else
+        for _, button in ipairs({ { "×", close }, { "□", zoom }, { "−", minimize } }) do
+          plugin.add_button({ bg_color = background, fg_color = foreground, size = 20, icon = button[1], action = button[2] })
+        end
+      end
       state.buttons_added = true
     end
   end)

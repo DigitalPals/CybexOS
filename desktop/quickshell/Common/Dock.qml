@@ -123,7 +123,7 @@ Singleton {
                 if (action === "restore")
                     DesktopWorkspaces.activate(address);
                 else
-                    DesktopWorkspaces.minimize(address);
+                    Minimizer.minimize(address);
             }
         }
     }
@@ -143,7 +143,7 @@ Singleton {
         const app = appByKey[key];
         if (action.kind === "none" && app && app.windows.length === 1
                 && app.windows[0] === activeAddress && DesktopWorkspaces.canMinimize(activeAddress)) {
-            DesktopWorkspaces.minimize(activeAddress);
+            Minimizer.minimize(activeAddress);
             return;
         }
         if (action.kind === "launch") {
@@ -155,7 +155,7 @@ Singleton {
             if (DesktopWorkspaces.ready && app && app.windows.length === 1
                     && action.address === activeAddress && !DesktopWorkspaces.isMinimized(action.address)
                     && DesktopWorkspaces.canMinimize(action.address)) {
-                DesktopWorkspaces.minimize(action.address);
+                Minimizer.minimize(action.address);
                 return;
             }
             const command = DesktopWorkspaces.activateCommand(action.address);

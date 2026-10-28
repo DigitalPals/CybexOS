@@ -82,7 +82,20 @@ FocusScope {
         ? Hyprland.focusedWorkspace.id : -1
 
     readonly property real outputAspect: output.width / Math.max(1, output.height)
-    readonly property var layout: OverviewHelpers.gridLayout(tiles.length,
+    // Mission Control (the Mac-like desktop style): the workspace on this
+    // output fills the room under a strip of the others, with its windows
+    // spread out instead of where they are.
+    readonly property bool mission: Theme.macStyle
+    readonly property int outputWorkspaceId: {
+        const monitor = Hyprland.monitorFor(output);
+        return monitor && monitor.activeWorkspace ? monitor.activeWorkspace.id : focusedWorkspaceId;
+    }
+    readonly property int missionIndex: mission
+        ? tiles.findIndex(tile => !tile.isNew && tile.id === outputWorkspaceId) : -1
+    readonly property var layout: missionIndex >= 0
+        ? OverviewHelpers.missionLayout(tiles.length, missionIndex, grid.width, grid.height,
+            outputAspect, { spacing: Theme.scaled(28), labelHeight: Theme.scaled(32) })
+        : OverviewHelpers.gridLayout(tiles.length,
         grid.width, grid.height, outputAspect, {
             spacing: Theme.scaled(28),
             labelHeight: Theme.scaled(32),
@@ -102,12 +115,16 @@ FocusScope {
                 continue;
             }
             const monitor = monitorGeometry(tile.isNew ? "" : tile.monitor);
-            const box = OverviewHelpers.fitAspect(cell.width, cell.tileHeight,
-                monitor.width / Math.max(1, monitor.height));
+            const expose = index === missionIndex;
+            const box = expose ? { x: 0, y: 0, width: cell.width, height: cell.tileHeight }
+                : OverviewHelpers.fitAspect(cell.width, cell.tileHeight,
+                    monitor.width / Math.max(1, monitor.height));
             const inTile = tile.isNew ? []
                 : windows.filter(entry => entry.workspaceId === tile.id);
-            const rects = OverviewHelpers.windowRects(inTile, monitor, box.width, box.height,
-                { minSize: Theme.scaled(14) });
+            const rects = expose
+                ? OverviewHelpers.exposeRects(inTile, box.width, box.height, { gap: Theme.scaled(36) })
+                : OverviewHelpers.windowRects(inTile, monitor, box.width, box.height,
+                    { minSize: Theme.scaled(14) });
             perTile.push({
                 box: box,
                 rects: rects,
@@ -561,6 +578,9 @@ FocusScope {
                     ? monitorState.activeWorkspace === modelData.id
                     : root.workspaceRecords.some(entry => entry.id === modelData.id && entry.active))
                 readonly property bool dropTarget: root.dropIndex === index
+                // Mission Control's current workspace: windows only, over the
+                // overview's own wallpaper.
+                readonly property bool expose: index === root.missionIndex
                 // A tile's thumbnails are keyed by address alone. The string
                 // notifies only when the set really changes; `placement` is a
                 // fresh object on every geometry pass and would rebuild every
@@ -576,6 +596,7 @@ FocusScope {
 
                 Row {
                     id: label
+                    visible: !tile.expose
                     x: tile.placement ? tile.placement.box.x : 0
                     height: tile.cell ? tile.cell.tileY : 0
                     spacing: Theme.iconTextSpacing
@@ -637,7 +658,7 @@ FocusScope {
                     // around live captures would be every frame.
                     ClippingRectangle {
                         anchors.fill: parent
-                        visible: !tile.modelData.isNew
+                        visible: !tile.modelData.isNew && !tile.expose
                         radius: surface.radius
                         color: Theme.chip
 
@@ -815,6 +836,7 @@ FocusScope {
 
                 // Hover and drop feedback around the whole tile.
                 Rectangle {
+                    visible: !tile.expose
                     x: surface.x - 3
                     y: surface.y - 3
                     width: surface.width + 6

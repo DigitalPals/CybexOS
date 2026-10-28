@@ -194,6 +194,21 @@ SettingsPage {
                     }
                 }
             }
+            // A whole look rather than one value: the Mac-like style overrides
+            // the colors, font, glass, menubar, dock and window chrome below
+            // without changing them, so Cybex brings every choice back.
+            PickerRow {
+                width: parent.width
+                label: I18n.tr("Desktop style")
+                settingKey: "desktopStyle"
+                hint: Settings.macStyle
+                    ? "Mac-like colors, font, menubar, dock and window buttons. Cybex restores your own choices"
+                    : "Cybex OS's own look, as set on this page"
+                model: [
+                    { value: "cybex", label: I18n.tr("Cybex") },
+                    { value: "mac", label: I18n.tr("Mac-like") }
+                ]
+            }
             PickerRow {
                 width: parent.width
                 label: I18n.tr("Mode")
@@ -212,7 +227,8 @@ SettingsPage {
                     : "Translucent panels with background blur"
                 hintTone: Settings.glassApplyError ? "error" : "info"
                 disabledReason: Settings.highContrast
-                    ? "Off while High contrast is on" : ""
+                    ? "Off while High contrast is on"
+                    : Settings.macStyle && !Settings.glassEnabled ? "On with the Mac-like style" : ""
             }
         }
 
@@ -229,6 +245,7 @@ SettingsPage {
                 width: parent.width
                 label: I18n.tr("Interface font")
                 settingKey: "font"
+                disabledReason: Settings.macStyle ? "Inter with the Mac-like style" : ""
                 model: Settings.fontChoices.map(choice => ({
                     value: choice.id, label: choice.label
                 }))
@@ -289,6 +306,7 @@ SettingsPage {
                 width: parent.width
                 label: I18n.tr("Accent source")
                 settingKey: "paletteMode"
+                disabledReason: Settings.macStyle ? "Mac colors with the Mac-like style" : ""
                 // Returning to the wallpaper restores the fixed accent too:
                 // it is hidden under Wallpaper, and a reset should not leave
                 // a changed value out of sight.

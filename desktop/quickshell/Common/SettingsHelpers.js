@@ -6,6 +6,12 @@ var VERSION = 30;
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
 
+// The desktop's overall look (Settings → Appearance → Desktop style). "mac"
+// overrides the colours, font, menubar, dock, launcher, overview, window
+// corners and title bars with a Mac-like presentation without changing any of
+// the individual choices it covers; switching back restores them as they were.
+var DESKTOP_STYLES = ["cybex", "mac"];
+
 // The edge drawer's tabs, in default strip order. Overview is the drawer's
 // front door — the Cybex OS button and the session footer live there — so it
 // can be reordered but never disabled.
@@ -68,6 +74,7 @@ var FONT_CHOICES = [
     { id: "urbanist", label: "Urbanist", family: "Urbanist" },
     { id: "oppo", label: "OPPO Sans 4.0", family: "OPPO Sans 4.0" },
     { id: "plex", label: "IBM Plex Sans", family: "IBM Plex Sans" },
+    { id: "inter", label: "Inter", family: "Inter" },
     { id: "mono", label: "JetBrainsMono Nerd Font", family: "JetBrainsMono Nerd Font" }
 ];
 
@@ -406,6 +413,7 @@ function defaults() {
         barHeight: 36,
         barRadius: 11,
         font: "mono",
+        desktopStyle: "cybex",
         accent: "#60a5fa",
         paletteMode: "wallpaper",
         // The named theme applied last ("" for none) and its explicit
@@ -777,6 +785,29 @@ var THEME_FALLBACKS = {
     light: { background: "#eae9ef", text: "#1f1d2b", red: "#c22f2f", amber: "#b5761e",
         green: "#1f9d57" }
 };
+
+// The Mac-like desktop style's surfaces, inks and accents, after Apple's
+// published system colours. They are a theme palette in every other respect:
+// Theme.qml derives the rest of its ladder from them as it does for a named
+// theme, and every contrast floor still applies.
+var MAC_PALETTES = {
+    dark: { mode: "dark", background: "#1e1e1e", surface: "#2a2a2c", surfaceRaised: "#353537",
+        text: "#f5f5f7", textMuted: "#aeaeb2", textDim: "#8e8e93",
+        red: "#ff453a", amber: "#ff9f0a", green: "#32d74b" },
+    light: { mode: "light", background: "#ececec", surface: "#f5f5f7", surfaceRaised: "#ffffff",
+        text: "#1d1d1f", textMuted: "#6e6e73", textDim: "#86868b",
+        red: "#ff3b30", amber: "#ff9500", green: "#28cd41" }
+};
+var MAC_ACCENTS = { dark: "#0a84ff", light: "#007aff" };
+var MAC_FONT = "inter";
+
+function macPalette(mode) {
+    return themePaletteIn(MAC_PALETTES[mode === "light" ? "light" : "dark"]);
+}
+
+function macAccent(mode) {
+    return MAC_ACCENTS[mode === "light" ? "light" : "dark"];
+}
 
 function defaultThemePalette() {
     var out = { mode: "" };
@@ -1432,6 +1463,7 @@ function merge(raw, context) {
         barHeight: intIn(parsed.barHeight, 28, 60, 1, d.barHeight),
         barRadius: intIn(parsed.barRadius, 0, 30, 1, d.barRadius),
         font: enumIn(parsed.font, FONT_IDS, d.font),
+        desktopStyle: enumIn(parsed.desktopStyle, DESKTOP_STYLES, d.desktopStyle),
         accent: hexIn(parsed.accent, d.accent),
         paletteMode: migratePaletteMode(parsed, d.paletteMode),
         theme: themeIdIn(parsed.theme),
@@ -1760,6 +1792,12 @@ var exported = {
     VERSION: VERSION,
     BAR_STYLES: BAR_STYLES,
     PALETTE_MODES: PALETTE_MODES,
+    DESKTOP_STYLES: DESKTOP_STYLES,
+    MAC_PALETTES: MAC_PALETTES,
+    MAC_ACCENTS: MAC_ACCENTS,
+    MAC_FONT: MAC_FONT,
+    macPalette: macPalette,
+    macAccent: macAccent,
     MODULE_IDS: MODULE_IDS,
     RETIRED_MODULE_IDS: RETIRED_MODULE_IDS,
     CONNECTED_WIDGET_IDS: CONNECTED_WIDGET_IDS,

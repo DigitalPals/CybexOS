@@ -24,6 +24,7 @@ file; personal modules and persistent data are separate from vendor releases.
 - [Independent updates](docs/updates.md)
 - [Personal configuration and plugin development](docs/customization.md)
 - [Wallpapers and the shared picker](docs/wallpapers.md)
+- [Mac-like desktop style](docs/mac-style.md)
 - [Welcome guide](docs/welcome.md)
 - [Cybex OS Assistant](docs/assistant.md)
 - [Release publishing and signing keys](docs/releasing.md)

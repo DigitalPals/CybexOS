@@ -199,7 +199,9 @@ Item {
         // for the panels that are wider than the chips that open them. The
         // edge drawer skips all of that: it keeps a small inset from the screen edge no
         // matter which glyph opened its tab.
-        const centred = anchor.x + anchor.width / 2 - bodyW / 2;
+        // A menubar menu hangs from its title's left edge instead.
+        const centred = PanelRegistry.alignStart(Popouts.currentName)
+            ? anchor.x : anchor.x + anchor.width / 2 - bodyW / 2;
         const bodyX = rightEdgePanel
             ? Math.max(edgeMargin, Math.round(host.width - edgeMargin - bodyW))
             : Math.round(clamp(centred, edgeMargin,

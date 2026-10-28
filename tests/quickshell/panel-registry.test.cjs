@@ -192,7 +192,7 @@ test("panels no module owns are exactly the ones the bar sweep must skip", () =>
     // The Tailscale bug in one assertion: an ownerless panel left in the
     // sweep gets closed by any unrelated module change.
     assert.deepEqual(R.PANELS.filter(p => R.ownerless(p.name)).map(p => p.name).sort(),
-        ["overflow", "settings", "tailscale"]);
+        ["macapp", "macsystem", "macwindow", "overflow", "settings", "tailscale"]);
 });
 
 test("the behaviour flags are carried deliberately", () => {
@@ -201,7 +201,9 @@ test("the behaviour flags are carried deliberately", () => {
     // A new carrier means a new deliberate entry here.
     const expected = {
         centerAnchored: ["calendar", "weather"],
-        fillsBody: []
+        fillsBody: [],
+        // The Mac-like menubar's menus hang from their titles.
+        alignStart: ["macapp", "macsystem", "macwindow"]
     };
     for (const [flag, carriers] of Object.entries(expected)) {
         const carrying = R.PANELS.filter(p => p[flag]).map(p => p.name).sort();

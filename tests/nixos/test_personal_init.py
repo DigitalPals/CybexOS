@@ -1,6 +1,7 @@
 """Exercise absent-only personal seeding and private SSH permissions."""
 import importlib.machinery
 import importlib.util
+import os
 from pathlib import Path
 import stat
 import tempfile
@@ -54,6 +55,17 @@ class PersonalInitTests(unittest.TestCase):
         self.assertEqual(config.read_text(), 'Host personal\n  HostName example.invalid\n')
         self.assertEqual(preference.read_text(), 'personal preference\n')
         self.assertEqual((skill / 'SKILL.md').read_text(), 'User-authored skill\n')
+
+    def test_gtk_stylesheets_import_the_desktop_style_and_stay_personal(self):
+        self.seed(False)
+        state = Path(os.environ.get('XDG_STATE_HOME') or self.home / '.local/state') / 'cybexos/theme'
+        for version in ('3.0', '4.0'):
+            css = self.home / f'.config/gtk-{version}/gtk.css'
+            self.assertEqual(css.read_text().splitlines()[0], f'@import url("file://{state}/gtk-{version}.css");')
+        own = self.home / '.config/gtk-4.0/gtk.css'
+        own.write_text('headerbar { min-height: 30px; }\n')
+        self.seed(False)
+        self.assertEqual(own.read_text(), 'headerbar { min-height: 30px; }\n')
 
     def test_no_ssh_agent_integration_without_proprietary_choice(self):
         self.seed(False)

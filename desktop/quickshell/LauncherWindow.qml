@@ -37,8 +37,10 @@ PanelWindow {
     // The card's top edge stays put while the result list grows and
     // shrinks; it sits where the fully populated compact launcher would
     // centre (tabs, search tile and eight single-line rows).
-    readonly property real cardTop: Math.max(24,
-        Math.round((root.outputHeight - launcherView.fullHeight) / 2))
+    // Spotlight (the Mac-like style) hangs in the upper part of the screen.
+    readonly property real cardTop: Math.max(24, Theme.macStyle
+        ? Math.round(root.outputHeight * 0.18)
+        : Math.round((root.outputHeight - launcherView.fullHeight) / 2))
 
     // Placed from the output's top-left corner rather than centred by the
     // compositor, so the card lands exactly where the full-output overlay

@@ -71,6 +71,7 @@ var ROWS = [
     { page: "security", pageLabel: "Security", group: "Fingerprint", label: "Add fingerprint", key: "", terms: "fingerprint reader fprintd enrol enroll finger biometric remove" },
     { page: "security", pageLabel: "Security", group: "Fingerprint", label: "Use fingerprint to unlock and authorise", key: "", terms: "fingerprint lock screen sudo polkit password authentication authorize login" },
     { page: "security", pageLabel: "Security", group: "Security keys", label: "Add security key", key: "", terms: "yubikey fido2 u2f hardware token key lock screen sudo polkit two factor remove" },
+    { page: "appearance", pageLabel: "Appearance", group: "Theme", label: "Desktop style", key: "desktopStyle", terms: "mac macos apple look traffic lights menubar dock cybex" },
     { page: "appearance", pageLabel: "Appearance", group: "Theme", label: "Mode", key: "themeMode", terms: "dark light theme" },
     { page: "appearance", pageLabel: "Appearance", group: "Theme", label: "Glass effect", key: "glassEnabled", terms: "blur translucent transparent" },
     { page: "appearance", pageLabel: "Appearance", group: "Text & size", label: "Interface font", key: "font", terms: "typeface figtree mono typography" },

@@ -29,7 +29,10 @@ The stable top-level setting families are:
 - Appearance: theme, glass, contrast, motion, text scale, density, bar color,
   font, accent, and palette fields. `theme` and `themePalette` record the
   named theme applied last; change them with `cybex theme apply ID`, which
-  sets every value a theme owns together.
+  sets every value a theme owns together. `desktopStyle` (`"cybex"` or
+  `"mac"`) selects the Mac-like desktop style, which overrides the colors,
+  font, glass, menubar, dock, launcher, overview and window chrome without
+  changing the stored values it covers (docs/mac-style.md).
 - Bar: `position`, `barStyle`, `gap`, `barHeight`, `barRadius`, `autoHide`, and
   `exclusive`; the optional dock's `dock`, `dockAutoHide`, and `dockPinned`
   (desktop entry ids, a complete ordered list).

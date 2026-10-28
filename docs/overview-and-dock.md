@@ -36,7 +36,9 @@ fade and scale into a cut.
 ## Dock
 
 The dock appears automatically on each screen whose current workspace uses
-the Floating layout. Switching that screen to Tiled or Scrolling removes its
+the Floating layout. The [Mac-like desktop style](mac-style.md) shows it in
+every layout, draws it as a Mac dock and opens the overview as Mission
+Control. Switching that screen to Tiled or Scrolling removes its
 dock. **Settings → Bar → Dock → Show in all layouts** also shows it in other
 layouts; existing saved choices for that switch are retained. Auto-hide is
 available in either case, and changing layout never changes your pins.

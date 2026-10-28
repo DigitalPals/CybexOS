@@ -124,7 +124,9 @@ test("overview motion uses the shared tokens, which reduced motion zeroes", () =
 test("the dock follows each monitor's live workspace and saved layout", () => {
     assert.match(shell, /model: Screens\.layerSurfaceModel\.filter\(output => \{/);
     assert.match(shell, /const monitor = Hyprland\.monitorFor\(output\.screen\)/);
-    assert.match(shell, /DockHelpers\.showOnWorkspace\(Settings\.dock, active,\s*DesktopWorkspaces\.workspace\(active \? active\.id : 0\)\)/);
+    // Through the effective value: the Mac-like desktop style shows the dock
+    // in every layout.
+    assert.match(shell, /DockHelpers\.showOnWorkspace\(Settings\.effectiveDock, active,\s*DesktopWorkspaces\.workspace\(active \? active\.id : 0\)\)/);
     assert.equal((shell.match(/\bDock\./g) || []).length, 0, "naming the singleton would construct it");
     assert.match(dockWindow, /WlrLayershell\.namespace: "qs-dock"/);
     assert.match(dockWindow, /anchors\.bottom: true/);
@@ -244,7 +246,7 @@ test("ending a process is confirmed, signals by start time, and escalates only w
 test("both surfaces skip layer animations; only the dock is blurred", () => {
     const noAnim = look.match(/name = "quickshell-no-animation",\s*match = \{ namespace = \[\[([^\]]+)\]\] \}/);
     assert.ok(noAnim);
-    assert.match(noAnim[1], /\|overview\|dock\|assistant\|/);
+    assert.match(noAnim[1], /\|overview\|dock\|minimize\|assistant\|/);
     // The welcome guide and its resume pill fade themselves.
     assert.match(noAnim[1], /\|welcome\|welcome-resume\)\$$/);
     const blur = look.match(/name = "quickshell-blur",[\s\S]*?namespace = \[\[([^\]]+)\]\]/);

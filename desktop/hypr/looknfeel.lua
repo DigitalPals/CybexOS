@@ -20,7 +20,9 @@ local function persisted_glass_enabled()
   local function enabled(key)
     return contents:match('[,{]%s*"' .. key .. '"%s*:%s*(%a+)') == "true"
   end
-  return enabled("glassEnabled") and not enabled("highContrast")
+  -- The Mac-like desktop style is glass too (Settings.effectiveGlass).
+  local mac = contents:match('[,{]%s*"desktopStyle"%s*:%s*"mac"') ~= nil
+  return (enabled("glassEnabled") or mac) and not enabled("highContrast")
 end
 
 hl.config({
@@ -45,7 +47,8 @@ hl.config({
       enabled = true, size = 6, passes = 1, new_optimizations = true,
       vibrancy = 0.25, noise = 0.012,
     },
-    shadow = { enabled = true, range = 4, render_power = 3, color = "rgba(1a1917ee)" },
+    shadow = { enabled = true, range = 4, render_power = 3, color = "rgba(1a1917ee)",
+               color_inactive = "rgba(1a1917ee)" },
   },
   animations = { enabled = true },
   -- SDDM owns crash recovery: a new desktop requires a new authenticated login.
@@ -93,7 +96,9 @@ local system_theme = rawget(_G, "__cybexos_system_theme") or {}
 _G.__cybexos_system_theme = system_theme
 local THEME_KEYS = {
   "general.col.active_border", "general.col.inactive_border",
-  "decoration.shadow.color",
+  "decoration.shadow.color", "decoration.shadow.color_inactive",
+  "decoration.rounding_power", "decoration.shadow.range",
+  "decoration.shadow.render_power", "decoration.shadow.offset",
   "group.col.border_active", "group.col.border_inactive",
   "group.col.border_locked_active", "group.col.border_locked_inactive",
   "group.groupbar.col.active", "group.groupbar.col.inactive",
@@ -102,6 +107,18 @@ local THEME_KEYS = {
   "group.groupbar.text_color_locked_active", "group.groupbar.text_color_locked_inactive",
 }
 local THEME_MAX_BYTES = 65536
+-- The desktop style's shapes (theme_hyprland.py). Every other key is a colour.
+local THEME_NUMBERS = {
+  ["decoration.rounding_power"] = { 1, 10 },
+  ["decoration.shadow.range"] = { 0, 200, true },
+  ["decoration.shadow.render_power"] = { 1, 4, true },
+}
+local THEME_VECTORS = { ["decoration.shadow.offset"] = { -200, 200 } }
+
+local function theme_number(value, range)
+  return type(value) == "number" and value >= range[1] and value <= range[2]
+    and (not range[3] or value == math.floor(value))
+end
 
 local function system_theme_path()
   local state = os.getenv("XDG_STATE_HOME")
@@ -139,7 +156,18 @@ local function read_system_theme(path)
       node = node[part]
     end
     if node ~= nil then
-      if type(node) ~= "string" or not (node:match("^rgb%(%x%x%x%x%x%x%)$")
+      if THEME_NUMBERS[key] then
+        if not theme_number(node, THEME_NUMBERS[key]) then
+          error(path .. ": " .. key .. " is out of range", 0)
+        end
+      elseif THEME_VECTORS[key] then
+        local range = THEME_VECTORS[key]
+        if type(node) ~= "table" or #node ~= 2 or not theme_number(node[1], range)
+            or not theme_number(node[2], range) then
+          error(path .. ": " .. key .. " is not a pair of numbers", 0)
+        end
+        node = { node[1], node[2] }
+      elseif type(node) ~= "string" or not (node:match("^rgb%(%x%x%x%x%x%x%)$")
           or node:match("^rgba%(%x%x%x%x%x%x%x%x%)$")) then
         error(path .. ": " .. key .. " is not rgb(rrggbb) or rgba(rrggbbaa)", 0)
       end
@@ -165,15 +193,18 @@ local function apply_system_theme(values)
 end
 
 -- What each key holds now, comparable across calls: hl.get_config returns a
--- colour as "0xAARRGGBB" and a gradient as { colors = {...}, angle = n }.
+-- colour as "0xAARRGGBB", a gradient as { colors = {...}, angle = n } and a
+-- vector as a table of two numbers.
 local function system_theme_snapshot()
   local snapshot = {}
   if type(hl.get_config) ~= "function" then return snapshot end
   for _, key in ipairs(THEME_KEYS) do
     local ok, value = pcall(hl.get_config, key)
-    if ok and type(value) == "table" then
+    if ok and type(value) == "table" and type(value.colors) ~= "table" then
+      value = tostring(value.x or value[1]) .. " " .. tostring(value.y or value[2])
+    elseif ok and type(value) == "table" then
       local colors = {}
-      for i, color in ipairs(type(value.colors) == "table" and value.colors or {}) do
+      for i, color in ipairs(value.colors) do
         colors[i] = tostring(color)
       end
       value = table.concat(colors, " ") .. " " .. tostring(value.angle)
@@ -221,7 +252,7 @@ hl.animation({ leaf = "workspaces", enabled = true, speed = 6, bezier = "default
 -- instantaneous so the menubar itself never replays a layer animation.
 hl.layer_rule({
   name = "quickshell-no-animation",
-  match = { namespace = [[^qs-(bar|bar-popout|launcher|notifications|osd|shortcuts|wallpaper|overview|dock|assistant|welcome|welcome-resume)$]] },
+  match = { namespace = [[^qs-(bar|bar-popout|launcher|notifications|osd|shortcuts|wallpaper|overview|dock|minimize|assistant|welcome|welcome-resume)$]] },
   no_anim = true,
 })
 

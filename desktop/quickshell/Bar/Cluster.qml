@@ -100,9 +100,10 @@ Item {
                     readonly property string isle: root.col
                     // Filled group kinds (the clock pill, the status glyph
                     // run) rest on a visible chip per the edge-drawer design;
-                    // the rest stay transparent furniture.
-                    readonly property bool filled:
-                        SettingsHelpers.groupFilled(group.kind)
+                    // the rest stay transparent furniture. A Mac menubar's
+                    // status items are all bare.
+                    readonly property bool filled: !Theme.macStyle
+                        && SettingsHelpers.groupFilled(group.kind)
                     readonly property real pad: filled ? 5 : 0
 
                     width: slotRow.implicitWidth + pad * 2

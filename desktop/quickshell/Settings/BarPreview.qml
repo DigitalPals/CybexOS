@@ -44,7 +44,7 @@ Item {
     // the screen edge (under the bar) when it does not: Reserve space and
     // Auto-hide show here as the window moving.
     readonly property real windowInset: Math.round(BarGeometry.exclusiveZone({
-            style: Settings.barStyle,
+            style: Settings.effectiveBarStyle,
             gap: Settings.gap,
             height: Theme.barHeight,
             autoHide: Settings.autoHide,

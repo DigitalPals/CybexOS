@@ -71,6 +71,7 @@ Singleton {
     property int barHeight: defaults.barHeight
     property int barRadius: defaults.barRadius
     property string font: defaults.font
+    property string desktopStyle: defaults.desktopStyle
     property string accent: defaults.accent
     property string paletteMode: defaults.paletteMode
     property string theme: defaults.theme
@@ -182,9 +183,27 @@ Singleton {
     // Fixed choices stay available while wallpaper mode is active. Theme
     // selects Palette's roles when they are ready and falls back to these
     // values without changing paletteMode when Matugen is unavailable.
-    readonly property string effectiveAccent: accent
+    //
+    // The Mac-like desktop style overrides the choices below without changing
+    // them: views and Theme read these effective values, never the stored ones
+    // the style covers, so switching back to the Cybex style restores every
+    // choice exactly as it was.
+    readonly property bool macStyle: desktopStyle === "mac"
+    readonly property string effectiveAccent: macStyle
+        ? SettingsHelpers.macAccent(themeMode) : accent
     readonly property string effectiveBarColor: SettingsHelpers.resolveBarColor(
-        barColorMode, themeMode, barCustomHue, barCustomSaturation, barCustomLightness)
+        macStyle ? "macos" : barColorMode, themeMode,
+        barCustomHue, barCustomSaturation, barCustomLightness)
+    readonly property string effectiveFont: macStyle ? SettingsHelpers.MAC_FONT : font
+    readonly property string effectivePaletteMode: macStyle ? "fixed" : paletteMode
+    readonly property var effectiveThemePalette: macStyle
+        ? SettingsHelpers.macPalette(themeMode) : themePalette
+    readonly property string effectiveBarStyle: macStyle ? "attached" : barStyle
+    // Translucency is part of the Mac look: its menubar, dock and menus are
+    // glass. High contrast still turns it off (Theme.glassActive).
+    readonly property bool effectiveGlass: glassEnabled || macStyle
+    // A Mac-like desktop always has its dock, in every layout.
+    readonly property bool effectiveDock: dock || macStyle
     readonly property bool modsModified:
         JSON.stringify(mods) !== JSON.stringify(defaults.mods)
 
@@ -278,7 +297,7 @@ Singleton {
         wallpaper: ["wall", "wallDir", "shuffle"],
         appearance: ["themeMode", "glassEnabled", "highContrast", "reducedMotion",
             "textScale", "interfaceDensity", "shellFontSize", "shellScale", "surfaceBorderMode", "surfaceBorderColor", "surfaceBorderWidth", "surfaceBorderOpacity", "surfaceCornerRadius",
-            "font", "accent", "paletteMode", "theme", "themePalette",
+            "font", "accent", "paletteMode", "theme", "themePalette", "desktopStyle",
             "pluginScale", "pluginBorderMode", "pluginBorderColor", "pluginBorderWidth", "pluginBorderOpacity", "pluginRadius", "pluginThemeOverrides"],
         // The widget layout and every widget's options belong to the Bar
         // page, which also owns the bar's background color.
@@ -945,6 +964,10 @@ Singleton {
         scheduleSave();
         applyGlassEffect();
     }
+    onDesktopStyleChanged: {
+        scheduleSave();
+        applyGlassEffect();
+    }
     onReducedMotionChanged: scheduleSave()
     onShellFontSizeChanged: scheduleSave()
     onShellScaleChanged: scheduleSave()
@@ -1088,7 +1111,7 @@ Singleton {
     function applyGlassEffect() {
         if (!loaded || glassApplyProc.running)
             return;
-        dispatchedGlassEnabled = glassEnabled && !highContrast;
+        dispatchedGlassEnabled = effectiveGlass && !highContrast;
         glassApplyProc.command = ["hyprctl", "eval",
             "quickshell_blur_rule:set_enabled("
                 + (dispatchedGlassEnabled ? "true" : "false") + ")"];
@@ -1120,7 +1143,7 @@ Singleton {
             root.glassApplyError = code !== 0;
             if (code !== 0)
                 console.warn("could not apply compositor glass effect:", code);
-            if (root.dispatchedGlassEnabled !== (root.glassEnabled && !root.highContrast))
+            if (root.dispatchedGlassEnabled !== (root.effectiveGlass && !root.highContrast))
                 glassReplayTimer.restart();
         }
     }

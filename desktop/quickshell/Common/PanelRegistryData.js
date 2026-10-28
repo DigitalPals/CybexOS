@@ -35,9 +35,13 @@
 //                        name that routes into Popovers/Drawer/DrawerPopover.qml
 //                        names one, which is also how the drawer knows what to
 //                        show
+//   alignStart           the surface's left edge lines up with its trigger's,
+//                        as a menubar menu hangs from its title (the Mac-like
+//                        style's menus)
 
 var DRAWER_SOURCE = "Popovers/Drawer/DrawerPopover.qml";
 var DAY_SHEET_SOURCE = "Popovers/DaySheetPopover.qml";
+var MAC_MENU_SOURCE = "Popovers/MacMenuPopover.qml";
 
 var PANELS = [
     // The Control Dashboard. One surface, six tabs; each established status
@@ -70,6 +74,13 @@ var PANELS = [
     { name: "fusebox", island: "right", moduleId: "fusebox", source: "Popovers/FuseboxPopover.qml" },
     { name: "github", island: "right", moduleId: "gh", source: "Popovers/GitHubPopover.qml" },
     { name: "overflow", island: "right", moduleId: "", source: "Popovers/OverflowPopover.qml" },
+
+    // The Mac-like desktop style's menubar menus: the system menu, the front
+    // app's menu and the Window menu. Bar.qml draws their titles; no module
+    // owns them.
+    { name: "macsystem", island: "left", moduleId: "", source: MAC_MENU_SOURCE, alignStart: true },
+    { name: "macapp", island: "left", moduleId: "", source: MAC_MENU_SOURCE, alignStart: true },
+    { name: "macwindow", island: "left", moduleId: "", source: MAC_MENU_SOURCE, alignStart: true },
 
     // Compatibility route for bar actions and `popouts open settings` IPC.
     // Popouts forwards it to the independent window before mapping a popout.
@@ -161,6 +172,11 @@ function nameForTab(tab) {
     return "";
 }
 
+function alignStart(name) {
+    var panel = byName(name);
+    return !!(panel && panel.alignStart);
+}
+
 function fillsBody(name) {
     var panel = byName(name);
     return !!(panel && panel.fillsBody);
@@ -198,6 +214,7 @@ var exported = {
     drawerTab: drawerTab,
     nameForTab: nameForTab,
     fillsBody: fillsBody,
+    alignStart: alignStart,
     islandMap: islandMap,
     sourceMap: sourceMap
 };

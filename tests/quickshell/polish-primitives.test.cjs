@@ -53,7 +53,7 @@ test("clock and weather share one filled time pill with their own targets", () =
         /indicators:\s*"solo", clock:\s*"time", weather:\s*"time"/);
     assert.match(helpers, /FILLED_GROUP_KINDS = \["time", "status"\]/);
     assert.match(cluster,
-        /filled:\s*\n?\s*SettingsHelpers\.groupFilled\(group\.kind\)/,
+        /filled:\s*!Theme\.macStyle\s*\n?\s*&& SettingsHelpers\.groupFilled\(group\.kind\)/,
         "the pill fill decision must come from the shared helper");
     assert.match(cluster, /color:\s*filled \? Theme\.barChip : "transparent"/);
     assert.doesNotMatch(cluster, /kind === "center"|center:\s*"notifications"/);
@@ -161,7 +161,9 @@ test("menubar icons keep bright system ink and shared monochrome brands", () => 
     assert.match(brand, /normalizeTintSource:\s*true/,
         "bar brands must not inherit luminance from canonical source paint");
 
-    assert.equal((bar.match(/idleColor:\s*Theme\.barIcon/g) || []).length, 1,
+    // The launcher button and the Mac-like menubar's search glyph that
+    // replaces it.
+    assert.equal((bar.match(/idleColor:\s*Theme\.barIcon/g) || []).length, 2,
         "the launcher keeps the shared resting icon tone");
     const control = read("Bar/Modules/Control.qml");
     assert.match(control,

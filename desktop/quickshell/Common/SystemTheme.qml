@@ -65,6 +65,10 @@ Singleton {
             size: Common.Theme.fontBaseSize},
         radius: Common.Theme.surfaceRadius,
         glass: Common.Theme.glassActive,
+        // The desktop style: "mac" gives windows Mac-like corners, shadows,
+        // title bars and GTK window buttons (theme_hyprland, theme_gtk and the
+        // title bars in desktop/hypr/workspaces.lua).
+        style: Settings.desktopStyle,
         wallpaper: Settings.wall !== "" ? Common.Wallpaper.currentIdentity : Common.Wallpaper.defaultPath
     })
     readonly property string serialized: JSON.stringify(tokens)
