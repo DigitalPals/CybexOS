@@ -58,6 +58,8 @@ function dataKeys() {
         add(row.pageLabel);
     }
     const updates = load("UpdatesHelpers.js");
+    for (const label of Object.values(updates.PREPARATION_LABELS))
+        add(label);
     for (const value of Object.values(updates.COMPONENTS)) {
         add(value.label);
         add(value.detail);

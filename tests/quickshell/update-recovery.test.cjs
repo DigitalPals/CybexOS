@@ -4,6 +4,40 @@ const { load } = require("./shell.cjs");
 const H = load("UpdatesHelpers.js");
 const available = { upstream: { state: "available", available: "new revision" }, cybexos: { state: "unavailable" } };
 
+test("progress distinguishes compilation from measured downloads and handles old workers", () => {
+    const deployment = {state: "building", progress: {schema: 1, active: true, step: "downloading",
+        downloads: {doneBytes: 25e6, expectedBytes: 100e6, active: 2, totalKnown: true},
+        builds: {done: 3, expected: 9, active: 0}, components: []}};
+    let result = H.preparation(deployment);
+    assert.equal(result.label, "Downloading packages");
+    assert.equal(result.fraction, 0.25);
+    deployment.progress.builds.active = 1;
+    deployment.progress.components = ["window-manager"];
+    result = H.preparation(deployment);
+    assert.equal(result.label, "Compiling window manager");
+    assert.equal(result.fraction, -1, "download bytes are not compilation completion");
+    deployment.state = "validating";
+    assert.equal(H.preparation(deployment).label, "Checking compatibility");
+    assert.equal(H.preparation(deployment).fraction, -1);
+    assert.equal(H.preparation({state:"discovering"}).label, "Preparing update sources");
+    assert.equal(H.preparation({state:"building"}).fraction, -1);
+});
+
+test("unknown totals and malformed telemetry never produce a fake percentage or private label", () => {
+    for (const progress of [null, {}, {schema:1, active:true, step:"secret module", components:["private url"],
+        downloads:{active:1, doneBytes:10, expectedBytes:100}}, {schema:1, active:true, downloads:{active:1,
+        doneBytes:200, expectedBytes:100, totalKnown:true}}, {schema:1, active:true,
+        downloads:{active:1, doneBytes:-1, expectedBytes:NaN, totalKnown:true}, builds:{active:Infinity}}]) {
+        const result = H.preparation({state:"building", progress});
+        assert.equal(result.fraction, -1);
+        assert.doesNotMatch(result.label, /private|secret/);
+    }
+    assert.equal(H.elapsed(294), "4:54");
+    assert.equal(H.elapsed(3661), "1:01:01");
+    assert.equal(H.elapsed(-1), "0:00");
+    assert.equal(H.downloadSize(25e6), "25.0 MB");
+});
+
 test("source scope includes only confirmed and explicitly selected updates", () => {
     assert.equal(H.scope(available, ["upstream", "cybexos"]), "upstream");
     assert.equal(H.scope(available, ["cybexos"]), "");

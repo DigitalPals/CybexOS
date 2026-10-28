@@ -16,6 +16,7 @@ Item {
     readonly property string page: service.page
     readonly property string problem: service.problem
     readonly property var deployment: service.deployment
+    readonly property var preparation: Helpers.preparation(deployment)
     readonly property bool update: (deployment.changeKind || "update") === "update"
     readonly property var installed: service.installedComponents
     readonly property var vendor: service.sourcesLoaded ? service.sources.cybexos : ({})
@@ -40,7 +41,7 @@ Item {
             ? I18n.format("Cybex OS %1 and new NixOS packages are available.", [vendor.available])
             : vendor.state === "available" ? I18n.format("Cybex OS %1 is available.", [vendor.available])
             : I18n.tr("New NixOS packages are available.");
-        return lead + " " + I18n.tr("Download the update to see exactly what changes. Nothing is installed until you choose to.");
+        return lead + " " + I18n.tr("Prepare the update to see exactly what changes. Nothing is installed until you choose to.");
     }
 
     function info() {
@@ -56,7 +57,7 @@ Item {
                 body: availableBody() };
         case "preparing":
             return { tone: "accent", busy: true, title: I18n.tr("Getting the update ready"),
-                body: I18n.tr("Downloading and checking it in the background. Nothing changes on your computer until you choose Install.") };
+                body: I18n.tr("Downloading packages, building components when needed, and checking compatibility. Nothing changes until you choose Install.") };
         case "installing":
             return { tone: "accent", busy: true, title: I18n.tr("Installing the update"),
                 body: I18n.tr("This takes a few minutes. Keep your computer on. The desktop may restart briefly; this window opens again by itself.") };
@@ -136,6 +137,9 @@ Item {
         busy: root.current.busy
         title: root.current.title
         body: root.current.body
+        progress: root.page === "preparing" ? root.preparation.fraction : -1
+        progressLabel: root.page !== "preparing" ? root.current.title : root.preparation.fraction >= 0
+            ? I18n.tr("Download progress") : I18n.tr("Update preparation progress")
 
         // Preparation steps follow the worker's phases.
         Row {
@@ -144,7 +148,7 @@ Item {
             spacing: Theme.scaled(18)
             Repeater {
                 model: [
-                    { label: I18n.tr("Download"), done: root.deployment.state === "validating", active: root.deployment.state !== "validating" },
+                    { label: I18n.tr("Download and build"), done: root.deployment.state === "validating", active: root.deployment.state !== "validating" },
                     { label: I18n.tr("Check compatibility"), done: false, active: root.deployment.state === "validating" },
                     { label: I18n.tr("Ready to review"), done: false, active: false }
                 ]
@@ -167,6 +171,66 @@ Item {
                         font.weight: step.modelData.active ? Theme.weightSemibold : Theme.weightMedium
                     }
                 }
+            }
+        }
+
+        Column {
+            visible: root.page === "preparing"
+            width: parent.width
+            spacing: Theme.scaled(6)
+            Text {
+                objectName: "updateActivity"
+                width: parent.width
+                text: I18n.tr(root.preparation.label)
+                color: Theme.textHi
+                horizontalAlignment: Text.AlignHCenter
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.primary
+                font.weight: Theme.weightSemibold
+                wrapMode: Text.Wrap
+            }
+            Text {
+                objectName: "updateDownloadProgress"
+                visible: !!root.preparation.downloads
+                width: parent.width
+                text: {
+                    const value = root.preparation.downloads;
+                    if (!value) return "";
+                    return value.expected > value.done
+                        ? I18n.format("Downloaded %1 of %2", [Helpers.downloadSize(value.done), Helpers.downloadSize(value.expected)])
+                        : I18n.format("Downloaded %1", [Helpers.downloadSize(value.done)]);
+                }
+                color: Theme.textDim
+                horizontalAlignment: Text.AlignHCenter
+                font.family: Theme.fontNumeric
+                font.pixelSize: Theme.typography.secondary
+                wrapMode: Text.Wrap
+            }
+            Text {
+                objectName: "updateBuildProgress"
+                visible: !!root.preparation.builds
+                width: parent.width
+                text: {
+                    const value = root.preparation.builds;
+                    if (!value) return "";
+                    return value.expected > 0
+                        ? I18n.format("Builds: %1 of %2 complete · %3 running", [value.done, value.expected, value.active])
+                        : I18n.format("Builds: %1 running", [value.active]);
+                }
+                color: Theme.textDim
+                horizontalAlignment: Text.AlignHCenter
+                font.family: Theme.fontNumeric
+                font.pixelSize: Theme.typography.secondary
+                wrapMode: Text.Wrap
+            }
+            Text {
+                objectName: "updateElapsed"
+                width: parent.width
+                text: I18n.format("Elapsed: %1", [Helpers.elapsed(root.deployment.elapsedSeconds)])
+                color: Theme.textDim
+                horizontalAlignment: Text.AlignHCenter
+                font.family: Theme.fontNumeric
+                font.pixelSize: Theme.typography.secondary
             }
         }
 
@@ -350,6 +414,12 @@ Item {
                 onTriggered: root.service.discard()
             }
             UpdateButton {
+                objectName: "updateBuildLog"
+                visible: root.page === "preparing" && !!root.deployment.transaction
+                text: I18n.tr("Build Log")
+                onTriggered: root.service.openLog()
+            }
+            UpdateButton {
                 visible: ["restart", "preparing"].includes(root.page)
                 text: root.page === "restart" ? I18n.tr("Later") : I18n.tr("Close")
                 onTriggered: root.service.close()
@@ -381,7 +451,7 @@ Item {
                     : root.problem === "status" ? true
                     : root.service.actions.prepare)
                 text: root.service.requestPending && !root.service.runActive ? I18n.tr("Waiting for authorization…")
-                    : root.page === "available" ? I18n.tr("Download Update")
+                    : root.page === "available" ? I18n.tr("Prepare Update")
                     : root.page === "restart" ? I18n.tr("Restart Now")
                     : root.page === "confirm" ? I18n.tr("Keep This Version")
                     : root.problem === "rolled-back" ? I18n.tr("OK")
@@ -422,7 +492,7 @@ Item {
                 : root.page === "restart"
                 ? I18n.tr("After you sign in, Cybex OS checks that everything works before it keeps the new version. If your computer can't start it, the next restart uses the previous version.")
                 : root.service.automatic.prepare
-                ? I18n.tr("Updates also download automatically while your computer is plugged in and on an unmetered network.") : ""
+                ? I18n.tr("Updates are also prepared automatically while your computer is plugged in and on an unmetered network.") : ""
             color: Theme.textDim
             horizontalAlignment: Text.AlignHCenter
             font.family: Theme.fontMenu
@@ -490,7 +560,7 @@ Item {
                 spacing: Theme.scaled(2)
                 Text {
                     width: parent.width
-                    text: I18n.tr("Download updates automatically")
+                    text: I18n.tr("Prepare updates automatically")
                     color: Theme.textHi
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.primary
@@ -514,7 +584,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 checked: root.service.automatic.prepare === true
                 enabled: !root.service.choosingAutomatic && root.service.statusLoaded
-                accessibleName: I18n.tr("Download updates automatically")
+                accessibleName: I18n.tr("Prepare updates automatically")
                 onToggled: value => root.service.setAutomatic("prepare", value)
             }
         }

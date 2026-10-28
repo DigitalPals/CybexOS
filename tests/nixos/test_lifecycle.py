@@ -1157,7 +1157,7 @@ class EngineTests(unittest.TestCase):
         prefetch=next(i for i,args in enumerate(self.runner.calls) if args[:3]==('nix','flake','prefetch'))
         update=next(i for i,args in enumerate(self.runner.calls) if args[:3]==('nix','flake','update'))
         self.assertLess(prefetch,update)
-        self.assertIn('narHash=',self.runner.calls[prefetch][-1])
+        self.assertTrue(any('narHash=' in arg for arg in self.runner.calls[prefetch]))
         self.runner.calls.clear()
         self.engine.channel=lambda:(_ for _ in ()).throw(Failure('invalid signature'))
         with self.assertRaises(Failure):self.engine.stage('cybexos')

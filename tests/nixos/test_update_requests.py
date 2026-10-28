@@ -140,6 +140,19 @@ class UpdateRequests(unittest.TestCase):
         self.assertEqual(result['packageChanges'], [])
         self.assertEqual(result['phase'], 'Checking sources')
 
+    def test_elapsed_freezes_after_preparation_and_restarts_for_activation(self):
+        with patch('cybexos.engine.time.time', return_value=100):
+            self.engine.status(transaction='a' * 32, state='building')
+        with patch('cybexos.engine.time.time', return_value=130):
+            self.engine.status(state='ready')
+        for now in (200, 1000):
+            with patch('cybexos.cli.time.time', return_value=now):
+                self.assertEqual(self.status()['elapsedSeconds'], 30)
+        with patch('cybexos.engine.time.time', return_value=1100):
+            self.engine.status(state='activating')
+        with patch('cybexos.cli.time.time', return_value=1110):
+            self.assertEqual(self.status()['elapsedSeconds'], 10)
+
     def test_discard_is_explicit_and_cannot_affect_a_pending_generation(self):
         candidate = self.engine.stage('upstream')
         with self.assertRaises(Failure): self.engine.discard('f' * 32)

@@ -190,8 +190,50 @@ function autoPrepare(hasUpdates, automatic, state, busy) {
     return hasUpdates && !!(automatic || {}).prepare && ["idle", "done"].includes(state || "idle") && !busy;
 }
 
+// Optional worker telemetry. Old workers and malformed counters retain a
+// useful phase label without manufacturing an overall completion percentage.
+const PREPARATION_LABELS = { inputs: "Preparing update sources", evaluating: "Preparing the system",
+    downloading: "Downloading packages", building: "Building system components", checking: "Checking compatibility",
+    "window-manager": "Compiling window manager", "graphics-backend": "Compiling graphics backend",
+    "window-decorations": "Compiling window decorations", desktop: "Building the desktop" };
+
+function preparation(deployment) {
+    const value = deployment || {};
+    const progress = value.progress;
+    const count = n => Number.isSafeInteger(n) && n >= 0 ? n : 0;
+    const fallback = PREPARATION_LABELS[value.state === "validating" ? "checking"
+        : value.state === "discovering" ? "inputs" : "evaluating"];
+    if (!progress || progress.schema !== 1 || progress.active !== true || value.state === "validating")
+        return { label: fallback, fraction: -1, downloads: null, builds: null };
+    const downloads = progress.downloads || {};
+    const builds = progress.builds || {};
+    const d = { done: count(downloads.doneBytes), expected: count(downloads.expectedBytes), active: count(downloads.active) };
+    const b = { done: count(builds.done), expected: count(builds.expected), active: count(builds.active) };
+    const components = Array.isArray(progress.components) ? progress.components : [];
+    const component = components.find(id => ["window-manager", "graphics-backend", "window-decorations", "desktop"].includes(id));
+    const label = b.active ? PREPARATION_LABELS[component || "building"]
+        : d.active ? PREPARATION_LABELS.downloading
+        : ["inputs", "evaluating", "building", "downloading"].includes(progress.step) ? PREPARATION_LABELS[progress.step] : fallback;
+    const measurable = !b.active && d.active > 0 && downloads.totalKnown === true && d.expected > 0 && d.done <= d.expected;
+    return { label: label, fraction: measurable ? d.done / d.expected : -1,
+        downloads: d.active || d.done ? d : null, builds: b.active || b.expected || b.done ? b : null };
+}
+
+function elapsed(seconds) {
+    const value = Number.isFinite(seconds) && seconds >= 0 ? Math.floor(seconds) : 0;
+    const pad = n => String(n).padStart(2, "0");
+    return value >= 3600 ? Math.floor(value / 3600) + ":" + pad(Math.floor(value / 60) % 60) + ":" + pad(value % 60)
+        : Math.floor(value / 60) + ":" + pad(value % 60);
+}
+
+function downloadSize(bytes) {
+    const value = Number.isFinite(bytes) && bytes >= 0 ? bytes : 0;
+    return value >= 1e9 ? (value / 1e9).toFixed(1) + " GB"
+        : value >= 1e6 ? (value / 1e6).toFixed(1) + " MB" : Math.round(value / 1000) + " kB";
+}
+
 if (typeof module !== "undefined") module.exports = {
     active, pending, validSources, validDeployment, scope, scopeLabel, capabilities,
     overviewVisible, indicator, COMPONENTS, component, page, confirmFailed, problem, versionParts,
-    summary, noteItems, sizeChange, targetKey, autoPrepare
+    summary, noteItems, sizeChange, targetKey, autoPrepare, PREPARATION_LABELS, preparation, elapsed, downloadSize
 };

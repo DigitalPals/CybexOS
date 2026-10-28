@@ -100,10 +100,19 @@ def locked(path, *, skip_busy=False):
 class Runner:
     def __init__(self, log=None):
         self.log = log
+        self.observer = None
 
     def __call__(self, *args, cwd=None, capture=True, timeout=7200, input=None, sensitive=False):
         # A fixed system PATH is supplied by the package wrapper; callers never
         # pass shell text or include credentials in argv.
+        def observe(data):
+            if self.observer and not sensitive:
+                # Optional instrumentation must not abort the command.
+                try:
+                    self.observer(data)
+                except Exception:
+                    pass
+
         with subprocess.Popen(list(map(str, args)), cwd=cwd, stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE) as process:
             if input is not None:
@@ -128,10 +137,15 @@ class Runner:
                                 continue
                             if key.data:
                                 output.extend(data)
+                            else:
+                                observe(data)
                             diagnostics.extend(data)
                             if log:
                                 log.write(data)
                                 log.flush()
+                        # Flush throttled trailing events even when a compiler
+                        # is silent for minutes after its activity starts.
+                        observe(b'')
                     code = process.wait(timeout=10)
                 except BaseException:
                     process.kill()

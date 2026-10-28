@@ -105,8 +105,6 @@ def update_status(state=Path('/var/lib/cybexos'), working=Path('/etc/nixos')):
     state, working = Path(state), Path(working)
     status = read(state / 'status.json', {'state': 'idle'})
     now = time.time()
-    status['phaseElapsedSeconds'] = max(0, int(now - status.get('phaseStartedAt', status.get('updatedAt', now))))
-    status['elapsedSeconds'] = max(0, int(now - status.get('startedAt', now)))
     status['installedIdentity'] = digest(working / 'flake.lock') if (working / 'flake.lock').is_file() else ''
     identifiers = {read(state / 'update-request.json', {}).get('id'), status.get('requestId')} - {None, ''}
     requests = [request_status(identifier, state) | {'id': identifier} for identifier in identifiers]
@@ -123,7 +121,12 @@ def update_status(state=Path('/var/lib/cybexos'), working=Path('/etc/nixos')):
         status |= {'state': 'recovery-failed' if recovery else 'interrupted',
                    'phase': 'The update worker stopped. Restore the previous generation before continuing.' if recovery
                             else 'Preparation stopped before applying changes. You can prepare again.',
-                   'error': latest['error'], 'reviewToken': None}
+                   'error': latest['error'], 'reviewToken': None, 'progress': None,
+                   'finishedAt': latest.get('finishedAt', status.get('updatedAt', now))}
+    busy = status.get('state') in ('discovering', 'building', 'validating', 'activating', 'recovering')
+    end = now if busy else status.get('finishedAt') or status.get('updatedAt', now)
+    status['phaseElapsedSeconds'] = max(0, int(end - status.get('phaseStartedAt', end)))
+    status['elapsedSeconds'] = max(0, int(end - status.get('operationStartedAt', status.get('startedAt', end))))
     return status
 
 
@@ -326,8 +329,9 @@ def request():
         # Logs can contain private module diagnostics. Only the authenticated
         # administrator sees them; never copy them to world-readable status.
         with path.open('r', errors='replace') as stream:
+            from .progress import log_line
             for line in stream:
-                sys.stdout.write(line)
+                sys.stdout.write(log_line(line))
         return
     if action == 'retry-failed' and len(values) == 1:
         import re

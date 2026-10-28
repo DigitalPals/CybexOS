@@ -14,6 +14,7 @@ from .common import CommandFailure, Failure, Runner, atomic, link, locked, parse
 from . import inputs
 from .trust import Fetcher, NoPublishedRelease, discover, version
 from . import review
+from .progress import NixProgress
 
 SCOPES = ('upstream', 'cybexos', 'both', 'local')
 BUSY = ('discovering', 'building', 'validating', 'activating', 'recovering')
@@ -128,10 +129,31 @@ class Engine:
         if (values.get('state', previous.get('state')) != previous.get('state')
                 or values.get('phase', previous.get('phase')) != previous.get('phase')):
             previous['phaseStartedAt'] = now
+        state = values.get('state', previous.get('state'))
+        if state in BUSY and previous.get('state') not in BUSY:
+            previous.update(operationStartedAt=now, finishedAt=None, progress=None)
+        elif state not in BUSY:
+            if previous.get('state') in BUSY:
+                previous['finishedAt'] = now
+            values['progress'] = None
         context = getattr(self, 'request_context', {})
         record = previous | values | context | {'updatedAt': now}
         atomic(self.status_path, record, 0o644)
         return record
+
+    def nix(self, *args, step='evaluating', **kwargs):
+        monitor = NixProgress(lambda value: self.status(progress=value), step)
+        observer = getattr(self.run, 'observer', None)
+        self.run.observer = monitor.feed
+        try:
+            return self.run('nix', *args, '--log-format', 'internal-json', **kwargs)
+        finally:
+            self.run.observer = observer
+            # Observation failures must not replace the command's result/error.
+            try:
+                monitor.close()
+            except Exception:
+                pass
 
     def boot_id(self):
         return Path('/proc/sys/kernel/random/boot_id').read_text().strip()
@@ -221,7 +243,7 @@ class Engine:
         self.run('nix-store', '--add-root', roots / name, '--indirect', '-r', path)
 
     def archive(self, config, tx):
-        data = parse(self.run('nix', 'flake', 'archive', '--json', '--no-update-lock-file', f'path:{config}'))
+        data = parse(self.nix('flake', 'archive', '--json', '--no-update-lock-file', f'path:{config}', step='inputs'))
         def retain(node, name):
             self.root(node['path'], name, tx)
             for i, value in enumerate(node.get('inputs', {}).values()):
@@ -255,7 +277,7 @@ class Engine:
                     # rather than checking the NAR only after generating a lock.
                     source = 'github:DigitalPals/CybexOS/' + candidate['revision']
                     source += '?' + urlencode({'narHash': candidate['narHash']})
-                    fetched = parse(self.run('nix', 'flake', 'prefetch', '--json', source))
+                    fetched = parse(self.nix('flake', 'prefetch', '--json', source, step='inputs'))
                     if fetched.get('hash') != candidate['narHash']:
                         raise Failure('Downloaded source does not match its authenticated NAR identity')
                 config = tx / 'config'
@@ -281,7 +303,7 @@ class Engine:
                 old = read(config / 'flake.lock')
                 inputs.validate_machine(old)
                 if scope in ('upstream', 'both'):
-                    self.run('nix', 'flake', 'update', 'nixpkgs', '--flake', f'path:{config}')
+                    self.nix('flake', 'update', 'nixpkgs', '--flake', f'path:{config}', step='inputs')
                 if candidate:
                     flake = config / 'flake.nix'
                     expression = r'(cybexos\.url\s*=\s*")github:DigitalPals/CybexOS/[^"]+("\s*;)'
@@ -289,7 +311,7 @@ class Engine:
                     if count != 1:
                         raise Failure('Machine flake must declare one literal cybexos.url. Keep personal modules in local/.')
                     atomic(flake, text.encode())
-                    self.run('nix', 'flake', 'update', 'cybexos', '--flake', f'path:{config}')
+                    self.nix('flake', 'update', 'cybexos', '--flake', f'path:{config}', step='inputs')
                 new = read(config / 'flake.lock')
                 inputs.validate_delta(old, new, scope)
                 if candidate:
@@ -306,7 +328,7 @@ class Engine:
                 if region is not None:
                     from .configuration import verify_region
                     verify_region(config, region, self.run)
-                out = parse(self.run('nix', 'build', '--no-link', '--json', '--no-update-lock-file',
+                out = parse(self.nix('build', '--no-link', '--json', '--no-update-lock-file',
                                      f'path:{config}#nixosConfigurations.cybexos.config.system.build.toplevel'))
                 system = out[0]['outputs']['out']
                 if not re.fullmatch(r'/nix/store/[a-z0-9]{32}-[^/]+', system):
@@ -326,7 +348,7 @@ class Engine:
                 copy_config(self.state / 'deployed', tx / 'previous-config')
                 (tx / 'previous-inputs').mkdir()
                 self.archive(tx / 'previous-config', tx / 'previous-inputs')
-                self.status(state='validating', phase='Checking desktop and plugin compatibility')
+                self.status(state='validating', phase='Checking desktop and plugin compatibility', progress=None)
                 self.run(system + '/sw/bin/cybexos-desktop-check', '--system', system, timeout=180)
                 changes = self.run('nix', 'store', 'diff-closures', previous_system, system)
                 package_changes = review.compare(

@@ -140,6 +140,9 @@ IPC = '''
             const primary = shell.updateItem("updatePrimary");
             const title = shell.updateItem("updateTitle");
             const failure = shell.updateItem("updateRequestError");
+            const activity = shell.updateItem("updateActivity");
+            const elapsed = shell.updateItem("updateElapsed");
+            const progress = shell.updateItem("updateProgress");
             const chip = shell.updateItem("updateTestIndicator");
             const rect = chip ? chip.mapToItem(null, 0, 0) : null;
             const content = updateTestWindow && updateTestWindow.visible ? updateTestWindow.contentItem : null;
@@ -153,6 +156,9 @@ IPC = '''
                     dark: Theme.dark} : null,
                 primary: primary ? {label: primary.text, enabled: primary.enabled} : null,
                 failureText: failure ? failure.text : null,
+                activity: activity ? activity.text : null, elapsed: elapsed ? elapsed.text : null,
+                progress: progress ? progress.Accessible.description : null,
+                buildLog: !!shell.updateItem("updateBuildLog"),
                 components: shell.updateCount(content, "updateComponent"),
                 apps: shell.updateCount(content, "updateApp"),
                 details: !!shell.updateItem("updateChanges"),
@@ -279,7 +285,7 @@ def main():
             mouse.button(True); mouse.button(False)
             session.wait(lambda:session.state().get('window') and session.state().get('page')=='available'
                 and session.state().get('primary'),'Software Update from the menubar')
-            assert session.state()['primary']['label']=='Download Update', session.state()
+            assert session.state()['primary']['label']=='Prepare Update', session.state()
             assert not session.state()['popout'], 'the indicator opens a window, not a panel'
             assert not session.calls() and not session.units(), (session.calls(), session.units())
             assert session.state()['error'] == '', session.state()
@@ -314,6 +320,27 @@ def main():
             session.wait(lambda:session.state().get('window'),'open app restored after shell restart')
             session.call('updates','open')
             session.wait(lambda:'worker rejected' in (session.state().get('failureText') or ''),'durable failure in the app')
+
+            # Real QML presents concurrent compilation truthfully and retains
+            # progress/log access after closing and reopening the window.
+            telemetry = {'schema':1, 'active':True, 'step':'building',
+                'downloads':{'doneBytes':25000000,'expectedBytes':100000000,'active':1,'totalKnown':True},
+                'builds':{'done':3,'expected':9,'active':1}, 'components':['window-manager']}
+            session.status(state='building',transaction='a'*32,elapsedSeconds=294,progress=telemetry)
+            session.wait(lambda:session.state().get('activity')=='Compiling window manager','compilation progress')
+            assert session.state()['elapsed']=='Elapsed: 4:54', session.state()
+            assert session.state()['progress']=='In progress' and session.state()['buildLog'], session.state()
+            session.call('updates','close')
+            session.wait(lambda:not session.state().get('window'),'preparing app closed')
+            session.call('updates','open')
+            session.wait(lambda:session.state().get('activity')=='Compiling window manager','preparing app reopened')
+            telemetry['builds']['active'] = 0
+            telemetry['components'] = []
+            session.status(state='building',transaction='a'*32,elapsedSeconds=300,progress=telemetry)
+            session.wait(lambda:session.state().get('progress')=='25%','measured download progress')
+            shot('software-update-progress.png')
+            session.status(state='idle')
+            session.wait(lambda:session.state().get('page')=='available','preparation fixture reset')
 
             # Preparation shows the review people read first.
             session.fixture(reject=False)

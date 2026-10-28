@@ -229,6 +229,9 @@ in pkgs.testers.runNixOSTest {
     machine.wait_until_succeeds("cybex update request " + update["requestId"] + " | python3 -c 'import json,sys; assert json.load(sys.stdin)[\"state\"] in (\"done\",\"failed\")'", timeout=900)
     prepared = json.loads(machine.succeed("runuser -u tester -- cybex update status"))
     assert prepared["state"] == "ready" and prepared["request"]["state"] == "done", prepared
+    assert prepared["progress"] is None and prepared["finishedAt"] >= prepared["operationStartedAt"], prepared
+    machine.sleep(2)
+    assert json.loads(machine.succeed("cybex update status"))["elapsedSeconds"] == prepared["elapsedSeconds"], prepared
     # A prepared change belongs to the person: background preparation waits.
     machine.succeed("systemctl start cybexos-update-auto.service")
     machine.succeed("journalctl -u cybexos-update-auto.service --no-pager | grep -F '\"skipped\": \"ready\"'")
@@ -239,9 +242,13 @@ in pkgs.testers.runNixOSTest {
     # Kill a real worker in preparation and detect interruption in this boot.
     machine.succeed("cp ${interruptedBuild} /etc/nixos/local/interrupted.nix; sed -i 's@./configuration.nix@./configuration.nix ./interrupted.nix@' /etc/nixos/local/default.nix")
     interrupted = json.loads(machine.succeed("cybex update stage local"))
-    machine.wait_until_succeeds("cybex update status | python3 -c 'import json,sys; assert json.load(sys.stdin)[\"state\"] == \"building\"'", timeout=120)
+    try:
+        machine.wait_until_succeeds("cybex update status | python3 -c 'import json,sys; s=json.load(sys.stdin); p=s.get(\"progress\") or {}; assert s[\"state\"] == \"building\" and p.get(\"schema\") == 1 and p.get(\"builds\", {}).get(\"active\", 0) > 0'", timeout=180)
+    except Exception:
+        machine.log(machine.succeed("cybex update status; tail -n 50 /var/lib/cybexos/transactions/*/build.log"))
+        raise
     machine.succeed("systemctl kill --kill-whom=all --signal=KILL " + interrupted["unit"])
-    machine.wait_until_succeeds("runuser -u tester -- cybex update status | python3 -c 'import json,sys; s=json.load(sys.stdin); assert s[\"state\"] == \"interrupted\" and s[\"request\"][\"state\"] == \"failed\"'", timeout=60)
+    machine.wait_until_succeeds("runuser -u tester -- cybex update status | python3 -c 'import json,sys; s=json.load(sys.stdin); assert s[\"state\"] == \"interrupted\" and s[\"request\"][\"state\"] == \"failed\" and s[\"progress\"] is None'", timeout=60)
     machine.succeed("test ! -e /var/lib/cybexos/pending.json; grep later-personal-edit /etc/nixos/local/preserved.txt")
     machine.succeed("cp ${previewLocal} /etc/nixos/local/default.nix; rm /etc/nixos/local/interrupted.nix")
     machine.succeed("systemctl start display-manager.service")
