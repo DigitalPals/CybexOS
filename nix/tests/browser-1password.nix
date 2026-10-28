@@ -9,12 +9,17 @@
 # helper, accept Brave Origin's executable and reach the running app, and the
 # entry must match the one this 1Password writes for its own browsers.
 #
+# The guide's 1Password card counts the accounts in 1Password's own database:
+# there are none before a sign-in, so it shows no tick. With 1Password
+# stopped, the check then adds an account row, and the card must show one.
+#
 # Test-only settings: SDDM signs the user in directly, Brave does not fetch
 # the store extension (the VM has no network), and the probe carries the
 # store extension's public key, which gives an unpacked extension the same
 # id. 1Password is not signed in, and its window does not draw in this VM;
-# the browser link needs neither. This is VM qualification of the browser
-# link, not of a 1Password account or of autofill.
+# the browser link needs neither. The added row is not a real account. This
+# is VM qualification of the browser link and of the guide's reading of the
+# database, not of a 1Password account or of autofill.
 { pkgs, module }:
 let
   # The `key` of 1Password's Chrome Web Store manifest: its public key, whose
@@ -43,6 +48,13 @@ let
   launchBrave = pkgs.writeShellScript "cybexos-1password-brave" ''
     exec brave --no-first-run --disable-features=DisableLoadExtensionCommandLineSwitch \
       --load-extension=${probe} --enable-logging=stderr about:blank > /home/tester/brave.log 2>&1
+  '';
+  # A row in 1Password's own accounts table; its data is not a real account.
+  addAccount = pkgs.writeText "cybexos-1password-account.py" ''
+    import sqlite3
+    db = sqlite3.connect("/home/tester/.config/1Password/1password.sqlite")
+    db.execute("INSERT INTO accounts VALUES (?, ?)", ("cybexos-test", b"{}"))
+    db.commit()
   '';
 in pkgs.testers.runNixOSTest {
   name = "cybexos-browser-1password";
@@ -77,6 +89,9 @@ in pkgs.testers.runNixOSTest {
 
     def user(command):
         return machine.succeed(f"runuser -u tester -- env {session} {command}")
+
+    def welcome():
+        return json.loads(user("cybexos-runtime ipc welcome status"))
 
     def host(path):
         entry = json.loads(machine.succeed(f"cat {path}"))
@@ -113,5 +128,14 @@ in pkgs.testers.runNixOSTest {
     machine.succeed(f"grep -q 'Extension connecting' {LOGS}/1Password_rCURRENT.log")
     machine.screenshot("brave")
     machine.succeed("pkill -u tester -x brave")
+
+    # This 1Password's database, with no account yet: the card has no tick.
+    assert welcome()["connect"]["password"] == "opened", welcome()
+    machine.succeed("pkill -u tester -x 1password")
+    machine.wait_until_fails("pgrep -u tester -x 1password", timeout=60)
+    user("${pkgs.python3.interpreter} ${addAccount}")
+    assert user("cybexos-runtime ipc welcome open connect").strip() == "ok"
+    retry(lambda _: welcome()["connect"]["password"] == "ready", timeout_seconds=30)
+    machine.screenshot("connect-signed-in")
   '';
 }

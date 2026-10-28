@@ -20,8 +20,9 @@ windows, so the guide steps aside while you use them:
 - **1Password** comes first, when it is installed, so it can fill in the
   password for your AI account in the browser. Its extension in Brave connects
   to the app while 1Password is running, so the browser needs no sign-in of its
-  own. The guide comes back when you close the 1Password window it opened. It
-  cannot tell whether you signed in, so this card never shows a tick.
+  own. The guide comes back when you close the 1Password window it opened.
+  Once you have signed in, the card shows a tick: the guide counts the
+  accounts in 1Password's own database, without reading them.
 - **The AI assistant** (recommended) signs in to Claude Code or Codex with that
   agent's own sign-in, in a terminal and your browser. The guide comes back by
   itself once the agent reports you are signed in. Your sign-in stays with the
@@ -127,7 +128,9 @@ with a test-only IPC target. Shortcut state is served by a fake `hyprctl`
 - Ctrl+PageUp / Ctrl+PageDown, Escape from the wallpaper grid, and the claim
   release;
 - Connect: Hello continues to it; 1Password opens from its desktop entry, the
-  guide steps aside and returns only when that window closes; the assistant's
+  guide steps aside and returns only when that window closes; the card gets
+  its tick once an account appears in a database shaped like 1Password's,
+  while the guide shows; the assistant's
   own login command runs in a terminal against the real `cybexos-assistant`
   service with a scripted Claude Code, and the guide returns by itself once
   the service reports the sign-in;

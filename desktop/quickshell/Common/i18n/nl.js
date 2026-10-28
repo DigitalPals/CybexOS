@@ -1576,6 +1576,7 @@ var MESSAGES = {
     "Sign-in status could not be checked.": "De inlogstatus kon niet worden gecontroleerd.",
     "Sign-in status could not be checked. Try again.": "De inlogstatus kon niet worden gecontroleerd. Probeer het opnieuw.",
     "Signed in": "Ingelogd",
+    "Signed in to 1Password.": "Aangemeld bij 1Password.",
     "Signed in. Your question is ready to send.": "Ingelogd. Je vraag is klaar om te versturen.",
     "Signing in…": "Inloggen…",
     "Singapore": "Singapore",

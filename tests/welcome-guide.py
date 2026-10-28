@@ -21,6 +21,7 @@ import re
 import shutil
 import signal
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -572,6 +573,21 @@ def main():
             session.wait(lambda: not session.state().get('aside'), 'closing 1Password brings the guide back')
             assert session.state()['step'] == 'connect'
             session.capture(shots, 'welcome-connect-opened-en.png')
+            # 1Password's database with no account leaves the card as it is; the
+            # sign-in finishing while the guide shows gives it a tick.
+            accounts = session.home / '.config/1Password/1password.sqlite'
+            accounts.parent.mkdir(parents=True)
+            onepassword = sqlite3.connect(accounts)
+            onepassword.execute('PRAGMA journal_mode=WAL')
+            onepassword.execute('CREATE TABLE accounts (account_uuid TEXT PRIMARY KEY NOT NULL, data BLOB NOT NULL)')
+            onepassword.commit()
+            time.sleep(5)
+            assert session.state()['connect']['password'] == 'opened'
+            onepassword.execute("INSERT INTO accounts VALUES ('personal', x'00')")
+            onepassword.commit()
+            session.wait(lambda: session.state()['connect']['password'] == 'ready', '1Password signed in', timeout=15)
+            onepassword.close()
+            session.capture(shots, 'welcome-connect-signed-in-en.png')
             # The assistant: its own login command runs in a terminal, and the
             # guide returns by itself once the service reports the sign-in.
             assert session.call('welcome-test', 'press', 'connectAgent-claude') == 'true'
@@ -833,7 +849,7 @@ def main():
                               'otherWallpaperDifference': round(other_diff, 2),
                               'peekDifference': round(peek_diff, 2), 'applied': applied['wall']}))
             print('PASS: fresh-install default wallpaper behind the full-screen guide, installer zoom at four '
-                  'output sizes, first login, all six steps, Connect (1Password aside and return on its window closing, '
+                  'output sizes, first login, all six steps, Connect (1Password aside and return on its window closing, its tick once an account appears, '
                   'the assistant\'s own sign-in and automatic return), the system check on Ready and the question it asks, '
                   'Keybindings keycaps (remapped/unbound) and claim '
                   'lifecycle, stepping aside for the launcher, tile apply, Space typing in search, Space peek '

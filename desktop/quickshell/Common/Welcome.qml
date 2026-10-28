@@ -60,6 +60,10 @@ Singleton {
     property bool passwordOpened: false
     property string passwordWindow: ""
     property bool passwordPending: false
+    // How many accounts 1Password has: counted read-only in its own database,
+    // never read (scripts/onepassword-accounts.py). -1 while unknown.
+    property int passwordAccounts: -1
+    readonly property bool passwordSignedIn: passwordAccounts > 0
     // A sign-in started here: the guide comes back once the agent is ready.
     property bool signInPending: false
     readonly property bool connectAvailable: passwordAvailable || Assistant.available
@@ -94,6 +98,7 @@ Singleton {
         next.version = version;
         // Ready reports what the check found; it runs while the person goes through the guide.
         Doctor.refreshIfStale();
+        refreshPassword();
         const wasOpen = open;
         if (!wasOpen || !aside) screenName = Screens.focused ? Screens.focused.name : "";
         changed(next);
@@ -134,6 +139,7 @@ Singleton {
         if (!open || !aside) return;
         aside = false;
         asideTransient = false;
+        refreshPassword();
         present();
     }
     function openSheet(id) {
@@ -145,6 +151,9 @@ Singleton {
     }
     function move(delta) {
         leave(Helpers.neighbour(steps, step, delta));
+    }
+    function refreshPassword() {
+        if (passwordAvailable && !passwordCount.running) passwordCount.running = true;
     }
     function openPassword() {
         if (!passwordEntry) return;
@@ -205,7 +214,7 @@ Singleton {
     function status() {
         return JSON.stringify({open: open, aside: aside, sheet: sheet, leaving: leaving, status: document.status, step: step,
             steps: steps, checklist: checklist, connect: {
-                password: !passwordAvailable ? "unavailable" : passwordOpened ? "opened" : "available",
+                password: !passwordAvailable ? "unavailable" : passwordSignedIn ? "ready" : passwordOpened ? "opened" : "available",
                 assistant: !Assistant.available ? "unavailable" : Assistant.agentReady ? "ready"
                     : Assistant.signingIn !== "" ? "signing-in" : "required"},
             doctor: Doctor.status()});
@@ -319,6 +328,14 @@ Singleton {
                 root.webapps = rows.filter(row => row && typeof row.id === "string" && typeof row.name === "string");
                 root.webappsError = "";
             } catch (_) { root.webappsError = I18n.tr("Web apps could not be read. Open Software to manage your apps."); }
+        }
+    }
+    CommandRequest {
+        id: passwordCount; command: ["python3", "-B", Quickshell.shellDir + "/scripts/onepassword-accounts.py"]
+        timeoutMs: 10000
+        // Anything but a count leaves the card without a tick, as before.
+        onCompleted: (code, body, detail) => {
+            root.passwordAccounts = code === 0 && /^\d+\s*$/.test(body) ? parseInt(body, 10) : -1;
         }
     }
     FileView { id: releaseVersion; path: "/etc/cybexos/release.json"; printErrors: false; blockLoading: true }

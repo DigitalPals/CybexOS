@@ -389,9 +389,17 @@ and Back follow that route (`WelcomeHelpers.neighbour`), and a saved
    - **1Password**, shown when the `1password` desktop entry exists.
      `Welcome.openPassword()` runs that entry and steps aside. The Hyprland
      `openwindow` event with class `1Password` records its address; the
-     `closewindow` event for that address resumes the guide. Nothing cheaply
-     tells whether 1Password is signed in, so the card never shows a tick;
-     `connect.password` is `available` or `opened` (this session).
+     `closewindow` event for that address resumes the guide. Whether
+     1Password is signed in comes from its own database:
+     `scripts/onepassword-accounts.py` opens
+     `$XDG_CONFIG_HOME/1Password/1password.sqlite` read-only and counts the
+     rows of its `accounts` table, as 1Password itself does. It reads no row.
+     The guide asks again when it opens or resumes, when Connect is shown,
+     and every 4 s while Connect shows after 1Password was opened. An account
+     gives the card its tick. A database it cannot read, or a 1Password
+     without that table, leaves the card without one.
+     `connect.password` is `available`, `opened` (this session) or `ready`
+     (signed in).
    - **The AI assistant** (recommended), shown when the assistant feature is
      on. One button per installed agent runs `Welcome.signIn(id)`, which
      calls `Assistant.signIn` (the agent's own login in a terminal) and steps
@@ -483,8 +491,8 @@ Integration notes (as implemented):
 or `unknown`. The other calls are `close(): void` and `status(): string`,
 which returns JSON `{ open, aside, sheet, leaving, status, step, steps,
 checklist, connect: { password, assistant }, doctor: { running, error,
-overall, attention } }`. `connect.password` is `unavailable`, `available` or
-`opened`; `connect.assistant` is `unavailable`, `required`, `signing-in` or
+overall, attention } }`. `connect.password` is `unavailable`, `available`,
+`opened` or `ready`; `connect.assistant` is `unavailable`, `required`, `signing-in` or
 `ready`; `doctor.attention` lists `id:state` for the checks Ready counts.
 `reset(): void` exists for tests and qualification; it deletes only
 `welcome.json`. So does `connect(item: string): string`, which runs a Connect
