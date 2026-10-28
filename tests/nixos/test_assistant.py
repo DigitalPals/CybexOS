@@ -509,7 +509,8 @@ class PolicyTest(unittest.TestCase):
                         "journalctl --user -u quickshell -n 50", "jq .bar ~/.config/cybexos/shell.json",
                         "git status", "bash -c 'ls -la'", "rg -n foo ~/.config 2>/dev/null",
                         "cd ~/.config && ls", "uname -a; id", "cybex plugin list", "cat $HOME/.bashrc",
-                        "cybex doctor", "cybex doctor --json", "cybex doctor --json | jq .overall"):
+                        "cybex doctor", "cybex doctor --json", "cybex doctor --json | jq .overall",
+                        "hyprctl -j configerrors", "cybex shell status"):
             self.assertEqual(self.decide(command).action, "allow", command)
 
     def test_staging_is_allowed_and_applying_needs_review(self):
@@ -535,7 +536,7 @@ class PolicyTest(unittest.TestCase):
                         "sort -o out in", "git push", "hyprctl dispatch exec kitty", "cat $FOO",
                         "ls & rm x", "ls && rm x", "bash -c 'rm x'", "journalctl --vacuum-size=1M",
                         "./ls", "cybex plugin enable personal.x", "yq -i .a f", "uniq a b",
-                        "cybex doctor --json > /tmp/doctor.json", "cybex doctor --fix",
+                        "cybex doctor --json > /tmp/doctor.json", "cybex doctor --fix", "cybex shell recover",
                         # Evaluation can read the environment, fetch and build.
                         "nix eval --expr 'builtins.getEnv \"HOME\"'", "nix eval nixpkgs#hello.version",
                         "nix search nixpkgs hello", "nix-instantiate --eval -E 1",

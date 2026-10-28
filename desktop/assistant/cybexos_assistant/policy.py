@@ -59,7 +59,8 @@ GIT_READ = {"status", "log", "diff", "show", "rev-parse", "ls-files", "blame", "
             "shortlog"}
 HYPR_READ = {"monitors", "clients", "workspaces", "activeworkspace", "activewindow",
              "devices", "binds", "layers", "getoption", "version", "systeminfo",
-             "cursorpos", "splash", "workspacerules", "layouts", "animations", "globalshortcuts"}
+             "cursorpos", "splash", "workspacerules", "layouts", "animations", "globalshortcuts",
+             "configerrors"}
 SYSTEMCTL_READ = {"status", "is-active", "is-enabled", "is-failed", "list-units",
                   "list-timers", "list-unit-files", "list-sockets", "list-dependencies",
                   "show", "cat", "show-environment"}
@@ -323,7 +324,7 @@ def cybex_read_only(args):
     head = verbs[:2]
     return (head[:1] == ["update"] and head[1:] in (["status"], ["check"], ["history"], ["log"])
             or head[:1] == ["software"] and head[1:] in (["list"], ["search"], ["request"])
-            or head == ["plugin", "list"]
+            or head in (["plugin", "list"], ["shell", "status"])
             or head[:1] == ["agent"] and head[1:] in (["list"], ["get"])
             or head[:1] == ["maintenance"] and head[1:] in (["status"], ["request"])
             or head[:1] == ["assistant"] and head[1:] == ["status"])
