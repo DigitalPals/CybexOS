@@ -15,6 +15,13 @@ def choices(command):
     return sorted(set(result.stdout.splitlines()))
 
 
+def installed_locales():
+    # localectl enumerates mutable locale directories. NixOS installs an
+    # archive selected by LOCALE_ARCHIVE, which glibc's locale tool reads.
+    return sorted({value.replace('.utf8', '.UTF-8') for value in choices(['locale', '-a'])
+                   if value.endswith(('.utf8', '.UTF-8'))})
+
+
 class RegionSettings:
     def __init__(self):
         import gi
@@ -47,7 +54,7 @@ class RegionSettings:
                 'locale': next((value[5:] for value in locale if value.startswith('LANG=')), ''),
                 'localeValues': locale,
                 'timezones': choices(['timedatectl', 'list-timezones', '--no-pager']),
-                'locales': choices(['localectl', 'list-locales', '--no-pager'])}
+                'locales': installed_locales()}
 
     def dispatch(self, request):
         action = request.get('action', 'snapshot')
@@ -62,7 +69,7 @@ class RegionSettings:
             return self.stage('timezone', value, request['previous'])
         if action == 'locale':
             value = request.get('value')
-            if not isinstance(value, str) or value not in choices(['localectl', 'list-locales', '--no-pager']):
+            if not isinstance(value, str) or value not in installed_locales():
                 raise ValueError('Choose an installed locale. Install its language pack first if it is missing.')
             previous = self.properties(LOCALE).get('Locale', [])
             if request.get('previous') != previous:

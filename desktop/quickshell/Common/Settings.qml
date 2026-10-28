@@ -346,6 +346,11 @@ Singleton {
             showPanel(targetPage, targetScreenName);
     }
 
+    function openExternalUrl(value) {
+        closePanel();
+        return Qt.openUrlExternally(value);
+    }
+
     function closePanel() {
         panelOpen = false;
     }

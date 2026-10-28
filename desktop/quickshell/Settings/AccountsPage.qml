@@ -13,6 +13,7 @@ SettingsPage {
     id: page
     readonly property SystemSettingsBackend service: SystemSettings.accounts
     readonly property var accounts: service.snapshot.accounts || []
+    readonly property bool available: service.snapshot.available !== false
     property string removing: ""
 
     Claim {
@@ -22,7 +23,8 @@ SettingsPage {
     }
 
     function openAccountWindow() {
-        SystemSettings.openExternal("accounts");
+        if (available)
+            SystemSettings.openExternal("accounts");
     }
 
     Column {
@@ -51,7 +53,8 @@ SettingsPage {
                 width: parent.width
                 text: page.service.error !== "" ? ""
                     : page.service.busy ? "Updating…"
-                    : !page.service.loaded ? "Loading accounts…" : ""
+                    : !page.service.loaded ? "Loading accounts…"
+                    : !page.available ? page.service.snapshot.message || "Online account services are not installed." : ""
             }
             ValueRow {
                 width: parent.width
@@ -80,7 +83,7 @@ SettingsPage {
                     text: I18n.tr("Add account")
                     glyph: "add"
                     primary: true
-                    enabled: !SystemSettings.externalBusy
+                    enabled: page.available && !SystemSettings.externalBusy
                     onTriggered: page.openAccountWindow()
                 }
             }
@@ -170,7 +173,7 @@ SettingsPage {
                 SettingsAction {
                     text: I18n.tr("Add account")
                     glyph: "add"
-                    enabled: !SystemSettings.externalBusy
+                    enabled: page.available && !SystemSettings.externalBusy
                     onTriggered: page.openAccountWindow()
                 }
             }

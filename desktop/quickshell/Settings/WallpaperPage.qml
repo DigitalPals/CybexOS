@@ -57,7 +57,7 @@ Item {
                     glyph: "open_in_new"
                     text: I18n.tr("Current on Wallhaven")
                     Accessible.name: I18n.tr("Open the current wallpaper's Wallhaven page")
-                    onTriggered: Qt.openUrlExternally(page.currentPage)
+                    onTriggered: Settings.openExternalUrl(page.currentPage)
                 }
                 SettingsAction {
                     text: I18n.tr("Shuffle now")
@@ -152,7 +152,7 @@ Item {
                             text: I18n.tr("Open")
                             glyph: "folder_open"
                             Accessible.name: I18n.tr("Open wallpaper folder")
-                            onTriggered: Quickshell.execDetached(["xdg-open", Wallpaper.dir])
+                            onTriggered: { Settings.closePanel(); Quickshell.execDetached(["xdg-open", Wallpaper.dir]); }
                         }
                     }
                 }

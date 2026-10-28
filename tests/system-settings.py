@@ -13,6 +13,7 @@ sys.path.insert(0, str(SCRIPTS))
 audio = importlib.import_module("system_settings_audio")
 network = importlib.import_module("system_settings_network")
 accounts = importlib.import_module("system_settings_accounts")
+region = importlib.import_module("system_settings_region")
 
 # Without PyGObject, `gi` can still import as a bare namespace package when
 # another package ships gi/overrides (as the CI image does); it then has no
@@ -30,6 +31,26 @@ def profile():
                 ipv4=dict(method='manual', addresses='192.0.2.5/24', gateway='192.0.2.1',
                           dns='1.1.1.1', autoDns=False),
                 ipv6=dict(method='auto', addresses='', gateway='', dns='', autoDns=True))
+
+
+class Region(unittest.TestCase):
+    def test_languages_come_from_the_nixos_locale_archive(self):
+        output = Mock(returncode=0, stdout='C\nC.utf8\nen_US.utf8\nnl_NL.utf8\nnl_NL.iso88591\nPOSIX\n')
+        with patch.dict(region.os.environ, {'LOCALE_ARCHIVE': '/fixture/locale-archive'}), patch.object(region.subprocess, 'run', return_value=output) as run:
+            self.assertEqual(region.installed_locales(), ['C.UTF-8', 'en_US.UTF-8', 'nl_NL.UTF-8'])
+        self.assertEqual(run.call_args.args[0], ['locale', '-a'])
+        self.assertEqual(run.call_args.kwargs['env']['LOCALE_ARCHIVE'], '/fixture/locale-archive')
+
+    def test_locale_change_uses_archive_choices_and_preserves_category_baseline(self):
+        service = object.__new__(region.RegionSettings)
+        previous = ['LANG=en_US.UTF-8', 'LC_TIME=nl_NL.UTF-8']
+        service.properties = Mock(return_value={'Locale': previous})
+        service.stage = Mock(return_value={'staged': True})
+        with patch.object(region, 'choices', return_value=['nl_NL.utf8', 'C', 'POSIX']):
+            self.assertTrue(service.dispatch({'action':'locale', 'value':'nl_NL.UTF-8', 'previous':previous})['staged'])
+            with self.assertRaisesRegex(ValueError, 'installed locale'):
+                service.dispatch({'action':'locale', 'value':'de_DE.UTF-8', 'previous':previous})
+        service.stage.assert_called_once_with('locale', 'nl_NL.UTF-8', previous)
 
 
 class NetworkValidation(unittest.TestCase):
@@ -221,6 +242,25 @@ class Accounts(unittest.TestCase):
         self.service.accounts = Mock(return_value=[dict(id='1', path='/account', locked=False)])
         self.service.call = Mock()
         self.service.GLib = Mock()
+        self.service.GLib.Error = RuntimeError
+        self.service.Gio = Mock()
+
+    def test_optional_account_service_absence_is_a_capability_not_a_failed_read(self):
+        self.service.accounts.side_effect = RuntimeError('service not installed')
+        self.service.Gio.DBusError.get_remote_error.return_value = 'org.freedesktop.DBus.Error.ServiceUnknown'
+        snapshot = self.service.dispatch({'action': 'snapshot'})
+        self.assertIs(snapshot['available'], False)
+        self.assertEqual(snapshot['accounts'], [])
+        self.assertIn('not included', snapshot['message'])
+        with self.assertRaisesRegex(ValueError, 'not installed'):
+            self.service.dispatch({'action': 'calendar', 'id': '1', 'enabled': True})
+        self.service.call.assert_not_called()
+
+    def test_account_service_errors_are_not_misreported_as_an_empty_account_list(self):
+        self.service.accounts.side_effect = RuntimeError('bus failure')
+        self.service.Gio.DBusError.get_remote_error.return_value = 'org.freedesktop.DBus.Error.NoReply'
+        with self.assertRaises(RuntimeError):
+            self.service.dispatch({'action': 'snapshot'})
 
     def test_removal_requires_explicit_confirmation(self):
         with self.assertRaises(ValueError):

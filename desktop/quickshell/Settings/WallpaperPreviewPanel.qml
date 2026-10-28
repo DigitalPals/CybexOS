@@ -139,14 +139,14 @@ Item {
                 Accessible.name: I18n.tr("Open wallpaper source")
                 tooltip: root.details ? root.details.source : ""
                 onActiveFocusChanged: root.reveal(this)
-                onTriggered: Qt.openUrlExternally(root.details.source)
+                onTriggered: Settings.openExternalUrl(root.details.source)
             }
             SettingsAction {
                 visible: root.online && root.item !== null
                 width: parent.width
                 text: I18n.tr("View on Wallhaven")
                 onActiveFocusChanged: root.reveal(this)
-                onTriggered: Qt.openUrlExternally(root.item.page)
+                onTriggered: Settings.openExternalUrl(root.item.page)
             }
             SettingsAction {
                 visible: root.online && root.item !== null

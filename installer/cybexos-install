@@ -653,7 +653,7 @@ def install(plan, secrets, source, revision, nar_hash, run=Runner(), *, channel)
             run('nixos-generate-config', '--root', target, '--dir', config)
             (config / 'configuration.nix').unlink(missing_ok=True)
             nix = json.dumps
-            machine = '{ ... }: {\n  cybexos = {\n    enable = true;\n'
+            machine = '{ lib, ... }: {\n  cybexos = {\n    enable = true;\n'
             machine += f'    primaryUser = {nix(plan["username"])}; encrypted = {str(plan["encrypted"]).lower()}; autoLogin = {str(plan["autoLogin"]).lower()};\n'
             # Persist the medium's channel as the machine's own choice: the
             # vendor default follows each release's version, so a later stable
@@ -674,7 +674,10 @@ def install(plan, secrets, source, revision, nar_hash, run=Runner(), *, channel)
             if plan.get('fullName'):
                 # Validated above: no quote, backslash or interpolation characters.
                 machine += f'  users.users.{nix(plan["username"])}.description = {json.dumps(plan["fullName"], ensure_ascii=False)};\n'
-            machine += f'  networking.hostName = {nix(plan["hostname"])}; time.timeZone = {nix(plan["timezone"])}; i18n.defaultLocale = {nix(plan["locale"])}; console.keyMap = {nix(plan["keyboard"])}; services.xserver.xkb.layout = {nix(plan.get("desktopKeyboard", plan["keyboard"]))};\n'
+            # Installation choices are defaults. Settings' typed regional
+            # declarations override them, while personal normal-priority
+            # declarations still take precedence over the Settings UI.
+            machine += f'  networking.hostName = {nix(plan["hostname"])}; time.timeZone = lib.mkDefault {nix(plan["timezone"])}; i18n.defaultLocale = lib.mkDefault {nix(plan["locale"])}; console.keyMap = {nix(plan["keyboard"])}; services.xserver.xkb.layout = {nix(plan.get("desktopKeyboard", plan["keyboard"]))};\n'
             machine += '  system.stateVersion = "26.05";\n}\n'
             atomic(config / 'machine.nix', machine.encode(), 0o644)
             # Seed only the root Nixpkgs node, keeping its branch selector.

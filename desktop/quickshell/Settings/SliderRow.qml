@@ -40,7 +40,7 @@ SettingsRow {
         x: root.narrow ? root.markInset
             : valueText.x - Theme.controlSpacing - width
         y: root.narrow ? Theme.settingsStackOffset : (root.lineHeight - height) / 2
-        width: Math.max(0, root.narrow ? root.contentRight - x
+        width: Math.max(0, root.narrow ? root.contentRight - root.markInset
             : Math.min(root.trackWidth,
                 valueText.x - Theme.controlSpacing - root.labelWidth))
         height: Theme.settingsControlHeight

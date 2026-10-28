@@ -317,6 +317,8 @@ class EngineTests(unittest.TestCase):
                 return 'UTC\nEurope/Amsterdam\n'
             if args == ('timedatectl', 'show', '--property=Timezone', '--value'):
                 return 'UTC\n'
+            if args[:3] == ('nix', 'eval', '--json'):
+                return '"Europe/Amsterdam"'
             return original(*args, **kwargs)
         self.engine.run = run
         record = self.engine.stage('local', region={'field': 'timezone', 'value': 'Europe/Amsterdam', 'previous': 'UTC'})
@@ -325,6 +327,39 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(config_digest(self.working), baseline)
         with self.assertRaises(Failure):
             self.engine.stage('local', region={'field': 'timezone', 'value': 'Europe/Amsterdam', 'previous': 'wrong'})
+        def overridden(*args, **kwargs):
+            if args[:3] == ('nix', 'eval', '--json'):
+                return '"UTC"'
+            return run(*args, **kwargs)
+        self.engine.run = overridden
+        with self.assertRaisesRegex(Failure, 'stronger NixOS declaration'):
+            self.engine.stage('local', region={'field': 'timezone', 'value': 'Europe/Amsterdam', 'previous': 'UTC'})
+        self.assertEqual(read(self.engine.status_path)['state'], 'failed')
+        self.assertEqual(config_digest(self.working), baseline)
+
+    def test_locale_preview_reads_archive_and_keeps_regional_categories(self):
+        atomic(self.config / 'desktop-settings.json', {'timezone': 'UTC'})
+        baseline = config_digest(self.working)
+        previous = ['LANG=en_US.UTF-8', 'LC_TIME=nl_NL.UTF-8']
+        original = self.engine.run
+        def run(*args, **kwargs):
+            if args == ('locale', '-a'):
+                return 'C\nC.utf8\nen_US.utf8\nnl_NL.utf8\nPOSIX\n'
+            if args[:3] == ('nix', 'eval', '--json'):
+                self.assertTrue(str(args[-1]).endswith('.i18n.defaultLocale'))
+                return '"nl_NL.UTF-8"'
+            return original(*args, **kwargs)
+        self.engine.run = run
+        real_open = open
+        def open_locale(path, *args, **kwargs):
+            if str(path) == '/etc/locale.conf':
+                return io.StringIO('\n'.join(previous))
+            return real_open(path, *args, **kwargs)
+        with patch('builtins.open', side_effect=open_locale):
+            record = self.engine.stage('local', region={'field':'locale','value':'nl_NL.UTF-8','previous':previous})
+        self.assertEqual(read(self.engine.tx(record['id']) / 'config/desktop-settings.json'),
+                         {'timezone':'UTC','locale':'nl_NL.UTF-8'})
+        self.assertEqual(config_digest(self.working), baseline)
 
     def test_nixos_service_warning_does_not_wedge_apply_or_rollback(self):
         original = self.engine.run

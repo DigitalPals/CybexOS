@@ -1,4 +1,4 @@
-{ lib, stdenv, source, cmake, ninja, pkg-config, qt6, makeWrapper, bash, python3, coreutils,
+{ lib, stdenv, source, cmake, ninja, pkg-config, qt6, makeWrapper, bash, python3, coreutils, glibc,
   quickshell, hyprland, hyprlock, hypridle, systemd, dbus, glib, openssl, git,
   gobject-introspection, wrapGAppsNoGuiHook, networkmanager, libsecret,
   gnome-online-accounts, evolution-data-server, libical, fwupd, glib-networking,
@@ -7,7 +7,7 @@
   libnotify, wtype, pulseaudio, pipewire, wireplumber, wl-clipboard, cliphist, grim, slurp,
   wf-recorder, ffmpeg, libva-utils, jq, procps, findutils, gnugrep, gnused, gawk,
   xdg-utils, xdg-terminal-exec, curl, nodejs, iw, iproute2, brightnessctl, playerctl, bluez, upower,
-  power-profiles-daemon, restic, openssh, age, gnutar, zstd, util-linux, kitty, libxkbcommon, xkeyboard-config,
+  power-profiles-daemon, gnome-keyring, restic, openssh, age, gnutar, zstd, util-linux, kitty, libxkbcommon, xkeyboard-config,
   fetchFromGitHub }:
 let
   lazyvimStarter = fetchFromGitHub {
@@ -21,11 +21,11 @@ let
   # QML and shell helpers run these commands directly. Bind them into the
   # desktop environment so optional developer tools or ambient host PATH cannot
   # conceal a missing product dependency (notably Node for connected widgets).
-  runtimeTools = [ bash python coreutils quickshell hyprland hyprlock hypridle systemd dbus glib openssl git
+  runtimeTools = [ bash python coreutils glibc.bin quickshell hyprland hyprlock hypridle systemd dbus glib openssl git
     satty wayfreeze tesseract zbar qrencode hyprpicker hyprsunset imagemagick matugen libnotify wtype
     pulseaudio pipewire wireplumber wl-clipboard cliphist grim slurp wf-recorder ffmpeg libva-utils jq
     procps findutils gnugrep gnused gawk xdg-utils xdg-terminal-exec curl nodejs iw iproute2 brightnessctl playerctl
-    networkmanager bluez upower power-profiles-daemon restic openssh age gnutar zstd util-linux kitty libsecret fwupd
+    networkmanager bluez upower power-profiles-daemon gnome-keyring restic openssh age gnutar zstd util-linux kitty libsecret fwupd
     libxkbcommon ];  # xkbcli: the shortcut recorder's keycode -> keysym map
   images = stdenv.mkDerivation {
     pname = "cybexos-notification-images";

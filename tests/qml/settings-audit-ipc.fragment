@@ -1,0 +1,89 @@
+    // Test-only introspection. Injected into a disposable source copy by
+    // settings-runtime.py; never installed or exposed by the production shell.
+    function auditWalk(item) {
+        if (!item) return [];
+        let result = [item];
+        for (const child of item.children || []) result = result.concat(shell.auditWalk(child));
+        return result;
+    }
+    function auditItems() { return shell.auditWalk(auditSettingsWindow.contentItem.parent || auditSettingsWindow.contentItem); }
+    function auditPage() {
+        return shell.auditItems().find(item => (item.pageReset !== undefined && item.contentY !== undefined) || /^ModulesPage_/.test(String(item)));
+    }
+    function auditRow(label, key) {
+        const row = shell.auditItems().find(item => key ? item.settingKey === key
+            : item.label === label && item.lineHeight !== undefined);
+        if (!row) throw new Error("Missing settings row: " + (key || label));
+        return row;
+    }
+    function auditControl(row) {
+        return shell.auditWalk(row).slice(1).find(item => /^(Toggle|PillRow|SettingsSelect|HSlider|SettingsField)_/.test(String(item)));
+    }
+    function auditEdit(label, key, value) {
+        const row = shell.auditRow(label, key);
+        return shell.auditEditRow(row, value);
+    }
+    function auditEditAt(index, value) {
+        const row = shell.auditItems().filter(item => item.label !== undefined && item.lineHeight !== undefined)[index];
+        if (!row) throw new Error("Missing settings row index " + index);
+        return shell.auditEditRow(row, value);
+    }
+    function auditEditRow(row, value) {
+        if (row.disabledReason) throw new Error("Disabled row: " + row.disabledReason);
+        const page = shell.auditPage();
+        if (page && page.revealFocus) page.revealFocus(row);
+        if (/^CornerPickerRow_/.test(String(row))) { row.pick(value); return true; }
+        const control = shell.auditControl(row);
+        if (!control) throw new Error("Missing control: " + String(row));
+        if (!control.enabled) throw new Error("Disabled control: " + String(control));
+        const type = String(control);
+        if (/^Toggle_/.test(type)) control.toggled(value);
+        else if (/^(PillRow|SettingsSelect)_/.test(type)) control.picked(value);
+        else if (/^HSlider_/.test(type)) control.moved(value);
+        else {
+            control.text = /^TimeRow_/.test(String(row)) && typeof value === "number"
+                ? String(Math.floor(value / 60)).padStart(2, "0") + ":" + String(value % 60).padStart(2, "0")
+                : String(value);
+            if (/^DraftFieldRow_/.test(String(row))) control.textEdited();
+            else control.editingFinished();
+        }
+        return true;
+    }
+    function auditAction(text) {
+        const item = shell.auditItems().find(item => /^SettingsAction_/.test(String(item))
+            && (item.text === text || item.text === I18n.tr(text)) && item.visible && item.enabled);
+        if (!item) throw new Error("Missing enabled action: " + text);
+        item.triggered();
+        return true;
+    }
+    function auditRows() {
+        return shell.auditItems().filter(item => item.label !== undefined && item.lineHeight !== undefined).map(item => {
+            const control = shell.auditControl(item);
+            const info = {type: String(item).split("(")[0], label: item.label, key: item.settingKey || "",
+                visible: item.visible, enabled: item.enabled, reason: item.disabledReason || ""};
+            for (let owner = item; owner; owner = owner.parent) {
+                if (owner.moduleId !== undefined) { info.module = owner.moduleId; break; }
+            }
+            if (/^CornerPickerRow_/.test(String(item))) {
+                info.control = "CornerPickerRow";
+                info.choices = item.corners.map(value => ({value: value}));
+                info.value = item.current;
+            } else if (control) {
+                info.control = String(control).split("(")[0];
+                if (control.model !== undefined) info.choices = control.model;
+                if (control.min !== undefined) { info.min = control.min; info.max = control.max; info.step = control.step; }
+                if (control.checked !== undefined) info.value = control.checked;
+                else if (control.current !== undefined) info.value = control.current;
+                else if (control.value !== undefined) info.value = control.value;
+                else if (control.text !== undefined) info.value = control.text;
+            }
+            return info;
+        });
+    }
+    IpcHandler {
+        target: "settings-audit"
+        function evaluate(expression: string): string {
+            try { return JSON.stringify({success: true, value: eval(expression) ?? null}); }
+            catch (error) { return JSON.stringify({success: false, error: String(error)}); }
+        }
+    }

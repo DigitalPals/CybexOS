@@ -188,7 +188,7 @@ Column {
             }
             SettingsAction {
                 text: I18n.tr("Open-Meteo / GeoNames")
-                onTriggered: Qt.openUrlExternally("https://open-meteo.com/en/docs/geocoding-api")
+                onTriggered: Settings.openExternalUrl("https://open-meteo.com/en/docs/geocoding-api")
             }
         }
     }

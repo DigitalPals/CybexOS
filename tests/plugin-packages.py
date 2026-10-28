@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 
@@ -106,6 +107,20 @@ with tempfile.TemporaryDirectory(prefix="cybex-plugin-packages-") as temporary:
     assert not (packages / "example.git").exists()
     saved = json.loads((base / "config/plugins.json").read_text())["plugins"]
     assert saved["example.git"]["settings"]["answer"] == 42
+    assert not any(item["id"] in ("example.git", "example.custom", "example.builtin")
+                   for item in json.loads(cli("list"))["plugins"]), "removed plugins must leave the installed list"
+    manifest["entryPoints"]["barWidget"] = "Widget.qml"
+    (source / "manifest.json").write_text(json.dumps(manifest))
+    git("add", ".")
+    git("commit", "-m", "repair fixture")
+    cli("add", source)
+    reinstalled = next(item for item in json.loads(cli("list"))["plugins"] if item["id"] == "example.git")
+    assert reinstalled["settings"]["answer"] == 42 and not reinstalled["enabled"]
+    cli("enable", "example.git")
+    shutil.rmtree(packages / "example.git")
+    missing = next(item for item in json.loads(cli("list"))["plugins"] if item["id"] == "example.git")
+    assert missing["enabled"] and missing["error"], "missing enabled packages must remain diagnosable"
+    cli("disable", "example.git")
 
     # Model Usage is built into the shell. An old copy of the plugin is listed
     # with the reason, never drawn (not even as an error chip), and can only

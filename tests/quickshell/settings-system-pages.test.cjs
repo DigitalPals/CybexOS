@@ -110,7 +110,7 @@ test("the Omarchy plugins page links the directory and explains adding one", () 
     const settings = read("Common/Settings.qml");
     assert.match(settings, /id: "plugins", group: "System", label: "Omarchy plugins"/);
     assert.match(page, /directoryUrl: "https:\/\/plugins\.omarchy\.org\/"/);
-    assert.match(page, /text: "Browse plugins"[\s\S]{0,160}?onTriggered: Qt\.openUrlExternally\(page\.directoryUrl\)/);
+    assert.match(page, /text: "Browse plugins"[\s\S]{0,160}?onTriggered: Settings\.openExternalUrl\(page\.directoryUrl\)/);
     assert.equal((page.match(/^\s*Step \{/gm) ?? []).length, 3, "three numbered steps");
     assert.match(page, /title: "Add a plugin"/);
 });

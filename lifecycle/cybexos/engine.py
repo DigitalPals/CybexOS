@@ -303,6 +303,9 @@ class Engine:
                     atomic(tx / 'channel.json', {'channel': read(self.policy)['channel'], 'sequence': sequence})
                 self.status(state='building', phase='Downloading inputs and building the complete system')
                 self.archive(config, tx)
+                if region is not None:
+                    from .configuration import verify_region
+                    verify_region(config, region, self.run)
                 out = parse(self.run('nix', 'build', '--no-link', '--json', '--no-update-lock-file',
                                      f'path:{config}#nixosConfigurations.cybexos.config.system.build.toplevel'))
                 system = out[0]['outputs']['out']

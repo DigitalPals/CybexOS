@@ -569,6 +569,9 @@ class DiskSafetyTests(unittest.TestCase):
             # the machine keeps the explicit channel it was installed with.
             self.assertEqual(machine[0].count('updates.channel'), 1)
             self.assertIn(f'    updates.channel = "{channel}";\n', machine[0])
+            self.assertTrue(machine[0].startswith('{ lib, ... }:'))
+            self.assertIn('time.timeZone = lib.mkDefault ', machine[0])
+            self.assertIn('i18n.defaultLocale = lib.mkDefault ', machine[0])
         for channel in (None, '', 'nightly', ['beta']):
             run = Mock()
             with self.subTest(channel=channel), patch.object(installer, 'disk_guard') as guard, self.assertRaisesRegex(installer.Failure, 'supported release channel'):

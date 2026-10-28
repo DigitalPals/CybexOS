@@ -1,4 +1,5 @@
 """Typed desktop declarations, edited only in a staged personal configuration."""
+import json
 import re
 from .common import Failure, atomic, read
 
@@ -13,7 +14,8 @@ def region(config, request, run):
         options = run('timedatectl', 'list-timezones', '--no-pager').splitlines()
         previous = run('timedatectl', 'show', '--property=Timezone', '--value').strip()
     else:
-        options = run('localectl', 'list-locales', '--no-pager').splitlines()
+        options = [value.replace('.utf8', '.UTF-8') for value in run('locale', '-a').splitlines()
+                   if value.endswith(('.utf8', '.UTF-8'))]
         previous = [line.strip() for line in open('/etc/locale.conf') if line.strip() and not line.startswith('#')]
     expected = request['previous']
     if (sorted(previous) if isinstance(previous, list) else previous) != (sorted(expected) if isinstance(expected, list) and all(isinstance(x, str) for x in expected) else expected):
@@ -27,3 +29,14 @@ def region(config, request, run):
     if field == 'locale':
         value = value.replace('.utf8', '.UTF-8')
     atomic(path, existing | {field: value}, 0o644)
+
+
+def verify_region(config, request, run):
+    """Do not offer a generation whose regional preference is overridden."""
+    option = 'time.timeZone' if request['field'] == 'timezone' else 'i18n.defaultLocale'
+    effective = json.loads(run('nix', 'eval', '--json', '--no-update-lock-file',
+                               f'path:{config}#nixosConfigurations.cybexos.config.{option}'))
+    expected = request['value'].replace('.utf8', '.UTF-8') if request['field'] == 'locale' else request['value']
+    if effective != expected:
+        raise Failure('This regional setting is overridden by a stronger NixOS declaration. '
+                      'Review your machine and personal modules; no deployment was prepared.')

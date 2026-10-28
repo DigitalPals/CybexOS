@@ -435,7 +435,7 @@ def enroll_main(argv, fprintd_factory=Fprintd, emit=emit_json):
         # GLib 2.80 moved Unix signal sources to GLibUnix.
         gi.require_version('GLibUnix', '2.0')
         from gi.repository import GLibUnix
-        signal_add = GLibUnix.signal_add
+        signal_add = GLibUnix.signal_add_full
     except (ImportError, ValueError):
         signal_add = GLib.unix_signal_add
     loop = GLib.MainLoop()

@@ -9,6 +9,9 @@ Singleton {
     property string externalDomain: "accounts"
     function openExternal(domain) {
         if (external.running) return;
+        // Native tools can be tiled below this floating Settings window.
+        // Dismiss it so the window we launch is visible and receives input.
+        Settings.closePanel();
         externalDomain = domain;
         external.running = true;
     }

@@ -115,7 +115,7 @@ Item {
                     target: ripple
                     property: "opacity"
                     to: 0
-                    duration: Theme.expandDuration - Theme.chipFadeDuration / 2
+                    duration: Math.max(0, Theme.expandDuration - Theme.chipFadeDuration / 2)
                     easing.type: Easing.OutCubic
                 }
             }

@@ -3,4 +3,7 @@ set -euo pipefail
 hyprctl setcursor "${XCURSOR_THEME:-Bibata-Modern-Classic}" "${XCURSOR_SIZE:-24}"
 systemctl --user import-environment WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XCURSOR_THEME XCURSOR_SIZE XCURSOR_PATH
 dbus-update-activation-environment --systemd WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XCURSOR_THEME XCURSOR_SIZE XCURSOR_PATH
+# PAM starts a waiting --login daemon with the disk/login passphrase.
+# Complete startup before it times out and discards that unlock material.
+gnome-keyring-daemon --start --components=secrets >/dev/null
 systemctl --user start hyprland-session.target

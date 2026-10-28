@@ -190,6 +190,12 @@ def scan(config: Path, packages: Path, state: Path) -> dict:
             continue
         try:
             descriptor.update(options(saved.get(plugin_id, {})))
+            # Removal retains preferences for a later reinstall. Those saved
+            # values are not an installed package; keep them out of Settings.
+            # An enabled package that disappears still needs a visible error.
+            directory = packages / plugin_id
+            if not descriptor['enabled'] and not directory.exists() and not directory.is_symlink():
+                continue
             descriptor.update(package(packages, plugin_id))
             descriptor["settings"] = {**descriptor["defaults"], **descriptor["settings"]}
             descriptor["section"] = saved.get(plugin_id, {}).get("section", descriptor["section"])

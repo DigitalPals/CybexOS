@@ -84,7 +84,7 @@ SettingsPage {
             color: Theme.textMid
             linkColor: Theme.accentText
             wrapMode: Text.Wrap
-            onLinkActivated: link => Qt.openUrlExternally(link)
+            onLinkActivated: link => Settings.openExternalUrl(link)
 
             HoverHandler {
                 enabled: copy.hoveredLink !== ""
@@ -165,7 +165,7 @@ SettingsPage {
                 glyph: "open_in_new"
                 text: I18n.tr("Browse plugins")
                 Accessible.description: "Opens " + page.directoryUrl + " in your browser"
-                onTriggered: Qt.openUrlExternally(page.directoryUrl)
+                onTriggered: Settings.openExternalUrl(page.directoryUrl)
             }
         }
 

@@ -144,7 +144,7 @@ SettingsPage {
             SettingsAction {
                 text: I18n.tr("Change password")
                 glyph: "lock"
-                onTriggered: Quickshell.execDetached(["cybexos-password"])
+                onTriggered: { Settings.closePanel(); Quickshell.execDetached(["cybexos-password"]); }
             }
         }
 

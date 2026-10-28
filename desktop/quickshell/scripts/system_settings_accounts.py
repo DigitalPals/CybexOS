@@ -35,10 +35,20 @@ class AccountSettings:
         return accounts
 
     def dispatch(self, request):
-        accounts = self.accounts()
         action = request.get('action', 'snapshot')
+        try:
+            accounts = self.accounts()
+        except self.GLib.Error as error:
+            if self.Gio.DBusError.get_remote_error(error) not in (
+                    'org.freedesktop.DBus.Error.ServiceUnknown',
+                    'org.freedesktop.DBus.Error.Spawn.ServiceNotFound'):
+                raise
+            if action != 'snapshot':
+                raise ValueError('Online account services are not installed') from error
+            return {'accounts': [], 'available': False,
+                    'message': 'Online accounts are not included in this installation. Enable Connected widgets in your NixOS configuration to use them.'}
         if action == 'snapshot':
-            return {'accounts': accounts}
+            return {'accounts': accounts, 'available': True}
         account = next((a for a in accounts if a['id'] == request.get('id')), None)
         if not account:
             raise ValueError('That account is no longer available')

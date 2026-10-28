@@ -1,5 +1,5 @@
 { lib, stdenvNoCC, source, python3, makeWrapper, nix, openssl, systemd, util-linux,
-  coreutils, bubblewrap, cryptsetup, parted, dosfstools, e2fsprogs, btrfs-progs, gptfdisk, shadow,
+  coreutils, glibc, bubblewrap, cryptsetup, parted, dosfstools, e2fsprogs, btrfs-progs, gptfdisk, shadow,
   nixos-install-tools, curl, dbus, procps, bash, callPackage, quickshell, hyprland, qt6, libxcrypt, iproute2 }:
 let desktopPackage = callPackage ./desktop.nix { inherit source; }; in
 stdenvNoCC.mkDerivation {
@@ -29,7 +29,7 @@ stdenvNoCC.mkDerivation {
         --set CYBEXOS_UPDATER_SHARE $out/share/cybexos \
         --set CYBEXOS_LIBCRYPT ${libxcrypt}/lib/libcrypt.so.2 \
         --prefix QML_IMPORT_PATH : ${desktopPackage.images}/lib/qt-6/qml \
-        --prefix PATH : ${lib.makeBinPath [ python3 nix openssl systemd util-linux coreutils bubblewrap cryptsetup parted dosfstools e2fsprogs btrfs-progs gptfdisk shadow nixos-install-tools curl dbus procps bash quickshell hyprland desktopPackage iproute2 ]} \
+        --prefix PATH : ${lib.makeBinPath [ python3 nix openssl systemd util-linux coreutils glibc.bin bubblewrap cryptsetup parted dosfstools e2fsprogs btrfs-progs gptfdisk shadow nixos-install-tools curl dbus procps bash quickshell hyprland desktopPackage iproute2 ]} \
         --prefix PATH : "$out/bin"
     done
   '';

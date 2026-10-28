@@ -443,42 +443,46 @@ SettingsPage {
                 width: parent.width
                 reveal: !page.fixedPalette
 
-                SettingsRow {
-                    id: paletteRow
+                Column {
                     width: wallpaperPaletteReveal.width
-                    label: I18n.tr("Wallpaper palette")
-                    hint: page.paletteStatus
-                    hintTone: Common.Palette.error !== "" ? "error" : "info"
-                    narrowLabelInset: paletteRow.undoWidth
-                    controlLeft: paletteRow.narrow ? paletteRow.labelWidth : paletteContent.x
 
-                    Row {
-                        id: paletteContent
-                        x: paletteRow.narrow ? paletteRow.markInset : paletteRow.contentRight - width
-                        y: paletteRow.narrow
-                            ? Theme.settingsStackOffset + (Theme.settingsControlHeight - height) / 2
-                            : (paletteRow.lineHeight - height) / 2
-                        spacing: Theme.scaled(5)
+                    SettingsRow {
+                        id: paletteRow
+                        width: parent.width
+                        label: I18n.tr("Wallpaper palette")
+                        hint: page.paletteStatus
+                        hintTone: Common.Palette.error !== "" ? "error" : "info"
+                        narrowLabelInset: paletteRow.undoWidth
+                        controlLeft: paletteRow.narrow ? paletteRow.labelWidth : paletteContent.x
 
-                        Repeater {
-                            model: page.paletteSwatches
-                            delegate: Rectangle {
-                                id: paletteChip
-                                required property var modelData
-                                width: Theme.scaled(18, Theme.typeScale); height: width
-                                radius: Theme.scaled(5)
-                                color: modelData.color
-                                border.width: 1
-                                border.color: Theme.stroke
-                                Accessible.role: Accessible.StaticText
-                                Accessible.name: modelData.label + " palette color"
+                        Row {
+                            id: paletteContent
+                            x: paletteRow.narrow ? paletteRow.markInset : paletteRow.contentRight - width
+                            y: paletteRow.narrow
+                                ? Theme.settingsStackOffset + (Theme.settingsControlHeight - height) / 2
+                                : (paletteRow.lineHeight - height) / 2
+                            spacing: Theme.scaled(5)
 
-                                SettingsTooltip {
-                                    visible: chipHover.hovered
-                                    text: paletteChip.modelData.label
-                                }
-                                HoverHandler {
-                                    id: chipHover
+                            Repeater {
+                                model: page.paletteSwatches
+                                delegate: Rectangle {
+                                    id: paletteChip
+                                    required property var modelData
+                                    width: Theme.scaled(18, Theme.typeScale); height: width
+                                    radius: Theme.scaled(5)
+                                    color: modelData.color
+                                    border.width: 1
+                                    border.color: Theme.stroke
+                                    Accessible.role: Accessible.StaticText
+                                    Accessible.name: modelData.label + " palette color"
+
+                                    SettingsTooltip {
+                                        visible: chipHover.hovered
+                                        text: paletteChip.modelData.label
+                                    }
+                                    HoverHandler {
+                                        id: chipHover
+                                    }
                                 }
                             }
                         }

@@ -61,7 +61,7 @@ SettingsRow {
         x: root.narrow ? mute.x + mute.width + Theme.controlSpacing
             : valueText.x - Theme.controlSpacing - width
         y: root.narrow ? Theme.settingsStackOffset : (root.lineHeight - height) / 2
-        width: Math.max(0, root.narrow ? root.contentRight - x
+        width: Math.max(0, root.narrow ? root.contentRight - root.markInset - mute.width - Theme.controlSpacing
             : Math.min(root.trackWidth, valueText.x - Theme.controlSpacing
                 - root.labelWidth - mute.width - Theme.controlSpacing))
         height: Theme.settingsControlHeight

@@ -40,7 +40,10 @@ SettingsPage {
 
     function openConfig() {
         Settings.saveNow();
-        Qt.callLater(() => Quickshell.execDetached(["xdg-open", Settings.filePath]));
+        Qt.callLater(() => {
+            Settings.closePanel();
+            Quickshell.execDetached(["xdg-open", Settings.filePath]);
+        });
     }
 
     Column {
