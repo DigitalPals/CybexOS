@@ -326,14 +326,14 @@ test("settings, IPC and search know the theme keys", () => {
     assert.ok(JSON.stringify(rows).includes('"key":"theme"'), "the Theme row is searchable");
 });
 
-test("Appearance leads with one Theme row and keeps saving out of sight", () => {
+test("Appearance leads with the theme gallery and keeps saving out of sight", () => {
     const page = read("Settings/AppearancePage.qml");
+    const gallery = page.indexOf("ThemeGallery {");
     const theme = page.indexOf('label: "Theme"');
     const mode = page.indexOf('label: "Mode"');
-    assert.ok(theme > 0 && theme < mode, "the Theme row comes first, before Mode");
-    assert.equal(page.indexOf('title: "Theme"') < theme, true);
-    assert.match(page, /onPicked: value => \{\s+if \(value !== ""\)\s+Themes\.apply\(value\);/);
-    assert.match(page, /swatchesFor: value => page\.themeSwatches\(value\)/);
+    assert.ok(gallery > 0 && gallery < theme && theme < mode, "the gallery, then the Theme row, then Mode");
+    assert.equal(page.indexOf('title: "Theme"') < gallery, true);
+    assert.match(page, /ThemeGallery \{[\s\S]{0,120}references: page\.themeReferences/);
     assert.match(page, /resetKeys: ThemeHelpers\.RESET_KEYS/);
     assert.match(page, /text: "Save current as theme…"/);
     assert.match(page, /id: saveThemeReveal[^]*?reveal: page\.savingTheme[^]*?FieldRow \{/);
@@ -341,7 +341,28 @@ test("Appearance leads with one Theme row and keeps saving out of sight", () => 
     assert.doesNotMatch(page, /barColorMode|barCustomHue/, "bar keys stay on the Bar page");
     assert.deepEqual(T.RESET_KEYS.filter(key => !T.PATCH_KEYS.includes(key)), []);
     assert.ok(!T.RESET_KEYS.includes("wall"), "a reset never touches the wallpaper");
-    const select = read("Settings/SettingsSelect.qml");
-    assert.match(select, /property var swatchesFor: null/);
-    assert.match(select, /leftPadding: combo\.swatchInset/);
+    // Each tile applies its theme as the one undoable change the dropdown made,
+    // from the pointer and from the keyboard, and says which one is chosen.
+    const tiles = read("Settings/ThemeGallery.qml");
+    assert.equal((tiles.match(/Themes\.apply\(tile\.modelData\.id\)/g) || []).length, 3, "click, key and accessibility");
+    assert.match(tiles, /Accessible\.role: Accessible\.RadioButton[\s\S]{0,120}Accessible\.checked: tile\.selected/);
+    assert.match(tiles, /ThemeHelpers\.preview\(modelData, root\.references\)/);
+    assert.match(tiles, /signal saveRequested\(\)/);
+});
+
+test("a theme preview draws its own surfaces and falls back to the shell's", () => {
+    const references = { dark: { background: "#1a1917", surface: "#201e1b", raised: "#26241f", text: "#f2f0ea", dim: "#97938a" } };
+    assert.deepEqual(T.preview({ patch: { themeMode: "dark", accent: "#88c0d0",
+        themePalette: { mode: "dark", background: "#2e3440", surface: "#3b4252", surfaceRaised: "#434c5e",
+            text: "#eceff4", textMuted: "#d8dee9" } } }, references),
+        { mode: "dark", background: "#2e3440", surface: "#3b4252", raised: "#434c5e", accent: "#88c0d0",
+            text: "#eceff4", dim: "#d8dee9" });
+    // The shipped look keeps the shell's own surfaces.
+    assert.deepEqual(T.preview({ patch: { themeMode: "dark", accent: "#60a5fa" } }, references),
+        { mode: "dark", background: "#1a1917", surface: "#201e1b", raised: "#26241f", accent: "#60a5fa",
+            text: "#f2f0ea", dim: "#97938a" });
+    // A palette for the other mode is not this theme's surfaces.
+    assert.equal(T.preview({ patch: { themeMode: "dark", accent: "#fff",
+        themePalette: { mode: "light", background: "#ffffff" } } }, references).background, "#1a1917");
+    assert.equal(T.preview(null, references), null);
 });

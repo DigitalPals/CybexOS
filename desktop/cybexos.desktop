@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Cybex OS
 Comment=Personalize your Cybex OS desktop
-Exec=cybexos-runtime ipc settings open appearance
+Exec=cybexos-runtime ipc settings open home
 Icon=cybexos
 Terminal=false
 Type=Application

@@ -82,7 +82,7 @@ Use Tab and Enter to operate controls, and Ctrl+PageUp / Ctrl+PageDown to move
 between steps. Every step is optional. Escape, the close button and **Not
 now** keep your progress and dismiss the guide. It will not reopen
 automatically. **Start using Cybex OS** marks it complete. Open the launcher
-and search for **Welcome** to return, or use **Settings → About → Welcome
+and search for **Welcome** to return, or use **Settings → Home → Welcome
 guide**. A completed guide starts again at Hello when opened manually.
 
 Progress lives in `$XDG_STATE_HOME/cybexos/welcome.json`, normally

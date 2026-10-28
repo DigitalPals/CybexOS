@@ -23,6 +23,10 @@ Item {
             : Object.assign({}, entry, { enabled: ids.indexOf(entry.id) !== -1 }));
     }
     readonly property bool subPageActive: subPage !== "" || presetsOpen
+    // What the header's breadcrumb names after "Bar & Control Center".
+    readonly property string subPageTitle: presetsOpen ? I18n.tr("Presets")
+        : subPage !== "" ? ((entries.find(entry => entry.id === subPage) || {}).name || WidgetCatalog.widgetName(subPage))
+        : ""
     property var dragMod: null
     property var dropAt: null
     readonly property bool dragActive: dragMod !== null

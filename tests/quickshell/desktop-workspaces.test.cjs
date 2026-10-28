@@ -248,13 +248,15 @@ test("window churn cannot turn a keyboard-selected workspace into an unrelated w
     assert.equal(context.selected, "abc");
 });
 
-test("workspace page uses compositor preferences and a link to the dock owner", () => {
+test("workspace page uses compositor preferences and owns the dock's two switches", () => {
     const page = read("Settings/WorkspacesPage.qml");
-    assert.doesNotMatch(page, /settingKey:/);
+    // Workspace layouts are compositor preferences, never shell.json keys;
+    // the only shell keys here are the dock's.
+    assert.deepEqual([...page.matchAll(/settingKey: "([A-Za-z]+)"/g)].map(m => m[1]), ["dock", "dockAutoHide"]);
     for (const setter of ["setMode", "setDefaultLayout", "setTitlebarsEnabled", "setLayout"])
         assert.ok(page.includes(`DesktopWorkspaces.${setter}(`));
     assert.match(page, /if \(DesktopWorkspaces\.scrollingAvailable\)/);
-    assert.match(page, /Settings\.showSetting\("bar", "dock"\)/);
+    assert.doesNotMatch(page, /Settings\.showSetting\("bar", "dock"\)/, "no link away to another page");
     const overview = read("OverviewView.qml");
     for (const key of ["PageUp", "PageDown", "M", "L", "N", "W"])
         assert.ok(overview.includes(`Qt.Key_${key}`), key);

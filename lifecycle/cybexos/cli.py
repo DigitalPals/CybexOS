@@ -183,9 +183,10 @@ def main():
     maintenance_policy = maintenance_sub.add_parser('policy'); maintenance_policy.add_argument('request')
     config = commands.add_parser('config')
     config.add_argument('domain', choices=('region',))
-    config.add_argument('field', choices=('timezone', 'locale'))
-    config.add_argument('value')
-    config.add_argument('previous', help='JSON value from the current region snapshot')
+    # One or two FIELD VALUE PREVIOUS triples: a timezone and a language
+    # change staged together become one deployment and one restart.
+    config.add_argument('changes', nargs='+', metavar='FIELD VALUE PREVIOUS',
+                        help='timezone or locale, the new value, and the JSON value from the current region snapshot')
     # Helpers own their options (cybex doctor --json, --help); REMAINDER alone
     # cannot start with an option, so those arrive as parse_known_args extras.
     for name in ('agent', 'assistant', 'backup', 'report', 'doctor'):
@@ -237,7 +238,13 @@ def main():
         os.execv(PKEXEC, [PKEXEC, '/run/current-system/sw/bin/cybexos-request', action, *extra])
     if args.command == 'config':
         from .common import parse
-        payload = {'field': args.field, 'value': args.value, 'previous': parse(args.previous)}
+        if len(args.changes) not in (3, 6):
+            parser.error('config region takes one or two FIELD VALUE PREVIOUS triples')
+        triples = [args.changes[index:index + 3] for index in range(0, len(args.changes), 3)]
+        payload = {'changes': [{'field': field, 'value': value, 'previous': parse(previous)}
+                               for field, value, previous in triples]}
+        from .configuration import changes
+        changes(payload)
         os.execv(PKEXEC, [PKEXEC, '/run/current-system/sw/bin/cybexos-request', 'region', json.dumps(payload)])
     if args.command in ('agent', 'assistant', 'backup', 'report', 'doctor'):
         os.execvp('cybexos-' + args.command, ['cybexos-' + args.command, *extra, *args.arguments])
@@ -312,8 +319,11 @@ def request():
     if action == 'region' and len(values) == 1 and len(values[0]) < 4096:
         from .common import parse
         payload = parse(values[0])
-        if not isinstance(payload, dict) or set(payload) != {'field', 'value', 'previous'}:
-            raise Failure('Invalid region request')
+        from .configuration import changes
+        try:
+            changes(payload)
+        except Failure:
+            raise Failure('Invalid region request') from None
         atomic(state / 'region-request.json', payload)
         subprocess.run(['systemctl', 'start', '--no-block', 'cybexos-region.service'], check=True)
         print(json.dumps({'accepted': True})); return

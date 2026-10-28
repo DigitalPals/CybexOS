@@ -88,7 +88,7 @@ cybex update automatic confirm on|off   # keep a trial boot that passes its chec
 ```
 
 Changing either asks for administrator authorization. Software Update's up to
-date page and **Settings → Bar → Updates** offer the same switches;
+date page and **Settings → Bar & Control Center → Updates** offer the same switches;
 `cybex update status` reports both as `automatic`.
 
 **Background preparation** is `cybexos-update-auto.service`, started by its

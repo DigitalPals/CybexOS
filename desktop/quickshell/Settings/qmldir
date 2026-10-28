@@ -46,7 +46,11 @@ WidgetEditorRow WidgetEditorRow.qml
 WidgetPill WidgetPill.qml
 PluginWidgetSettings PluginWidgetSettings.qml
 PluginAppearance PluginAppearance.qml
-AboutPage AboutPage.qml
+HomePage HomePage.qml
+SettingsTabs SettingsTabs.qml
+SettingsPalette SettingsPalette.qml
+ChangesChip ChangesChip.qml
+ChangesSheet ChangesSheet.qml
 BackupPage BackupPage.qml
 SettingsHint SettingsHint.qml
 TimeRow TimeRow.qml
@@ -71,6 +75,7 @@ ApplyBar ApplyBar.qml
 SettingsDisclosure SettingsDisclosure.qml
 SettingsTooltip SettingsTooltip.qml
 TextSizePreview TextSizePreview.qml
+ThemeGallery ThemeGallery.qml
 ChoiceRow ChoiceRow.qml
 ActionRow ActionRow.qml
 MuteButton MuteButton.qml
@@ -85,6 +90,9 @@ RowCluster RowCluster.qml
 PluginRow PluginRow.qml
 InputDraftState InputDraftState.qml
 singleton InputDrafts InputDrafts.qml
+singleton RegionDrafts RegionDrafts.qml
+singleton RetentionDraft RetentionDraft.qml
+singleton SettingsChanges SettingsChanges.qml
 ApplicationsPage ApplicationsPage.qml
 StoragePage StoragePage.qml
 DeploymentReview DeploymentReview.qml

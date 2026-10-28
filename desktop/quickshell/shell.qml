@@ -163,7 +163,8 @@ ShellRoot {
                     loading: service.loading, watchers: service.watchers,
                     watching: service.watching, failed: service.error !== ""};
             }
-            return JSON.stringify({page: Settings.page, open: Settings.panelOpen, services: services});
+            return JSON.stringify({page: Settings.page, tab: Settings.tab, open: Settings.panelOpen,
+                services: services});
         }
     }
 

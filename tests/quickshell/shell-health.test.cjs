@@ -7,7 +7,8 @@ const path = require("node:path");
 const shellRoot = path.resolve(__dirname,
     "../../desktop/quickshell");
 const health = untranslated(fs.readFileSync(path.join(shellRoot, "Common/ShellHealth.qml"), "utf8"));
-const page = untranslated(fs.readFileSync(path.join(shellRoot, "Settings/AboutPage.qml"), "utf8"));
+// Home's "About this computer" group took over About's shell health.
+const page = untranslated(fs.readFileSync(path.join(shellRoot, "Settings/HomePage.qml"), "utf8"));
 const helper = untranslated(fs.readFileSync(path.join(shellRoot, "scripts/shell-health.py"), "utf8"));
 
 test("Shell Health is read-only, bounded, and refreshable", () => {
@@ -19,7 +20,7 @@ test("Shell Health is read-only, bounded, and refreshable", () => {
     assert.doesNotMatch(health, /systemctl[\s\S]{0,40}?(restart|stop|start)/);
     assert.match(helper, /return warnings\[-3:\]/);
     assert.match(helper, /len\(compact\) > 240/);
-    assert.match(page, /title:\s*"Shell health"/);
+    assert.match(page, /title:\s*"About this computer"[\s\S]*?label:\s*"Desktop shell"/);
     assert.match(page, /onVisibleChanged:[\s\S]*?ShellHealth\.refresh\(\)/);
     assert.match(page, /text:\s*ShellHealth\.busy \? "Checking" : "Refresh"[\s\S]*?ShellHealth\.refresh\(\)/);
 });

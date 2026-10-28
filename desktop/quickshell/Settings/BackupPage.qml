@@ -5,9 +5,9 @@ import "../Common"
 import "../Common/BackupHelpers.js" as BackupHelpers
 import "LocalTime.js" as LocalTime
 
-// Backup & recovery: encrypted copies of the home folder first, then the
-// system's own recovery points. Backups are personal files on another
-// drive or computer; recovery points are the installed system on this one.
+// Backup & storage → Backups: encrypted copies of the home folder. Backups
+// are personal files on another drive or computer; the system's own
+// recovery points, the installed system on this one, have their own tab.
 //
 // Until backups are set up the group is one row and one button. Setting up
 // is three short steps on this page rather than a window of its own: where
@@ -440,10 +440,6 @@ SettingsPage {
                     onTriggered: Backup.restore(page.restoreId, page.restorePath.trim())
                 }
             }
-        }
-
-        RecoveryGroup {
-            width: parent.width
         }
     }
 }

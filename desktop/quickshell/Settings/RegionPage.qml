@@ -4,46 +4,48 @@ import Quickshell
 import "../Common"
 import "InputDraft.js" as Draft
 
-// Region & formats: how the shell writes the time and the temperature. Each
+// Region & language: the system timezone and language, which build a system
+// change, and how the shell writes the time and the temperature, which apply
+// at once. The two system rows draft into RegionDrafts, so the choice
+// survives leaving the page, and the Apply bar (or the header's Changes
+// review) prepares both together: one build and one restart. Each format
 // row's caption reads the result back just before its choices ("Now 19:16",
-// "15° outside"), in the interface face: it is a phrase, not a code, and a
-// mono caption beside a menu-face control read as a stray value.
+// "15° outside"), in the interface face: it is a phrase, not a code.
 SettingsPage {
     id: page
     pageReset: true
     readonly property SystemSettingsBackend service: SystemSettings.region
-    property string timezone: ""
-    property string locale: ""
     property string timezoneQuery: ""
     property string localeQuery: ""
-    property string originalTimezone: ""
-    property string originalLocale: ""
-    property var originalLocaleValues: []
-    readonly property bool timezoneDirty: timezone !== originalTimezone
-    readonly property bool localeDirty: locale !== originalLocale
-    readonly property string disabledReason: service.busy ? "Applying…" : !service.loaded ? "Loading…" : ""
-    function load() {
-        if (!service.loaded) return;
-        if (!timezoneDirty) timezone = originalTimezone = service.snapshot.timezone || "";
-        if (!localeDirty) {
-            locale = originalLocale = service.snapshot.locale || "";
-            originalLocaleValues = service.snapshot.localeValues || [];
-        }
-    }
+    readonly property string disabledReason: service.busy ? "Preparing…" : !service.loaded ? "Loading…" : ""
+    readonly property string draftText: [
+        RegionDrafts.timezoneDirty ? RegionDrafts.timezone.replace(/_/g, " ") : "",
+        RegionDrafts.localeDirty ? I18n.localeName(RegionDrafts.locale) : ""
+    ].filter(Boolean).join(" · ")
+    readonly property string preparedText: [
+        RegionDrafts.prepared.timezone ? RegionDrafts.prepared.timezone.replace(/_/g, " ") : "",
+        RegionDrafts.prepared.locale ? I18n.localeName(RegionDrafts.prepared.locale) : ""
+    ].filter(Boolean).join(" · ")
+    bottomInset: applyBar.reservedHeight
+
     Claim {
         active: page.visible && Settings.panelOpen
-        onClaimed: { page.service.acquire(); page.load(); }
+        onClaimed: { page.service.acquire(); RegionDrafts.load(); }
         onReleased: page.service.release()
     }
-    Connections {
-        target: page.service
-        function onSnapshotChanged() { page.load(); }
-        function onLoadedChanged() { page.load(); }
-        function onCompleted(result) {
-            if (!result.success || result.staged) return;
-            if (page.service.request.action === "timezone") page.originalTimezone = page.timezone;
-            if (page.service.request.action === "locale") page.originalLocale = page.locale;
-        }
+
+    overlay: ApplyBar {
+        id: applyBar
+        pending: RegionDrafts.dirty
+        title: I18n.tr("System change not prepared yet")
+        detail: page.draftText + " · " + (SettingsChanges.systemBusy && !page.service.busy
+            ? I18n.tr("finish the current system change first")
+            : I18n.tr("needs an administrator and a restart"))
+        busy: page.service.busy
+        applyEnabled: page.service.loaded && !SettingsChanges.systemBusy
+        applyText: I18n.tr("Prepare change")
+        onDiscard: RegionDrafts.discard()
+        onApply: RegionDrafts.prepare()
     }
 
     // The clock caption shows hours and minutes, so tick on the minute, and
@@ -61,9 +63,20 @@ SettingsPage {
         spacing: Theme.settingsGroupSpacing
 
         SystemServiceStatus { width: parent.width; service: page.service; notice: page.service.message }
+        // A prepared change is the deployment's now: say where it stands
+        // until the restart that uses it.
+        SettingsHint {
+            width: parent.width
+            visible: RegionDrafts.preparing && page.preparedText !== ""
+            tone: "active"
+            text: (Updates.rebootRecommended ? I18n.tr("Restart to use ")
+                : Updates.ready ? I18n.tr("Review in Software Update, then restart: ")
+                : I18n.tr("Preparing a system change: ")) + page.preparedText
+        }
         SettingsGroup {
             width: parent.width
             title: I18n.tr("System timezone")
+            changeTag: "restart"
             DraftFieldRow {
                 width: parent.width
                 label: I18n.tr("Find a timezone")
@@ -75,32 +88,21 @@ SettingsPage {
             SelectRow {
                 width: parent.width
                 label: I18n.tr("Timezone")
-                current: page.timezone
-                model: Draft.filtered((page.service.snapshot.timezones || []).map(value => ({value: value, label: value.replace(/_/g, " ")})), page.timezoneQuery, page.timezone)
+                current: RegionDrafts.timezone
+                dirty: RegionDrafts.timezoneDirty
+                model: Draft.filtered((page.service.snapshot.timezones || []).map(value => ({value: value, label: value.replace(/_/g, " ")})), page.timezoneQuery, RegionDrafts.timezone)
                 disabledReason: page.disabledReason
-                hint: I18n.tr("Changes the timezone for everyone on this computer. Authorization may be required.")
-                onPicked: value => page.timezone = value
-            }
-            ValueRow {
-                width: parent.width
-                visible: page.timezoneDirty
-                label: I18n.tr("Timezone change")
-                SettingsAction {
-                    text: I18n.tr("Discard")
-                    enabled: !page.service.busy
-                    onTriggered: { page.timezone = page.originalTimezone; page.load(); }
-                }
-                SettingsAction {
-                    text: I18n.tr("Apply timezone")
-                    primary: true
-                    enabled: page.service.loaded && !page.service.busy
-                    onTriggered: page.service.run({action: "timezone", value: page.timezone, previous: page.originalTimezone})
-                }
+                hint: RegionDrafts.timezoneDirty
+                    ? I18n.tr("Was ") + RegionDrafts.originalTimezone.replace(/_/g, " ") + I18n.tr(" · applies after a restart")
+                    : I18n.tr("Changes the timezone for everyone on this computer.")
+                onPicked: value => RegionDrafts.timezone = value
+                onResetRequested: RegionDrafts.discardTimezone()
             }
         }
         SettingsGroup {
             width: parent.width
             title: I18n.tr("System language")
+            changeTag: "restart"
             DraftFieldRow {
                 width: parent.width
                 label: I18n.tr("Find a locale")
@@ -111,32 +113,19 @@ SettingsPage {
             SelectRow {
                 width: parent.width
                 label: I18n.tr("Language and region")
-                current: page.locale
+                current: RegionDrafts.locale
+                dirty: RegionDrafts.localeDirty
                 // Named as the welcome guide names it, so "Dutch" finds nl_NL too.
                 model: Draft.filtered((page.service.snapshot.locales || []).map(value => {
                     const name = I18n.localeName(value);
                     return {value: value, label: name === value ? value : name + " · " + value};
-                }), page.localeQuery, page.locale)
+                }), page.localeQuery, RegionDrafts.locale)
                 disabledReason: page.disabledReason
-                hint: I18n.tr("Installed locales only. Applies system wide after signing out; explicit regional format overrides are preserved.")
-                onPicked: value => page.locale = value
-            }
-            ValueRow {
-                width: parent.width
-                visible: page.localeDirty
-                label: I18n.tr("Language change")
-                hint: I18n.tr("Authorization may be required.")
-                SettingsAction {
-                    text: I18n.tr("Discard")
-                    enabled: !page.service.busy
-                    onTriggered: { page.locale = page.originalLocale; page.load(); }
-                }
-                SettingsAction {
-                    text: I18n.tr("Apply language")
-                    primary: true
-                    enabled: page.service.loaded && !page.service.busy
-                    onTriggered: page.service.run({action: "locale", value: page.locale, previous: page.originalLocaleValues})
-                }
+                hint: RegionDrafts.localeDirty
+                    ? I18n.tr("Was ") + I18n.localeName(RegionDrafts.originalLocale) + I18n.tr(" · applies after a restart")
+                    : I18n.tr("Installed locales only. Explicit regional format overrides are preserved.")
+                onPicked: value => RegionDrafts.locale = value
+                onResetRequested: RegionDrafts.discardLocale()
             }
         }
 

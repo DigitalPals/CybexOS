@@ -3,7 +3,7 @@ import QtQuick
 import "../Common"
 import "../Common/ShortcutEditor.js" as Helpers
 
-// One shortcut on Settings → Keyboard shortcuts: [label][key caps][Edit,
+// One shortcut on Settings → Keyboard → Shortcuts: [label][key caps][Edit,
 // Disable][reset chip]. The row itself is the list's one tab stop while it is
 // current (roving focus): Up/Down/Home/End move between rows, Enter
 // records, Delete disables, and Tab reaches this row's own actions.

@@ -59,7 +59,9 @@ modified. [The skill](../agent-skills/cybexos/SKILL.md) documents ownership,
 secrets, local declarations, previews, application and recovery.
 
 Regional Settings previews write the machine-owned `desktop-settings.json` in
-an isolated candidate through `cybex config region`. The template's `settings.nix`
+an isolated candidate through `cybex config region FIELD VALUE PREVIOUS`, with
+one or two triples: a timezone and a system language chosen together are one
+preview, one generation and one restart. The template's `settings.nix`
 imports it. Timezone and system language become persistent declarations after
 the normal reviewed apply; they do not use mutable localed/timedated writes that
 would disappear on rebuild. Existing locale categories remain separate. This

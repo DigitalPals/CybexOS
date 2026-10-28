@@ -158,7 +158,7 @@ TEST_IPC = '''
         }
         function sheet(): string {
             return JSON.stringify({ open: Session.keysOpen, groups: Session.shortcutGroups.length,
-                settings: Settings.panelOpen, page: Settings.page });
+                settings: Settings.panelOpen, page: Settings.page, tab: Settings.tab });
         }
         function mark(text: string): void { console.log("TEST-MARK " + text); }
     }'''
@@ -427,7 +427,8 @@ def main():
             sheet = wait(lambda: (v := json.loads(ipc('shortcut-test', 'sheet'))).get('settings') and v,
                          'Edit shortcuts opens Settings', 15)
             keyboard.wait(timeout=5)
-            assert not sheet['open'] and sheet['page'] == 'shortcuts', sheet
+            # Keyboard shortcuts are the Keyboard page's Shortcuts tab (2026-10).
+            assert not sheet['open'] and sheet['page'] == 'keyboard' and sheet['tab'] == 'shortcuts', sheet
             ipc('settings', 'close')
 
             # The welcome guide's step uses the same map, keycaps and recorder.

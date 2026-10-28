@@ -193,7 +193,7 @@ Singleton {
         const address = activeAddress;
         switch (row.id) {
         case "about":
-            Settings.showPanel("about", screenName);
+            Settings.showPanel("home", screenName);
             break;
         case "settings":
             // Opens on the page last shown, as System Settings does.

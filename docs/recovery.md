@@ -86,8 +86,9 @@ Future data/schema migrations require an application-aware backup, explicit
 migration metadata, tested rollback policy and compatible old readers. Never
 silently downgrade a newer database or unknown preference schema.
 
-Open **Settings → Storage & cleanup** to inspect store filesystem capacity,
-review cleanup, set retention, and pin confirmed recovery points. Manual cleanup
+Open **Settings → Backup & storage**: **Disk space** shows store filesystem
+capacity and reviews cleanup; **Recovery points** sets retention and pins
+confirmed recovery points. Manual cleanup
 requires authentication and a current review token. Pin/configuration/history
 changes invalidate an earlier review. Estimates count uncompressed NAR bytes;
 shared paths and filesystem compression can make reclaimed disk space differ.
@@ -118,7 +119,7 @@ Settings detects a stopped worker and offers recovery from the durable journal,
 including after reopening the desktop.
 
 Weekly cleanup is enabled by default on fresh installations. Disable it or
-change retention in **Settings → Storage & cleanup**; preferences change the
+change retention in **Settings → Backup & storage → Recovery points**; preferences change the
 machine-owned `local/maintenance.json` through a staged preview and apply. An
 explicit personal opt-out remains respected. The persistent weekly timer runs
 with idle I/O priority and randomized delay. It

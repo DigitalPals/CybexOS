@@ -11,6 +11,10 @@ Item {
 
     default property alias content: contentColumn.data
     property string title: ""
+    // "admin": changing a row asks for an administrator; "restart": it also
+    // builds a system change that applies after a restart. Said on the
+    // heading before anything is touched, not discovered after an edit.
+    property string changeTag: ""
     property int rowSpacing: Theme.settingsRowSpacing
 
     readonly property real headingHeight: title === "" ? 0 : heading.height
@@ -26,6 +30,7 @@ Item {
         visible: root.title !== ""
         width: parent.width
         label: root.title.toUpperCase()
+        tag: root.changeTag
     }
 
     Column {

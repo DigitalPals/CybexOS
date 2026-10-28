@@ -60,26 +60,37 @@ class RegionSettings:
         action = request.get('action', 'snapshot')
         if action == 'snapshot':
             return self.snapshot()
-        if action == 'timezone':
-            value = request.get('value')
-            if not isinstance(value, str) or value not in choices(['timedatectl', 'list-timezones', '--no-pager']):
-                raise ValueError('Choose an installed timezone')
-            if request.get('previous') != self.properties(TIME).get('Timezone', ''):
-                raise ValueError('The timezone changed elsewhere. Discard the pending change and refresh before applying.')
-            return self.stage('timezone', value, request['previous'])
-        if action == 'locale':
-            value = request.get('value')
-            if not isinstance(value, str) or value not in installed_locales():
-                raise ValueError('Choose an installed locale. Install its language pack first if it is missing.')
-            previous = self.properties(LOCALE).get('Locale', [])
-            if request.get('previous') != previous:
-                raise ValueError('System language settings changed elsewhere. Discard the pending change and refresh before applying.')
-            return self.stage('locale', value, previous)
+        if action == 'stage':
+            # One preview for every pending regional change, so a timezone and
+            # a language chosen together build one generation and one restart.
+            items = request.get('changes')
+            if not isinstance(items, list) or not 1 <= len(items) <= 2 \
+                    or len({item.get('field') for item in items if isinstance(item, dict)}) != len(items):
+                raise ValueError('Choose a timezone or a language to apply')
+            staged = []
+            for item in items:
+                field, value, previous = item.get('field'), item.get('value'), item.get('previous')
+                if field == 'timezone':
+                    if not isinstance(value, str) or value not in choices(['timedatectl', 'list-timezones', '--no-pager']):
+                        raise ValueError('Choose an installed timezone')
+                    if previous != self.properties(TIME).get('Timezone', ''):
+                        raise ValueError('The timezone changed elsewhere. Discard the pending change and refresh before applying.')
+                elif field == 'locale':
+                    if not isinstance(value, str) or value not in installed_locales():
+                        raise ValueError('Choose an installed locale. Install its language pack first if it is missing.')
+                    if previous != self.properties(LOCALE).get('Locale', []):
+                        raise ValueError('System language settings changed elsewhere. Discard the pending change and refresh before applying.')
+                else:
+                    raise ValueError('Unknown region operation')
+                staged.append((field, value, previous))
+            return self.stage(staged)
         raise ValueError('Unknown region operation')
 
-    def stage(self, field, value, previous):
-        result = subprocess.run(['cybex', 'config', 'region', field, value, json.dumps(previous)],
-                                capture_output=True, text=True, timeout=50)
+    def stage(self, items):
+        command = ['cybex', 'config', 'region']
+        for field, value, previous in items:
+            command += [field, value, json.dumps(previous)]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=50)
         if result.returncode:
             raise ValueError('Regional preview could not start. Check authorization and cybex update status.')
-        return {'staged': True, 'message': 'Preview started. Open Updates, review the complete build and apply the generation to save this setting.'}
+        return {'staged': True, 'message': 'Preparing the system change. Review it in Software Update, then restart to use it.'}

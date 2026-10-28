@@ -2,7 +2,7 @@
 .import "KeybindEditor.js" as Editor
 .import "KeybindHelpers.js" as KeybindHelpers
 
-// Pure view logic for Settings → Keyboard shortcuts, the recorder and the
+// Pure view logic for Settings → Keyboard → Shortcuts, the recorder and the
 // keyboard map. Keybindings.qml owns the draft; this file only decides what
 // to show and what an edit should be, so it stays testable under Node.
 // User-visible copy lives in QML: functions here return codes.

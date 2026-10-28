@@ -1,16 +1,21 @@
-// The settings search index (turn-3 settings design): every row the nav
-// search can jump to, described once. `page` must be a Settings.pages
-// id, `key` a Settings key when the target is a keyed row — the jump
-// highlights that row through Settings.highlightKey — or "" when the entry
-// only navigates to its page. `anchor` names a destination outside the
-// preference schema. An optional `widget` names a widget whose
+// The settings search index (turn-3 settings design, the 2026-10 palette):
+// every row the search can jump to, described once. `page` must be a
+// Settings.pages id and `tab` one of its tabs when it has them; `key` a
+// Settings key when the target is a keyed row — the jump highlights that
+// row through Settings.highlightKey, and the palette shows its value — or ""
+// when the entry only navigates to its page. `anchor` names a destination
+// outside the preference schema. An optional `widget` names a widget whose
 // settings dialog holds the row; the jump opens it.
+//
+// ACTIONS are things the palette can do rather than rows it can show: each
+// `action` id is run by SettingsPalette, and `page`/`tab`/`anchor`, when
+// set, are where it goes first.
 //
 // Keep this file free of Qt APIs so settings-search.test.cjs can hold it
 // against SettingsHelpers' schema under Node.
 
 var ROWS = [
-    { page: "about", pageLabel: "About", group: "Welcome guide", label: "Welcome guide", key: "", terms: "welcome setup tour getting started onboarding" },
+    { page: "home", pageLabel: "Home", group: "Welcome guide", label: "Welcome guide", key: "", terms: "welcome setup tour getting started onboarding" },
     { page: "applications", pageLabel: "Applications", group: "Default applications", label: "Web browser", key: "", anchor: "applications-browser", terms: "default browser firefox brave links web http" },
     { page: "applications", pageLabel: "Applications", group: "Default applications", label: "Terminal", key: "", anchor: "applications-terminal", terms: "default terminal kitty ghostty foot alacritty" },
     { page: "applications", pageLabel: "Applications", group: "Default applications", label: "Text editor", key: "", anchor: "applications-editor", terms: "default editor text nvim code" },
@@ -18,11 +23,11 @@ var ROWS = [
     { page: "applications", pageLabel: "Applications", group: "Default applications", label: "Image viewer", key: "", anchor: "applications-image", terms: "default image photo png jpeg" },
     { page: "applications", pageLabel: "Applications", group: "Default applications", label: "Video player", key: "", anchor: "applications-video", terms: "default video media mp4" },
     { page: "applications", pageLabel: "Applications", group: "Software", label: "Open Software", key: "", terms: "install remove packages applications software" },
-    { page: "storage", pageLabel: "Storage & cleanup", group: "Storage", label: "Review cleanup", key: "", terms: "free disk space garbage collection nix store" },
-    { page: "storage", pageLabel: "Storage & cleanup", group: "Retention", label: "Automatic weekly cleanup", key: "", anchor: "storage-automatic", terms: "automatic cleanup retention recovery generations pin" },
-    { page: "workspaces", pageLabel: "Workspaces", group: "Workspaces", label: "Workspace mode", key: "", terms: "shared per-monitor display local numbers hotplug external" },
-    { page: "workspaces", pageLabel: "Workspaces", group: "Workspace layout", label: "Default workspace layout", key: "", terms: "dwindle tiled scrolling floating desktop" },
-    { page: "workspaces", pageLabel: "Workspaces", group: "Floating windows", label: "Floating titlebars", key: "", terms: "decoration close maximize minimize restore dock" },
+    { page: "backup", tab: "storage", pageLabel: "Backup & storage", group: "Disk space", label: "Review cleanup", key: "", terms: "free disk space garbage collection nix store" },
+    { page: "backup", tab: "recovery", pageLabel: "Backup & storage", group: "Retention", label: "Automatic weekly cleanup", key: "", anchor: "storage-automatic", terms: "automatic cleanup retention recovery generations pin" },
+    { page: "workspaces", pageLabel: "Workspaces & dock", group: "Workspaces", label: "Workspace mode", key: "", terms: "shared per-monitor display local numbers hotplug external" },
+    { page: "workspaces", pageLabel: "Workspaces & dock", group: "Workspace layout", label: "Default workspace layout", key: "", terms: "dwindle tiled scrolling floating desktop" },
+    { page: "workspaces", pageLabel: "Workspaces & dock", group: "Floating windows", label: "Floating titlebars", key: "", terms: "decoration close maximize minimize restore dock" },
     { page: "assistant", pageLabel: "Assistant", group: "Agent", label: "Answered by", key: "assistantAgent", terms: "ai assistant clippy helper claude codex agent chat ask question" },
     { page: "assistant", pageLabel: "Assistant", group: "Agent", label: "Claude Code model", key: "assistantClaudeModel", terms: "ai assistant fable sonnet opus model" },
     { page: "assistant", pageLabel: "Assistant", group: "Agent", label: "Codex model", key: "assistantCodexModel", terms: "ai assistant openai gpt luna terra sol model" },
@@ -32,20 +37,20 @@ var ROWS = [
     { page: "notifications", pageLabel: "Notifications", group: "Notification history", label: "Remember notification history", key: "notifHistoryPersist", terms: "persist private retention restart" },
     { page: "notifications", pageLabel: "Notifications", group: "Source snoozes", label: "Source snoozes", key: "", terms: "snooze mute application website unsnooze" },
     { page: "notifications", pageLabel: "Notifications", group: "Grouped popups", label: "Burst limit", key: "notifBurstLimit", terms: "group stack duplicates repeated count" },
-    { page: "keyboard", pageLabel: "Keyboard", group: "Keyboard layouts", label: "Keyboard layouts", key: "", terms: "input language variant qwerty azerty dvorak colemak" },
-    { page: "keyboard", pageLabel: "Keyboard", group: "Switch layouts", label: "Layout switching", key: "", terms: "keyboard shortcut caps lock alt shift next layout" },
-    { page: "shortcuts", pageLabel: "Keyboard shortcuts", group: "Keyboard shortcuts", label: "Keyboard shortcuts", key: "", terms: "keybindings hotkeys keys bind remap super shortcut sheet" },
-    { page: "shortcuts", pageLabel: "Keyboard shortcuts", group: "Keyboard shortcuts", label: "Change a shortcut", key: "", terms: "edit record rebind remap disable reset keybinding hotkey" },
-    { page: "shortcuts", pageLabel: "Keyboard shortcuts", group: "Keyboard shortcuts", label: "Add shortcut", key: "", anchor: "shortcuts-add", terms: "custom new launch app website url web app command run keybinding" },
-    { page: "shortcuts", pageLabel: "Keyboard shortcuts", group: "Keyboard shortcuts", label: "Keyboard map", key: "", anchor: "shortcuts-map", terms: "free keys super letters digits layout overview" },
-    { page: "shortcuts", pageLabel: "Keyboard shortcuts", group: "Keyboard shortcuts", label: "Reset all shortcuts", key: "", anchor: "shortcuts-reset", terms: "defaults restore keybindings" },
-    { page: "shortcuts", pageLabel: "Keyboard shortcuts", group: "From user.lua", label: "From user.lua", key: "", terms: "personal lua config bindings hypr user" },
+    { page: "keyboard", tab: "layouts", pageLabel: "Keyboard", group: "Keyboard layouts", label: "Keyboard layouts", key: "", terms: "input language variant qwerty azerty dvorak colemak" },
+    { page: "keyboard", tab: "layouts", pageLabel: "Keyboard", group: "Switch layouts", label: "Layout switching", key: "", terms: "keyboard shortcut caps lock alt shift next layout" },
+    { page: "keyboard", tab: "shortcuts", pageLabel: "Keyboard", group: "Keyboard shortcuts", label: "Keyboard shortcuts", key: "", terms: "keybindings hotkeys keys bind remap super shortcut sheet" },
+    { page: "keyboard", tab: "shortcuts", pageLabel: "Keyboard", group: "Keyboard shortcuts", label: "Change a shortcut", key: "", terms: "edit record rebind remap disable reset keybinding hotkey" },
+    { page: "keyboard", tab: "shortcuts", pageLabel: "Keyboard", group: "Keyboard shortcuts", label: "Add shortcut", key: "", anchor: "shortcuts-add", terms: "custom new launch app website url web app command run keybinding" },
+    { page: "keyboard", tab: "shortcuts", pageLabel: "Keyboard", group: "Keyboard shortcuts", label: "Keyboard map", key: "", anchor: "shortcuts-map", terms: "free keys super letters digits layout overview" },
+    { page: "keyboard", tab: "shortcuts", pageLabel: "Keyboard", group: "Keyboard shortcuts", label: "Reset all shortcuts", key: "", anchor: "shortcuts-reset", terms: "defaults restore keybindings" },
+    { page: "keyboard", tab: "shortcuts", pageLabel: "Keyboard", group: "From user.lua", label: "From user.lua", key: "", terms: "personal lua config bindings hypr user" },
     { page: "touchpad", pageLabel: "Touchpad", group: "Touchpad", label: "Tap to click", key: "", terms: "touchpad tapping click input" },
     { page: "touchpad", pageLabel: "Touchpad", group: "Touchpad", label: "Natural scrolling", key: "", terms: "touchpad reverse scroll direction" },
     { page: "touchpad", pageLabel: "Touchpad", group: "Touchpad", label: "Swipe between workspaces", key: "", terms: "touchpad gesture three fingers swipe workspace overview" },
     { page: "touchpad", pageLabel: "Touchpad", group: "Touchpad", label: "Pointer sensitivity", key: "", terms: "touchpad mouse speed acceleration" },
-    { page: "region", pageLabel: "Region & formats", group: "System timezone", label: "Timezone", key: "", terms: "time zone city country daylight saving clock" },
-    { page: "region", pageLabel: "Region & formats", group: "System language", label: "System language", key: "", terms: "locale language region lang regional formats" },
+    { page: "region", pageLabel: "Region & language", group: "System timezone", label: "Timezone", key: "", terms: "time zone city country daylight saving clock" },
+    { page: "region", pageLabel: "Region & language", group: "System language", label: "System language", key: "", terms: "locale language region lang regional formats" },
     // Appearance
     { page: "network", pageLabel: "Network", group: "Connections", label: "Network connections", key: "", terms: "wifi ethernet saved profile adapter advanced editor" },
     { page: "network", pageLabel: "Network", group: "Connection", label: "Autoconnect and metered", key: "", terms: "automatic join metered data limit background" },
@@ -102,37 +107,37 @@ var ROWS = [
     { page: "wallpaper", pageLabel: "Wallpaper", group: "Rotation", label: "Rotate", key: "shuffle", terms: "shuffle slideshow interval" },
 
     // Bar
-    { page: "bar", pageLabel: "Bar", group: "Layout", label: "Position", key: "position", terms: "top bottom edge placement" },
-    { page: "bar", pageLabel: "Bar", group: "Layout", label: "Style", key: "barStyle", terms: "hug floating attached edge shape" },
-    { page: "bar", pageLabel: "Bar", group: "Layout", label: "Height", key: "barHeight", terms: "size thickness compact classic default roomy custom preset" },
-    { page: "bar", pageLabel: "Bar", group: "Layout", label: "Edge gap", key: "gap", terms: "margin floating style only" },
-    { page: "bar", pageLabel: "Bar", group: "Layout", label: "Corner radius", key: "barRadius", terms: "rounding floating style only" },
-    { page: "bar", pageLabel: "Bar", group: "Background", label: "Bar background", key: "barColorMode", terms: "menubar color custom black white graphite slate macos hue" },
-    { page: "bar", pageLabel: "Bar", group: "Behavior", label: "Auto-hide", key: "autoHide", terms: "hide idle reveal" },
-    { page: "bar", pageLabel: "Bar", group: "Behavior", label: "Reserve space", key: "exclusive", terms: "exclusive zone tiled windows" },
-    { page: "bar", pageLabel: "Bar", group: "Dock", label: "Show in all layouts", key: "dock", terms: "dock taskbar pinned running apps launcher bottom floating tiled scrolling" },
-    { page: "bar", pageLabel: "Bar", group: "Dock", label: "Dock auto-hide", key: "dockAutoHide", terms: "dock hide reveal bottom edge" },
+    { page: "bar", pageLabel: "Bar & Control Center", group: "Layout", label: "Position", key: "position", terms: "top bottom edge placement" },
+    { page: "bar", pageLabel: "Bar & Control Center", group: "Layout", label: "Style", key: "barStyle", terms: "hug floating attached edge shape" },
+    { page: "bar", pageLabel: "Bar & Control Center", group: "Layout", label: "Height", key: "barHeight", terms: "size thickness compact classic default roomy custom preset" },
+    { page: "bar", pageLabel: "Bar & Control Center", group: "Layout", label: "Edge gap", key: "gap", terms: "margin floating style only" },
+    { page: "bar", pageLabel: "Bar & Control Center", group: "Layout", label: "Corner radius", key: "barRadius", terms: "rounding floating style only" },
+    { page: "bar", pageLabel: "Bar & Control Center", group: "Background", label: "Bar background", key: "barColorMode", terms: "menubar color custom black white graphite slate macos hue" },
+    { page: "bar", pageLabel: "Bar & Control Center", group: "Behavior", label: "Auto-hide", key: "autoHide", terms: "hide idle reveal" },
+    { page: "bar", pageLabel: "Bar & Control Center", group: "Behavior", label: "Reserve space", key: "exclusive", terms: "exclusive zone tiled windows" },
+    { page: "workspaces", pageLabel: "Workspaces & dock", group: "Dock", label: "Show in all layouts", key: "dock", terms: "dock taskbar pinned running apps launcher bottom floating tiled scrolling" },
+    { page: "workspaces", pageLabel: "Workspaces & dock", group: "Dock", label: "Dock auto-hide", key: "dockAutoHide", terms: "dock hide reveal bottom edge" },
 
     // Bar widgets and their options
-    { page: "plugins", pageLabel: "Omarchy plugins", group: "Add a plugin", label: "Browse plugins", key: "", terms: "plugins.omarchy.org directory marketplace community find discover website" },
-    { page: "plugins", pageLabel: "Omarchy plugins", group: "Add a plugin", label: "Source", key: "", terms: "install git url local path add omarchy plugin add command paste trust" },
-    { page: "plugins", pageLabel: "Omarchy plugins", group: "Installed", label: "Installed plugins", key: "", terms: "enable disable update preview clone remove omarchy manage" },
-    { page: "bar", pageLabel: "Bar", group: "Widgets", label: "Arrange widgets", key: "", terms: "drag order left center right lane module preview move remove menu notification group grouping status pill separate" },
-    { page: "bar", pageLabel: "Bar", group: "Widgets", label: "Add widgets", key: "", terms: "tray plugin enable disable remove toggle module clock weather notes battery workspaces media" },
-    { page: "bar", pageLabel: "Bar", group: "Indicators", label: "Clock-side actions", key: "", terms: "indicator dictate recording ocr scan text clipboard reminder night light do not disturb dnd stay awake idle inhibit order startup duration" },
-    { page: "bar", pageLabel: "Bar", group: "Notes", label: "AI note titles", key: "", terms: "codex claude model provider effort reasoning generate regenerate privacy" },
-    { page: "bar", pageLabel: "Bar", group: "Weather", label: "Weather location", key: "", widget: "weather", terms: "clock city place search country region coordinates latitude longitude forecast" },
-    { page: "bar", pageLabel: "Bar", group: "Fusebox", label: "Fusebox server", key: "", widget: "fusebox", terms: "ai proxy cliproxy subscriptions accounts management key url faults load requests sessions quota used remaining left meters pace breaker priority clients budgets connected addresses notifications privacy email" },
-    { page: "bar", pageLabel: "Bar", group: "Model Usage", label: "Model Usage", key: "", widget: "modelusage", terms: "ai claude codex kimi quota limits reset percentage providers cliproxy proxy accounts credentials cost tokens t3 refresh warning critical" },
-    { page: "bar", pageLabel: "Bar", group: "Updates", label: "Download updates automatically", key: "", widget: "updates", terms: "background download updates automatic schedule timer nix packages metered power check every interval notify software update finish confirm restart" },
+    { page: "plugins", pageLabel: "Plugins", group: "Add a plugin", label: "Browse plugins", key: "", terms: "plugins.omarchy.org directory marketplace community find discover website" },
+    { page: "plugins", pageLabel: "Plugins", group: "Add a plugin", label: "Source", key: "", terms: "install git url local path add omarchy plugin add command paste trust" },
+    { page: "plugins", pageLabel: "Plugins", group: "Installed", label: "Installed plugins", key: "", terms: "enable disable update preview clone remove omarchy manage" },
+    { page: "bar", pageLabel: "Bar & Control Center", group: "Widgets", label: "Arrange widgets", key: "", terms: "drag order left center right lane module preview move remove menu notification group grouping status pill separate" },
+    { page: "bar", pageLabel: "Bar & Control Center", group: "Widgets", label: "Add widgets", key: "", terms: "tray plugin enable disable remove toggle module clock weather notes battery workspaces media" },
+    { page: "bar", pageLabel: "Bar & Control Center", group: "Indicators", label: "Clock-side actions", key: "", terms: "indicator dictate recording ocr scan text clipboard reminder night light do not disturb dnd stay awake idle inhibit order startup duration" },
+    { page: "bar", pageLabel: "Bar & Control Center", group: "Notes", label: "AI note titles", key: "", terms: "codex claude model provider effort reasoning generate regenerate privacy" },
+    { page: "bar", pageLabel: "Bar & Control Center", group: "Weather", label: "Weather location", key: "", widget: "weather", terms: "clock city place search country region coordinates latitude longitude forecast" },
+    { page: "bar", pageLabel: "Bar & Control Center", group: "Fusebox", label: "Fusebox server", key: "", widget: "fusebox", terms: "ai proxy cliproxy subscriptions accounts management key url faults load requests sessions quota used remaining left meters pace breaker priority clients budgets connected addresses notifications privacy email" },
+    { page: "bar", pageLabel: "Bar & Control Center", group: "Model Usage", label: "Model Usage", key: "", widget: "modelusage", terms: "ai claude codex kimi quota limits reset percentage providers cliproxy proxy accounts credentials cost tokens t3 refresh warning critical" },
+    { page: "bar", pageLabel: "Bar & Control Center", group: "Updates", label: "Download updates automatically", key: "", widget: "updates", terms: "background download updates automatic schedule timer nix packages metered power check every interval notify software update finish confirm restart" },
 
-    { page: "bar", pageLabel: "Bar", group: "Control Center", label: "Control Center widget", key: "", widget: "control", terms: "cybexos button move drag reorder show hide drawer" },
+    { page: "bar", pageLabel: "Bar & Control Center", group: "Control Center", label: "Control Center widget", key: "", widget: "control", terms: "cybexos button move drag reorder show hide drawer" },
 
     // Control Center (also searchable by its former Drawer name)
-    { page: "bar", pageLabel: "Bar", widget: "control", group: "Tabs", label: "Tab order", key: "", terms: "drawer reorder overview sound network bluetooth power notifications usage" },
-    { page: "bar", pageLabel: "Bar", widget: "control", group: "Overview", label: "Overview contents", key: "", terms: "drawer now playing sliders tiles updates cpu ram temperature system stats top processes end task manager" },
-    { page: "bar", pageLabel: "Bar", widget: "control", group: "Behavior", label: "Open on hover", key: "drawerHover", terms: "drawer hover switch glyph menu" },
-    { page: "bar", pageLabel: "Bar", widget: "control", group: "Behavior", label: "Width", key: "drawerWidth", terms: "drawer size wide" },
+    { page: "bar", pageLabel: "Bar & Control Center", widget: "control", group: "Tabs", label: "Tab order", key: "", terms: "drawer reorder overview sound network bluetooth power notifications usage" },
+    { page: "bar", pageLabel: "Bar & Control Center", widget: "control", group: "Overview", label: "Overview contents", key: "", terms: "drawer now playing sliders tiles updates cpu ram temperature system stats top processes end task manager" },
+    { page: "bar", pageLabel: "Bar & Control Center", widget: "control", group: "Behavior", label: "Open on hover", key: "drawerHover", terms: "drawer hover switch glyph menu" },
+    { page: "bar", pageLabel: "Bar & Control Center", widget: "control", group: "Behavior", label: "Width", key: "drawerWidth", terms: "drawer size wide" },
 
     // Notifications
     { page: "notifications", pageLabel: "Notifications", group: "Behavior", label: "Do Not Disturb", key: "notifDnd", terms: "dnd silence mute focus" },
@@ -145,8 +150,8 @@ var ROWS = [
     { page: "notifications", pageLabel: "Notifications", group: "Style", label: "Body preview", key: "notifBodyLines", terms: "lines text toast" },
 
     // Formats, touchpad, night light and power (the old System page)
-    { page: "region", pageLabel: "Region & formats", group: "Formats", label: "Clock", key: "clock24", terms: "24 12 hour time format" },
-    { page: "region", pageLabel: "Region & formats", group: "Formats", label: "Temperature", key: "unit", terms: "celsius fahrenheit weather unit" },
+    { page: "region", pageLabel: "Region & language", group: "Formats", label: "Clock", key: "clock24", terms: "24 12 hour time format" },
+    { page: "region", pageLabel: "Region & language", group: "Formats", label: "Temperature", key: "unit", terms: "celsius fahrenheit weather unit" },
     { page: "touchpad", pageLabel: "Touchpad", group: "Touchpad", label: "Scroll speed", key: "scrollFactor", terms: "touchpad mouse wheel input" },
     { page: "displays", pageLabel: "Displays", group: "Night light", label: "Night light", key: "nightLight", terms: "blue light hyprsunset" },
     { page: "displays", pageLabel: "Displays", group: "Night light", label: "Warmth", key: "warmth", terms: "kelvin tint blue light" },
@@ -160,18 +165,30 @@ var ROWS = [
 
     // Backup & recovery: backups belong to the cybexos-backup helper, so the
     // rows navigate rather than naming shell.json keys.
-    { page: "backup", pageLabel: "Backup & recovery", group: "Backups", label: "Back up personal files", key: "", terms: "backup restic encrypted external drive usb disk ssh sftp server nas home folder copy set up" },
-    { page: "backup", pageLabel: "Backup & recovery", group: "Backups", label: "Automatic backups", key: "", terms: "daily schedule timer reminder battery metered" },
-    { page: "backup", pageLabel: "Backup & recovery", group: "Backups", label: "Restore files", key: "", terms: "restore recover deleted lost file folder snapshot restored" },
-    { page: "backup", pageLabel: "Backup & recovery", group: "Backups", label: "Recovery key", key: "", terms: "backup password keyring encryption key" },
-    { page: "backup", pageLabel: "Backup & recovery", group: "Recovery points", label: "Recovery points", key: "", anchor: "recoveryPoints", terms: "snapshot restore rollback undo update btrfs boot menu grub recovery" },
-    { page: "backup", pageLabel: "Backup & recovery", group: "Recovery points", label: "Factory reset", key: "", terms: "factory reset erase wipe new owner sell give away oem" },
+    { page: "backup", tab: "backups", pageLabel: "Backup & storage", group: "Backups", label: "Back up personal files", key: "", terms: "backup restic encrypted external drive usb disk ssh sftp server nas home folder copy set up" },
+    { page: "backup", tab: "backups", pageLabel: "Backup & storage", group: "Backups", label: "Automatic backups", key: "", terms: "daily schedule timer reminder battery metered" },
+    { page: "backup", tab: "backups", pageLabel: "Backup & storage", group: "Backups", label: "Restore files", key: "", terms: "restore recover deleted lost file folder snapshot restored" },
+    { page: "backup", tab: "backups", pageLabel: "Backup & storage", group: "Backups", label: "Recovery key", key: "", terms: "backup password keyring encryption key" },
+    { page: "backup", tab: "recovery", pageLabel: "Backup & storage", group: "Recovery points", label: "Recovery points", key: "", anchor: "recoveryPoints", terms: "snapshot restore rollback undo update btrfs boot menu grub recovery" },
+    { page: "backup", tab: "recovery", pageLabel: "Backup & storage", group: "Recovery points", label: "Factory reset", key: "", terms: "factory reset erase wipe new owner sell give away oem" },
 
     // About
-    { page: "about", pageLabel: "About", group: "Shell health", label: "Status", key: "", terms: "service deployment journal pid" },
-    { page: "about", pageLabel: "About", group: "Shell health", label: "Last deploy check", key: "", terms: "deploy check refresh health" },
-    { page: "about", pageLabel: "About", group: "Settings file", label: "Settings file", key: "", terms: "json open config shell-settings" },
-    { page: "about", pageLabel: "About", group: "Reset", label: "Reset all settings", key: "", terms: "defaults factory restore" }
+    { page: "home", pageLabel: "Home", group: "Shell health", label: "Status", key: "", terms: "service deployment journal pid" },
+    { page: "home", pageLabel: "Home", group: "Shell health", label: "Last deploy check", key: "", terms: "deploy check refresh health" },
+    { page: "home", pageLabel: "Home", group: "Settings file", label: "Settings file", key: "", terms: "json open config shell-settings" },
+    { page: "home", pageLabel: "Home", group: "Reset", label: "Reset all settings", key: "", terms: "defaults factory restore" }
+];
+
+var ACTIONS = [
+    { action: "software-update", label: "Open Software Update", crumb: "Software Update", terms: "update upgrade check install new version" },
+    { action: "system-check", label: "Run the system check", crumb: "Home", page: "home", anchor: "home-checks", terms: "doctor health diagnose problems drivers firmware" },
+    { action: "change-password", label: "Change password…", crumb: "Security › Password", page: "security", terms: "passwd login account" },
+    { action: "add-fingerprint", label: "Add a fingerprint…", crumb: "Security › Fingerprint", page: "security", terms: "fprint enrol enroll finger reader unlock" },
+    { action: "add-shortcut", label: "Add a keyboard shortcut…", crumb: "Keyboard › Shortcuts", page: "keyboard", tab: "shortcuts", anchor: "shortcuts-add", terms: "custom new keybinding hotkey launch app website" },
+    { action: "shuffle-wallpaper", label: "Shuffle the wallpaper", crumb: "Wallpaper", terms: "random next background image" },
+    { action: "back-up-now", label: "Back up now", crumb: "Backup & storage › Backups", page: "backup", tab: "backups", terms: "backup restic snapshot copy" },
+    { action: "welcome", label: "Open the welcome guide", crumb: "Home", terms: "tour setup onboarding getting started" },
+    { action: "settings-file", label: "Open the settings file", crumb: "Home", terms: "json config shell.json edit" }
 ];
 
 // Case-insensitive substring match over the words a user would type. Results
@@ -197,9 +214,27 @@ function search(query, translate) {
     return labelHits.concat(termHits);
 }
 
+// The palette's actions for a query: label hits, then hidden-term hits.
+function searchActions(query, translate) {
+    var tr = translate || function(text) { return text; };
+    var q = (query || "").trim().toLowerCase();
+    if (q === "")
+        return [];
+    var labelHits = [], termHits = [];
+    ACTIONS.forEach(function(entry) {
+        if ((entry.label + " " + tr(entry.label) + " " + entry.crumb).toLowerCase().indexOf(q) !== -1)
+            labelHits.push(entry);
+        else if (entry.terms.toLowerCase().indexOf(q) !== -1)
+            termHits.push(entry);
+    });
+    return labelHits.concat(termHits);
+}
+
 var exported = {
     ROWS: ROWS,
-    search: search
+    ACTIONS: ACTIONS,
+    search: search,
+    searchActions: searchActions
 };
 
 if (typeof module !== "undefined" && module.exports)

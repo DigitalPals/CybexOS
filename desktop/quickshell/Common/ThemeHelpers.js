@@ -188,6 +188,30 @@ function swatches(entry, references) {
         palette.text || reference.text];
 }
 
+// A theme as Appearance's gallery draws it: a desktop in miniature with its
+// base, a bar, a raised panel, two lines of text and the accent. Missing
+// roles fall back to `references[mode]`, the shell's own surfaces, as the
+// theme itself does when it keeps them.
+function preview(entry, references) {
+    if (!entry || !entry.patch)
+        return null;
+    var patch = entry.patch;
+    var mode = patch.themeMode === "light" ? "light" : "dark";
+    var reference = references && references[mode] ? references[mode] : {};
+    var palette = patch.themePalette && patch.themePalette.mode === mode ? patch.themePalette : {};
+    var background = palette.background || reference.background || "";
+    var surface = palette.surface || reference.surface || background;
+    return {
+        mode: mode,
+        background: background,
+        surface: surface,
+        raised: palette.surfaceRaised || reference.raised || surface,
+        accent: patch.accent || "",
+        text: palette.text || reference.text || "",
+        dim: palette.textDim || palette.textMuted || reference.dim || reference.text || ""
+    };
+}
+
 var exported = {
     PATCH_KEYS: PATCH_KEYS,
     REQUIRED_KEYS: REQUIRED_KEYS,
@@ -204,7 +228,8 @@ var exported = {
     differsFromDefault: differsFromDefault,
     current: current,
     choices: choices,
-    swatches: swatches
+    swatches: swatches,
+    preview: preview
 };
 
 if (typeof module !== "undefined" && module.exports)

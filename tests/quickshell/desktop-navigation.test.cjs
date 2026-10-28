@@ -192,9 +192,10 @@ test("running web apps reuse their launcher's icon, name and pinned group", () =
     assert.match(dock, /command: \["cybexos-webapp", "list", "--json"\]/);
 });
 
-test("the dock's all-layout preference and auto-hide sit in the Bar page and are searchable", () => {
-    const groups = read("Settings/BarLayoutGroups.qml");
+test("the dock's all-layout preference and auto-hide sit on Workspaces & dock and are searchable", () => {
+    const groups = read("Settings/WorkspacesPage.qml");
     assert.match(groups, /SettingsGroup \{\s*width: parent\.width\s*title: "Dock"/);
+    assert.doesNotMatch(read("Settings/BarLayoutGroups.qml"), /title: "Dock"|settingKey: "dock/);
     assert.match(groups, /settingKey: "dock"/);
     assert.match(groups, /label: "Show in all layouts"/);
     assert.match(groups, /settingKey: "dockAutoHide"/);
@@ -202,10 +203,11 @@ test("the dock's all-layout preference and auto-hide sit in the Bar page and are
         "auto-hide is available for automatic floating docks too");
     const search = require(path.join(shellDir, "Common/SettingsSearchData.js"));
     for (const key of ["dock", "dockAutoHide"])
-        assert.ok(search.ROWS.some(row => row.key === key && row.page === "bar"), key);
+        assert.ok(search.ROWS.some(row => row.key === key && row.page === "workspaces"), key);
     assert.ok(search.search("taskbar").some(row => row.key === "dock"));
     const settings = read("Common/Settings.qml");
-    assert.match(settings, /"mods", "modOpts", "dock", "dockAutoHide", "dockPinned"\]/);
+    assert.match(settings, /"mods", "modOpts"\],/);
+    assert.match(settings, /workspaces: \["dock", "dockAutoHide", "dockPinned"\]/);
 });
 
 // ---- top processes ----------------------------------------------------------

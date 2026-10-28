@@ -37,7 +37,7 @@ changed in Settings or added there; a ring marks one that
 
 ## Changing shortcuts in Settings
 
-**Settings → Keyboard shortcuts**, beside Keyboard, lists every Cybex OS
+**Settings → Keyboard → Shortcuts**, the Keyboard page's second tab, lists every Cybex OS
 shortcut in the sheet's group order. Search by name (in English or the
 interface language) or by keys, such as `super+b` or `Super Enter`. **Show**
 narrows the list to **Changed** shortcuts, **Conflicts** (two shortcuts on the

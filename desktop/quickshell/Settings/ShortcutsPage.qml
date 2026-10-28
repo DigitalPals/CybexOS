@@ -4,7 +4,7 @@ import Quickshell
 import "../Common"
 import "../Common/ShortcutEditor.js" as Helpers
 
-// Settings → Keyboard shortcuts. Every row is a Keybindings action, in the
+// Settings → Keyboard → Shortcuts. Every row is a Keybindings action, in the
 // Super+K sheet's group order: search by name or keys, filter what changed,
 // what conflicts and what user.lua binds, record new keys, reset, disable,
 // and add custom shortcuts. Edits form a draft that the Apply bar saves
