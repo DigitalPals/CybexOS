@@ -311,6 +311,7 @@ def main():
             session.wait(lambda:'worker rejected' in session.state().get('failure',''),'worker failure')
             session.start_shell('qs-reloaded.log')
             session.wait(lambda:'worker rejected' in session.state().get('failure',''),'durable failure after shell restart')
+            session.wait(lambda:session.state().get('window'),'open app restored after shell restart')
             session.call('updates','open')
             session.wait(lambda:'worker rejected' in (session.state().get('failureText') or ''),'durable failure in the app')
 
@@ -331,6 +332,17 @@ def main():
             assert session.calls()[-1]==['apply','a'*32,'b'*64], session.calls()
             assert session.state()['primary']['label']=='Restart Now', session.state()
             assert not session.state()['indicator']
+            # Activation restarts the shell with its changed user unit. The app
+            # reopens in the replacement shell and follows the update to its result.
+            session.status(state='activating',transaction='a'*32,phase='Activating under supervision')
+            session.wait(lambda:session.state().get('page')=='installing','installing')
+            shot('software-update-installing.png')
+            session.start_shell('qs-activation.log')
+            session.wait(lambda:session.state().get('window') and session.state().get('page')=='installing',
+                'app reopened during activation')
+            session.status(state='awaiting-boot',transaction='a'*32)
+            session.wait(lambda:session.state().get('page')=='restart','result after the shell restart')
+            assert session.state()['primary']=={'label':'Restart Now','enabled':True}, session.state()
             shot('software-update-restart.png')
             session.trigger('updatePrimary')
             session.wait(lambda:session.records('session.jsonl')==[['reboot']],'restart requested through the session action')
@@ -392,13 +404,30 @@ def main():
             session.trigger('updatePrimary')
             session.wait(lambda:session.state().get('state')=='idle','dismissed')
             assert session.calls()[-1]==['discard','a'*32], session.calls()
+
+            # Closing the app forgets it: neither a later shell restart nor
+            # another session's marker reopens it.
+            marker = session.runtime/'cybexos-software-update-open'
+            assert marker.read_text().strip(), 'the open app is remembered for this session'
+            session.call('updates','close')
+            session.wait(lambda:not session.state().get('window'),'closed app')
+            assert marker.read_text()=='', repr(marker.read_text())
+            session.start_shell('qs-closed.log')
+            time.sleep(2)
+            assert not session.state()['open'], session.state()
+            marker.write_text('another-session\n')
+            session.start_shell('qs-other-session.log')
+            time.sleep(2)
+            assert not session.state()['open'], session.state()
             for log in session.logs:
                 if log.name.startswith('qs-'):
                     errors=[line for line in log.read_text(errors='replace').splitlines() if welcome.ERRORS.search(line)]
                     assert not errors, '\n'.join(errors)
             print('PASS: menubar and Control Center open the app, authorization cancellation, durable worker errors, '
-                  'shell restart, readable review, install once, restart, automatic and manual confirmation, '
-                  'automatic download policy and single background request, discovery error, recovery and dismissal')
+                  'shell restart, readable review, install once, reopening after the activation restart, restart, '
+                  'automatic and manual confirmation, '
+                  'automatic download policy and single background request, discovery error, recovery, dismissal '
+                  'and no reopening once closed or in another session')
         except BaseException:
             for log in session.logs:
                 if log.exists(): print(log.name, log.read_text(errors='replace')[-16000:])

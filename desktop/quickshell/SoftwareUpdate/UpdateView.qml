@@ -59,7 +59,7 @@ Item {
                 body: I18n.tr("Downloading and checking it in the background. Nothing changes on your computer until you choose Install.") };
         case "installing":
             return { tone: "accent", busy: true, title: I18n.tr("Installing the update"),
-                body: I18n.tr("This takes a few minutes. Keep your computer on.") };
+                body: I18n.tr("This takes a few minutes. Keep your computer on. The desktop may restart briefly; this window opens again by itself.") };
         case "restart":
             return { tone: "warn", busy: false, title: I18n.tr("Restart to finish updating"),
                 body: I18n.tr("The update is installed and starts the next time you restart. Save your work first.") };

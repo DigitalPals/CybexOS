@@ -12,6 +12,14 @@ Singleton {
 
     property bool appOpen: false
     signal present()
+    // The app's window belongs to this shell, and activating or restoring a
+    // generation restarts the shell when NixOS restarts its changed user
+    // unit. A marker keyed to the compositor session reopens the app in the
+    // replacement shell, so an update's progress and result stay in view.
+    // Closing the app clears it; a new login never reopens the app.
+    readonly property string reopenPath: Startup.runtimeDir !== ""
+        ? Startup.runtimeDir + "/cybexos-software-update-open" : ""
+    property bool reopenLoaded: false
 
     property var sources: ({upstream: {state: "unknown"}, cybexos: {state: "unknown"}})
     property var deployment: ({state: "idle"})
@@ -96,6 +104,16 @@ Singleton {
         opened();
     }
     function close() { appOpen = false; }
+    onAppOpenChanged: rememberOpen()
+    function rememberOpen() {
+        if (reopenLoaded) reopenFile.setText(appOpen ? Startup.sessionKey + "\n" : "");
+    }
+    function restoreOpen(text) {
+        if (reopenLoaded) return;
+        reopenLoaded = true;
+        if (text.trim() === Startup.sessionKey && !appOpen) show();
+        else rememberOpen();
+    }
     function opened() {
         refreshStatus();
         if (!checkedAt || Date.now() - checkedAt.getTime() > 60000) check();
@@ -252,6 +270,17 @@ Singleton {
             }
         }
         onLoadFailed: root.installedComponents = {}
+    }
+    // Silent: the activation health check rejects a shell whose journal
+    // shows file errors, and a missing marker is the normal case.
+    FileView {
+        id: reopenFile
+        path: root.reopenPath
+        printErrors: false
+        atomicWrites: true
+        blockWrites: true
+        onLoaded: root.restoreOpen(text())
+        onLoadFailed: root.restoreOpen("")
     }
     JsonCommand {
         id: chooser

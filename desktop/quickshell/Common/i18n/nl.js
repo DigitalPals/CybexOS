@@ -1734,7 +1734,7 @@ var MESSAGES = {
     "This shortcut cannot be edited": "Deze sneltoets kan niet worden gewijzigd",
     "This shortcut must keep at least one key": "Deze sneltoets moet ten minste één toets behouden",
     "This signs in to a remote Hermes WebUI session. The password is sent once to the local bridge, is never retained or displayed by Quickshell, and is cleared from this form immediately.": "Hiermee log je in op een externe Hermes WebUI-sessie. Het wachtwoord wordt één keer naar de lokale bridge gestuurd, wordt nooit door Quickshell bewaard of getoond en wordt direct uit dit formulier gewist.",
-    "This takes a few minutes. Keep your computer on.": "Dit duurt een paar minuten. Laat je computer aan staan.",
+    "This takes a few minutes. Keep your computer on. The desktop may restart briefly; this window opens again by itself.": "Dit duurt een paar minuten. Laat je computer aan staan. Het bureaublad kan kort opnieuw starten; dit venster gaat daarna vanzelf weer open.",
     "Thread unavailable": "Thread niet beschikbaar",
     "Three quick choices make this desktop yours. Each one applies the moment you pick it.": "Drie snelle keuzes maken dit bureaublad van jou. Elke keuze geldt zodra je hem maakt.",
     "Tick every second instead of every minute": "Elke seconde bijwerken in plaats van elke minuut",

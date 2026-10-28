@@ -31,6 +31,13 @@ menubar icon, Control Center's **Review** button, the launcher's **Software
 Update** application and **Open Software Update…** action, and
 `cybexos-software-update` (`cybexos-runtime ipc updates open`) all open it.
 Closing the window never interrupts an update; the supervised worker owns it.
+The window belongs to the shell, and activation or restoration restarts
+`quickshell.service` when NixOS restarts the changed user unit. An open app
+records that in `$XDG_RUNTIME_DIR/cybexos-software-update-open`, keyed to the
+compositor session, so the replacement shell reopens it on the installing page
+and it shows the result. Closing the app clears the marker; a new login never
+reopens it. The first update that installs this behavior is applied by a shell
+that lacks it, so its window still closes once.
 Control Center keeps pending deployments and failures reachable even when there
 is no update indicator.
 
