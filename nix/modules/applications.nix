@@ -100,6 +100,22 @@ in {
     environment.etc."brave/policies/managed/cybexos.json" = lib.mkIf cfg.features.proprietary {
       text = builtins.toJSON cfg.browser.bravePolicies;
     };
+    # 1Password writes its browser-extension host only to the profiles it
+    # knows, Brave's among them; Origin reads its own profile and Chromium's
+    # system directory. Point that system entry at the NixOS module's setgid
+    # helper, with the extension origins 1Password itself allows.
+    environment.etc."chromium/native-messaging-hosts/com.1password.1password.json" = lib.mkIf (cfg.features.proprietary && config.programs._1password-gui.enable) {
+      text = builtins.toJSON {
+        name = "com.1password.1password";
+        description = "1Password BrowserSupport";
+        path = "${config.security.wrapperDir}/1Password-BrowserSupport";
+        type = "stdio";
+        allowed_origins = map (id: "chrome-extension://${id}/") [
+          "hjlinigoblmkhjejkmbegnoaljkphmgo" "bkpbhnjcbehoklfkljkkbbmipaphipgl" "gejiddohjgogedgjnonbofjigllpkmbf"
+          "khgocmkkpikpnmmkgmdnfckapcdkgfaf" "aeblfdkhhhdcdjpifhhbdiojplfjncoa" "dppgmdbiimibapkepcbdbmkaabgiofem"
+        ];
+      };
+    };
     hardware.sane.enable = lib.mkDefault true;
     # Driverless printers remain available; retain the maintained free drivers
     # for devices that need them. HP's proprietary firmware plugin is a local,

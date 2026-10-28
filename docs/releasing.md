@@ -125,6 +125,13 @@ replace the Origin override when a maintained equivalent enters Nixpkgs.
 They remain part of the explicit proprietary-application choice and require
 installed runtime, security and redistribution qualification.
 
+Origin keeps its own profile, `BraveSoftware/Brave-Origin`, where 1Password
+does not install its browser host; Cybex OS installs that host in Chromium's
+system directory instead. Run `checks.x86_64-linux.browser-1password` on every
+Origin or 1Password update: it checks that Origin still finds the host, that
+1Password still accepts the Origin executable, and that the entry still
+matches 1Password's own.
+
 The maintained NetworkManager Libreswan plugin uses Nixpkgs sources and a
 scoped helper-path correction: the selected recipe points to `libexec/`, while
 Libreswan 5 installs its daemon/controller helpers in `libexec/ipsec/`.

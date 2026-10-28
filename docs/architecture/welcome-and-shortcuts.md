@@ -388,10 +388,19 @@ and Back follow that route (`WelcomeHelpers.neighbour`), and a saved
    step aside because they open windows:
    - **1Password**, shown when the `1password` desktop entry exists.
      `Welcome.openPassword()` runs that entry and steps aside. The Hyprland
-     `openwindow` event with class `1Password` records its address; the
-     `closewindow` event for that address resumes the guide. Nothing cheaply
-     tells whether 1Password is signed in, so the card never shows a tick;
-     `connect.password` is `available` or `opened` (this session).
+     `openwindow` event with class `1Password` (in any case: its Wayland app
+     id is `1password`) records its address; the `closewindow` event for
+     that address resumes the guide. Whether 1Password is signed in comes
+     from its own database:
+     `scripts/onepassword-accounts.py` opens
+     `$XDG_CONFIG_HOME/1Password/1password.sqlite` read-only and counts the
+     rows of its `accounts` table, as 1Password itself does. It reads no row.
+     The guide asks again when it opens or resumes, when Connect is shown,
+     and every 4 s while Connect shows after 1Password was opened. An account
+     gives the card its tick. A database it cannot read, or a 1Password
+     without that table, leaves the card without one.
+     `connect.password` is `available`, `opened` (this session) or `ready`
+     (signed in).
    - **The AI assistant** (recommended), shown when the assistant feature is
      on. One button per installed agent runs `Welcome.signIn(id)`, which
      calls `Assistant.signIn` (the agent's own login in a terminal) and steps
@@ -400,6 +409,17 @@ and Back follow that route (`WelcomeHelpers.neighbour`), and a saved
      with …"; a stopped service offers Start the assistant; no installed
      agent links to Software.
    - Without a network, a notice links to Settings → Network.
+   - **Closing what Connect opened.** While the guide stands aside for one
+     of these (`Welcome.connectAside`), it records the windows that open for
+     it (`WelcomeHelpers.connectWindow`): during a sign-in every new window
+     (its terminal, the browser the agent opens, 1Password asked to unlock),
+     during 1Password only 1Password's. A `closewindow` event drops a
+     record. `finish()`, and `dismiss()` while the guide shows, close the
+     recorded windows that still exist, except a sign-in's while it is
+     still waiting; `dismiss()` from the pill keeps them all. `WelcomeWindow` sends `hl.dsp.window.close` per address, as
+     the dock does, and keeps the guide on screen until they are gone or for
+     2 s, so the desktop appears without them. An application that asks
+     before closing still asks.
 3. **`wallpaper`.** Wallhaven, the Cybex OS collection or the user's folder,
    opening on Wallhaven. Choosing a tile applies it at once. A card shows the
    wallpaper on a miniature desktop with the colours Matugen read from it.
@@ -482,9 +502,10 @@ Integration notes (as implemented):
 `open(step: string): string` takes `""` for the saved step and returns `ok`
 or `unknown`. The other calls are `close(): void` and `status(): string`,
 which returns JSON `{ open, aside, sheet, leaving, status, step, steps,
-checklist, connect: { password, assistant }, doctor: { running, error,
-overall, attention } }`. `connect.password` is `unavailable`, `available` or
-`opened`; `connect.assistant` is `unavailable`, `required`, `signing-in` or
+checklist, connectWindows, connect: { password, assistant }, doctor: {
+running, error, overall, attention } }`. `connectWindows` lists the
+addresses of the windows recorded for Connect. `connect.password` is `unavailable`, `available`,
+`opened` or `ready`; `connect.assistant` is `unavailable`, `required`, `signing-in` or
 `ready`; `doctor.attention` lists `id:state` for the checks Ready counts.
 `reset(): void` exists for tests and qualification; it deletes only
 `welcome.json`. So does `connect(item: string): string`, which runs a Connect

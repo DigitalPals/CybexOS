@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Wayland
 import "Common"
+import "Common/WindowCommands.js" as WindowCommands
 import "Welcome" as Guide
 
 // The welcome guide fills the focused screen like the installer did: an
@@ -11,10 +12,16 @@ import "Welcome" as Guide
 // guide opened, or any window or shell surface appears, the guide steps
 // aside and leaves a resume pill at the bottom of the screen. Closing the
 // 1Password window the Connect step opened brings it back.
+//
+// Leaving for the desktop closes the windows the Connect step's sign-ins
+// opened, as their close buttons would. The guide stays up until they are
+// gone, or two seconds: one that asks first, over unsaved work, still asks.
 Scope {
     id: root
     readonly property Item contentItem: guide.contentItem
-    readonly property bool shown: Welcome.open && !Welcome.aside
+    property var closing: []
+    readonly property bool closingWindows: closing.some(address => DesktopWorkspaces.isLive(address))
+    readonly property bool shown: Welcome.open && !Welcome.aside || closingWindows
     // Shell surfaces a shortcut can open over the guide. They are transient:
     // the guide comes back when they close, unless a window opened meanwhile.
     readonly property bool shellSurface: Launcher.open || Overview.open || Session.keysOpen
@@ -40,8 +47,21 @@ Scope {
             }
         }
     }
+    Timer { id: closingDeadline; interval: 2000; onTriggered: root.closing = [] }
     Connections {
         target: Welcome
+        // Each address is checked right before its dispatch: Hyprland closes
+        // the active window for one it cannot find.
+        function onCloseWindows(addresses) {
+            if (!Welcome.hasHyprland) return;
+            const live = addresses.filter(address => DesktopWorkspaces.isLive(address));
+            for (const address of live) {
+                const command = WindowCommands.closeWindow(address);
+                if (command !== "") Hyprland.dispatch(command);
+            }
+            root.closing = live;
+            if (live.length > 0) closingDeadline.restart();
+        }
         function onOpenChanged() {
             if (Welcome.open)
                 guide.screen = Screens.byName(Welcome.screenName) ?? Screens.focused;

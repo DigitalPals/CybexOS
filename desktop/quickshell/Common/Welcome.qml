@@ -60,8 +60,17 @@ Singleton {
     property bool passwordOpened: false
     property string passwordWindow: ""
     property bool passwordPending: false
+    // How many accounts 1Password has: counted read-only in its own database,
+    // never read (scripts/onepassword-accounts.py). -1 while unknown.
+    property int passwordAccounts: -1
+    readonly property bool passwordSignedIn: passwordAccounts > 0
     // A sign-in started here: the guide comes back once the agent is ready.
     property bool signInPending: false
+    // What the guide stands aside for, "password" or "sign-in", and the
+    // windows that opened for it (WelcomeHelpers.connectWindow). Leaving for
+    // the desktop closes them, so the person does not find them there.
+    property string connectAside: ""
+    property var connectWindows: []
     readonly property bool connectAvailable: passwordAvailable || Assistant.available
     readonly property var steps: Helpers.steps(connectAvailable)
     // The wallpaper on the desktop, named as the guide names it.
@@ -75,6 +84,9 @@ Singleton {
     property var webapps: []
     property string webappsError: ""
     signal present()
+    // WelcomeWindow closes these through Hyprland and stays up until they are gone.
+    signal closeWindows(var addresses)
+    onAsideChanged: if (!aside) connectAside = "";
 
     function changed(value) {
         document = value;
@@ -94,6 +106,7 @@ Singleton {
         next.version = version;
         // Ready reports what the check found; it runs while the person goes through the guide.
         Doctor.refreshIfStale();
+        refreshPassword();
         const wasOpen = open;
         if (!wasOpen || !aside) screenName = Screens.focused ? Screens.focused.name : "";
         changed(next);
@@ -134,6 +147,7 @@ Singleton {
         if (!open || !aside) return;
         aside = false;
         asideTransient = false;
+        refreshPassword();
         present();
     }
     function openSheet(id) {
@@ -146,9 +160,13 @@ Singleton {
     function move(delta) {
         leave(Helpers.neighbour(steps, step, delta));
     }
+    function refreshPassword() {
+        if (passwordAvailable && !passwordCount.running) passwordCount.running = true;
+    }
     function openPassword() {
         if (!passwordEntry) return;
         stepAside(false);
+        if (aside) connectAside = "password";
         passwordOpened = passwordPending = true;
         passwordWindow = "";
         passwordEntry.execute();
@@ -158,6 +176,7 @@ Singleton {
         if (!Assistant.signIn(agentId)) return;
         signInPending = true;
         stepAside(false);
+        if (aside) connectAside = "sign-in";
     }
     // The Connect step's actions as its buttons run them, for the IPC call
     // qualification uses: "password", or an agent id to sign in to.
@@ -174,18 +193,29 @@ Singleton {
     }
     // Hyprland's openwindow and closewindow events while the guide is open.
     function windowOpened(data) {
+        const owned = Helpers.connectWindow(data, aside ? connectAside : "");
+        if (owned) connectWindows = connectWindows.concat([owned]);
         const window = Helpers.openedWindow(data);
-        if (passwordPending && window && window.windowClass === "1Password" && passwordWindow === "")
+        if (passwordPending && window && Helpers.isPassword(window.windowClass) && passwordWindow === "")
             passwordWindow = window.address;
     }
     function windowClosed(address) {
+        connectWindows = connectWindows.filter(window => window.address !== address);
         if (!passwordPending || address !== passwordWindow) return;
         passwordPending = false;
         passwordWindow = "";
         resume();
     }
+    // As their close buttons would; a sign-in still waiting keeps its windows.
+    // Closing the guide from its pill keeps them all: the person is using them.
+    function closeConnectWindows(close) {
+        const addresses = close ? Helpers.windowsToClose(connectWindows, signInPending) : [];
+        connectWindows = [];
+        if (addresses.length > 0) closeWindows(addresses);
+    }
     function dismiss() {
         if (!open) return;
+        closeConnectWindows(!aside);
         open = false;
         aside = false;
         closeSheet();
@@ -196,6 +226,7 @@ Singleton {
             body: I18n.tr("You can finish setting up any time: open the launcher and search for Welcome.")});
     }
     function finish() {
+        closeConnectWindows(true);
         changed(Object.assign({}, document, {status: "completed"}));
         open = false;
         aside = false;
@@ -204,8 +235,8 @@ Singleton {
     }
     function status() {
         return JSON.stringify({open: open, aside: aside, sheet: sheet, leaving: leaving, status: document.status, step: step,
-            steps: steps, checklist: checklist, connect: {
-                password: !passwordAvailable ? "unavailable" : passwordOpened ? "opened" : "available",
+            steps: steps, checklist: checklist, connectWindows: connectWindows.map(window => window.address), connect: {
+                password: !passwordAvailable ? "unavailable" : passwordSignedIn ? "ready" : passwordOpened ? "opened" : "available",
                 assistant: !Assistant.available ? "unavailable" : Assistant.agentReady ? "ready"
                     : Assistant.signingIn !== "" ? "signing-in" : "required"},
             doctor: Doctor.status()});
@@ -213,6 +244,7 @@ Singleton {
     function reset() {
         open = false;
         aside = false;
+        connectWindows = [];
         closeSheet();
         autoAttempted = true;
         saveTimer.stop();
@@ -319,6 +351,14 @@ Singleton {
                 root.webapps = rows.filter(row => row && typeof row.id === "string" && typeof row.name === "string");
                 root.webappsError = "";
             } catch (_) { root.webappsError = I18n.tr("Web apps could not be read. Open Software to manage your apps."); }
+        }
+    }
+    CommandRequest {
+        id: passwordCount; command: ["python3", "-B", Quickshell.shellDir + "/scripts/onepassword-accounts.py"]
+        timeoutMs: 10000
+        // Anything but a count leaves the card without a tick, as before.
+        onCompleted: (code, body, detail) => {
+            root.passwordAccounts = code === 0 && /^\d+\s*$/.test(body) ? parseInt(body, 10) : -1;
         }
     }
     FileView { id: releaseVersion; path: "/etc/cybexos/release.json"; printErrors: false; blockLoading: true }

@@ -8,8 +8,8 @@ import "../Common/AssistantHelpers.js" as AssistantHelpers
 // browser; then the assistant, through Claude Code's or Codex's own sign-in.
 // Both open windows, so the guide steps aside: it comes back once the agent
 // reports it is signed in, or when the 1Password window is closed. Ticks
-// come from live state only; nothing here can tell that 1Password is
-// signed in, so its card never shows one.
+// come from live state only: the agent's sign-in, and whether 1Password has
+// an account, counted in its own database.
 Item {
     id: root
     readonly property bool online: EthernetState.connected || WifiState.connected || NetworkStatus.online
@@ -18,7 +18,14 @@ Item {
     readonly property bool signingIn: Assistant.signingIn !== ""
     readonly property bool authUnknown: Assistant.agentInstalled && (Assistant.agents[Assistant.agent] || {}).auth === "unknown"
     Claim { active: root.visible; onClaimed: EthernetState.acquire(); onReleased: EthernetState.release() }
-    Component.onCompleted: Assistant.refreshAuth()
+    Component.onCompleted: { Assistant.refreshAuth(); Welcome.refreshPassword(); }
+    // A sign-in finished in 1Password while the guide is showing shows up too.
+    Timer {
+        interval: 4000
+        repeat: true
+        running: root.visible && !Welcome.aside && Welcome.passwordOpened && !Welcome.passwordSignedIn
+        onTriggered: Welcome.refreshPassword()
+    }
 
     component ConnectCard: KioskCard {
         id: card
@@ -177,12 +184,14 @@ Item {
             kicker: root.both ? I18n.format("%1 · %2", ["01", I18n.tr("Password manager")]) : I18n.tr("Password manager")
             title: "1Password" // i18n: untranslated (brand)
             body: I18n.tr("If you use 1Password, sign in first. It can then fill in your passwords for what follows, including your AI account.")
-            status: Welcome.passwordOpened ? I18n.tr("1Password is open. Sign in there, then close its window to come back.") : ""
-            statusGlyph: "open_in_new"
+            status: Welcome.passwordSignedIn ? I18n.tr("Signed in to 1Password.")
+                : Welcome.passwordOpened ? I18n.tr("1Password is open. Sign in there, then close its window to come back.") : ""
+            statusTone: Welcome.passwordSignedIn ? "accent" : "fog"
+            statusGlyph: Welcome.passwordSignedIn ? "check" : "open_in_new"
             KioskButton {
                 objectName: "connectPassword"
-                kind: Welcome.passwordOpened ? "ghost" : "primary"
-                text: Welcome.passwordOpened ? I18n.tr("Open 1Password again") : I18n.tr("Open 1Password")
+                kind: Welcome.passwordOpened || Welcome.passwordSignedIn ? "ghost" : "primary"
+                text: Welcome.passwordOpened && !Welcome.passwordSignedIn ? I18n.tr("Open 1Password again") : I18n.tr("Open 1Password")
                 onClicked: Welcome.openPassword()
             }
         }
