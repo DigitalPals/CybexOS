@@ -106,8 +106,10 @@ in {
     nix.channel.enable = mkDefault false;
     networking.networkmanager.enable = mkDefault true;
     networking.hostName = mkDefault "cybexos";
-    time.timeZone = mkDefault "UTC";
-    i18n.defaultLocale = mkDefault "en_US.UTF-8";
+    # OS fallbacks must be weaker than the installer's mkDefault choices
+    # (1000), Settings declarations (900) and personal declarations (100).
+    time.timeZone = lib.mkOverride 1100 "UTC";
+    i18n.defaultLocale = lib.mkOverride 1100 "en_US.UTF-8";
     console.keyMap = mkDefault "us";
     hardware.enableRedistributableFirmware = mkDefault true;
     boot.plymouth.enable = mkDefault true;

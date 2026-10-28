@@ -104,6 +104,29 @@ let
   lib = nixpkgs.lib;
   names = map lib.getName;
   generic = machine.config;
+  # Exercise non-default fresh-install choices with the real module merger.
+  # UTC/en_US fixtures alone cannot detect equal-priority default conflicts.
+  regional = extra: (nixpkgs.lib.nixosSystem {
+    inherit system;
+    modules = [ module ./machine.nix ] ++ extra;
+  }).config;
+  dutchInstall = { lib, ... }: {
+    time.timeZone = lib.mkDefault "Europe/Amsterdam";
+    i18n.defaultLocale = lib.mkDefault "nl_NL.UTF-8";
+  };
+  englishInstall = { lib, ... }: {
+    time.timeZone = lib.mkDefault "Europe/London";
+    i18n.defaultLocale = lib.mkDefault "en_GB.UTF-8";
+  };
+  regionalSettings = { lib, ... }: {
+    time.timeZone = lib.mkOverride 900 "Europe/Berlin";
+    i18n.defaultLocale = lib.mkOverride 900 "de_DE.UTF-8";
+  };
+  personalRegion = {
+    time.timeZone = "America/New_York";
+    i18n.defaultLocale = "en_US.UTF-8";
+  };
+  regionValues = c: { timezone = c.time.timeZone; locale = c.i18n.defaultLocale; };
   lpmd = lib.findFirst (p: lib.getName p == "intel-lpmd") null xps.systemd.packages;
   relay = xps.services.v4l2-relayd.instances.ipu7;
   relayUnit = xps.systemd.services.v4l2-relayd-ipu7;
@@ -124,6 +147,13 @@ let
   ui = installer.systemd.services.cybexos-installer-ui;
 in
 assert live == installed;
+assert regionValues (regional [ ]) == { timezone = "UTC"; locale = "en_US.UTF-8"; };
+assert regionValues (regional [ dutchInstall ]) == { timezone = "Europe/Amsterdam"; locale = "nl_NL.UTF-8"; };
+assert regionValues (regional [ englishInstall ]) == { timezone = "Europe/London"; locale = "en_GB.UTF-8"; };
+assert regionValues (regional [ dutchInstall regionalSettings ]) == { timezone = "Europe/Berlin"; locale = "de_DE.UTF-8"; };
+assert regionValues (regional [ dutchInstall regionalSettings personalRegion ]) == { timezone = "America/New_York"; locale = "en_US.UTF-8"; };
+# Force the complete locale-dependent system evaluation, not just the scalars.
+assert builtins.isString (regional [ dutchInstall ]).system.build.toplevel.drvPath;
 # The medium runs only the installer: no desktop, live account, sudo or SSH.
 assert installer.cybexos.installationMedium && !installer.cybexos.enable;
 assert !installer.programs.hyprland.enable && !installer.services.displayManager.sddm.enable;
