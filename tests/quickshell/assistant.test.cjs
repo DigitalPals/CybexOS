@@ -154,8 +154,14 @@ test("the overlay takes input only on the character and the box, and the keyboar
     const window = read("AssistantWindow.qml");
     assert.match(window, /WlrLayershell\.namespace: "qs-assistant"/);
     assert.match(window, /WlrLayershell\.layer: WlrLayer\.Overlay/);
-    assert.match(window, /mask: Region \{\s*item: character\s*Region \{\s*item: dockMask/);
-    assert.match(window, /keyboardFocus: !root\.dockShown \? WlrKeyboardFocus\.None\s*: root\.keyboardWanted && !grab\.active \? WlrKeyboardFocus\.Exclusive\s*: WlrKeyboardFocus\.OnDemand/);
+    assert.match(window, /mask: Region \{\s*item: character\s*Region \{\s*item: dockMask\s*\}\s*Region \{\s*item: pressMask/);
+    // A held button on the character takes the whole output until it comes
+    // up, and a drag never changes the keyboard mode under it.
+    assert.match(window, /id: pressMask\s*width: root\.pressing \? stage\.width : 0\s*height: root\.pressing \? stage\.height : 0/);
+    for (const handler of ["onReleased", "onCanceled"])
+        assert.match(window, new RegExp(handler + ": \\{\\s*root\\.pressing = false;"));
+    assert.match(window, /readonly property bool dockShown: boxOpen && !dragging/);
+    assert.match(window, /keyboardFocus: !root\.boxOpen \? WlrKeyboardFocus\.None\s*: root\.keyboardWanted && !grab\.active \? WlrKeyboardFocus\.Exclusive\s*: WlrKeyboardFocus\.OnDemand/);
     assert.match(window, /readonly property bool keyboardWanted: Assistant\.focusRequested/);
     assert.match(window, /HyprlandFocusGrab \{\s*id: grab/);
     assert.match(window, /Assistant\.openComposer\(false\)/, "hovering opens the box without the keyboard");

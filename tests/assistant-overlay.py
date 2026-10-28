@@ -200,6 +200,8 @@ class Session:
                     "XDG_STATE_HOME": str(self.home / ".local/state"), "QT_QPA_PLATFORM": "wayland",
                     "QT_QUICK_BACKEND": "software", "WLR_BACKENDS": "headless", "WLR_RENDERER": "pixman",
                     "WLR_LIBINPUT_NO_DEVICES": "1", "CYBEXOS_ASSISTANT": "1",
+                    # A fresh HOME would open the full-screen welcome guide over the character.
+                    "CYBEXOS_WELCOME": "0",
                     "CYBEXOS_CONNECTED_WIDGETS": "0", "CYBEXOS_DEVELOPER_TOOLS": "0",
                     "QML_IMPORT_PATH": os.environ.get("CYBEXOS_QML_IMPORT_PATH", ""),
                     "PATH": str(launchers) + os.pathsep + os.environ.get('PATH', '')}
@@ -284,8 +286,11 @@ class Session:
         path = self.base / "qs.log"
         return path.read_text(errors="replace") if path.exists() else ""
 
-    def drag(self, x, y, dx, dy):
+    def drag(self, x, y, dx, dy, dwell=0):
         self.pointer.move(x, y)
+        # Resting on the character first opens its box, as a person's
+        # pointer does on the way to a drag.
+        time.sleep(dwell)
         self.pointer.button(True)
         for step in range(1, 21):
             self.pointer.move(x + dx * step / 20, y + dy * step / 20)
@@ -332,10 +337,16 @@ def main():
 
             # Send real compositor pointer events. Repeated movement must cover
             # the full distance despite the character's scale/rotation/mask.
-            for dx, dy in ((-300, 200), (180, -120), (-400, 330)):
+            # The last drag starts with the box open from hovering: the drag
+            # hides it, and must neither lose the pointer nor change the
+            # surface's keyboard mode while the button is held.
+            for dx, dy, dwell in ((-300, 200, 0), (180, -120, 0), (-400, 330, 0), (260, -180, 0.8)):
                 before = session.shell_state()
                 size = before['size']
-                session.drag(before['x'] + size / 2, before['y'] + size / 2, dx, dy)
+                if dwell:
+                    session.pointer.move(before['x'] + size / 2, before['y'] + size / 2)
+                    session.wait(lambda: session.shell_state().get('composing'), 'the box opened by hovering')
+                session.drag(before['x'] + size / 2, before['y'] + size / 2, dx, dy, dwell)
                 try:
                     after = session.wait(lambda: (lambda s: s if abs(s.get('x', -9999) - before['x'] - dx) <= 3
                         and abs(s.get('y', -9999) - before['y'] - dy) <= 3 else None)(session.shell_state()),

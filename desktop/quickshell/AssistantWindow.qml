@@ -31,6 +31,8 @@ PanelWindow {
         { width: root.width, height: root.height }, root.size, root.topReserve)
 
     property bool dragging: false
+    // A button went down on the character and has not come up yet.
+    property bool pressing: false
     property real dragX: 0
     property real dragY: 0
     property point pressWindow: Qt.point(0, 0)
@@ -45,8 +47,9 @@ PanelWindow {
     readonly property bool showWorking: Assistant.busy && !Assistant.tucked
     readonly property bool showReply: Assistant.replyOpen && !Assistant.composing && !Assistant.busy
     readonly property bool showComposer: Assistant.composing && !Assistant.busy
-    readonly property bool dockShown: (showComposer || showWorking || showReply)
-        && !dragging && !Assistant.capturing
+    readonly property bool boxOpen: (showComposer || showWorking || showReply) && !Assistant.capturing
+    // The box steps out of the way while the character is dragged.
+    readonly property bool dockShown: boxOpen && !dragging
 
     // The keyboard goes to the box only when it was asked for. Exclusive
     // first, so the compositor hands it over without a click; then OnDemand
@@ -82,7 +85,9 @@ PanelWindow {
 
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "qs-assistant"
-    WlrLayershell.keyboardFocus: !root.dockShown ? WlrKeyboardFocus.None
+    // Follows the open box, not its drawing: a drag that hides the box
+    // must not change the surface's keyboard mode under the held button.
+    WlrLayershell.keyboardFocus: !root.boxOpen ? WlrKeyboardFocus.None
         : root.keyboardWanted && !grab.active ? WlrKeyboardFocus.Exclusive
         : WlrKeyboardFocus.OnDemand
 
@@ -91,6 +96,10 @@ PanelWindow {
 
         Region {
             item: dockMask
+        }
+
+        Region {
+            item: pressMask
         }
     }
 
@@ -210,9 +219,13 @@ PanelWindow {
             onPressed: mouse => {
                 const local = character.mapFromItem(dragArea, mouse.x, mouse.y);
                 if (!character.contains(local)) {
+                    // A press that never came up (released on another
+                    // output) leaves no full-output region behind.
+                    root.pressing = false;
                     mouse.accepted = false;
                     return;
                 }
+                root.pressing = true;
                 root.pressWindow = Qt.point(mouse.x, mouse.y);
                 root.pressBubble = Qt.point(character.x, character.y);
                 root.lastPointer = root.pressWindow;
@@ -238,12 +251,14 @@ PanelWindow {
                 root.lastPointer = Qt.point(mouse.x, mouse.y);
             }
             onReleased: {
+                root.pressing = false;
                 if (root.dragging)
                     root.finishDrag();
                 else
                     Assistant.characterClicked();
             }
             onCanceled: {
+                root.pressing = false;
                 if (root.dragging)
                     root.finishDrag();
             }
@@ -298,6 +313,15 @@ PanelWindow {
             y: dock.y
             width: root.dockShown ? dock.width : 0
             height: root.dockShown ? dock.height : 0
+        }
+
+        // While the button is held the whole output takes the pointer, so
+        // every motion of a drag arrives here even before the character's
+        // own region has caught up with the pointer.
+        Item {
+            id: pressMask
+            width: root.pressing ? stage.width : 0
+            height: root.pressing ? stage.height : 0
         }
     }
 
