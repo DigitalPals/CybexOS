@@ -129,6 +129,7 @@
           candidate = self.checks.${system}.system;
         };
         boot = import ./nix/tests/boot.nix { inherit pkgs module; };
+        hyprland-pointer = import ./nix/tests/hyprland-pointer.nix { inherit pkgs module; };
       });
       devShells = each (system: let pkgs = import nixpkgs { inherit system; overlays = [ compatibility ]; }; in {
         default = pkgs.mkShell {
