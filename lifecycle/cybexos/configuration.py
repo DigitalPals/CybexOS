@@ -16,7 +16,16 @@ def region(config, request, run):
     else:
         options = [value.replace('.utf8', '.UTF-8') for value in run('locale', '-a').splitlines()
                    if value.endswith(('.utf8', '.UTF-8'))]
-        previous = [line.strip() for line in open('/etc/locale.conf') if line.strip() and not line.startswith('#')]
+        # Match the Settings snapshot: localed omits redundant LC_* values
+        # equal to LANG, even when they are explicit in /etc/locale.conf.
+        current = json.loads(run('busctl', '--system', '--json=short', 'get-property',
+                                 'org.freedesktop.locale1', '/org/freedesktop/locale1',
+                                 'org.freedesktop.locale1', 'Locale'))
+        if (not isinstance(current, dict) or current.get('type') != 'as'
+                or not isinstance(current.get('data'), list)
+                or not all(isinstance(item, str) for item in current['data'])):
+            raise Failure('Could not read the current regional setting')
+        previous = current['data']
     expected = request['previous']
     if (sorted(previous) if isinstance(previous, list) else previous) != (sorted(expected) if isinstance(expected, list) and all(isinstance(x, str) for x in expected) else expected):
         raise Failure('The current regional setting changed. Refresh before previewing again.')

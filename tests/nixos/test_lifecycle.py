@@ -345,21 +345,43 @@ class EngineTests(unittest.TestCase):
         def run(*args, **kwargs):
             if args == ('locale', '-a'):
                 return 'C\nC.utf8\nen_US.utf8\nnl_NL.utf8\nPOSIX\n'
+            if args == ('busctl', '--system', '--json=short', 'get-property',
+                        'org.freedesktop.locale1', '/org/freedesktop/locale1',
+                        'org.freedesktop.locale1', 'Locale'):
+                return json.dumps({'type': 'as', 'data': previous})
             if args[:3] == ('nix', 'eval', '--json'):
                 self.assertTrue(str(args[-1]).endswith('.i18n.defaultLocale'))
                 return '"nl_NL.UTF-8"'
             return original(*args, **kwargs)
         self.engine.run = run
-        real_open = open
-        def open_locale(path, *args, **kwargs):
-            if str(path) == '/etc/locale.conf':
-                return io.StringIO('\n'.join(previous))
-            return real_open(path, *args, **kwargs)
-        with patch('builtins.open', side_effect=open_locale):
-            record = self.engine.stage('local', region={'field':'locale','value':'nl_NL.UTF-8','previous':previous})
+        record = self.engine.stage('local', region={'field':'locale','value':'nl_NL.UTF-8','previous':previous})
         self.assertEqual(read(self.engine.tx(record['id']) / 'config/desktop-settings.json'),
                          {'timezone':'UTC','locale':'nl_NL.UTF-8'})
         self.assertEqual(config_digest(self.working), baseline)
+
+    def test_locale_preview_matches_localed_normalization_and_rejects_stale_snapshot(self):
+        from cybexos.configuration import region
+        atomic(self.config / 'desktop-settings.json', {})
+        previous = ['LANG=nl_NL.UTF-8']
+        def run(*args):
+            if args == ('locale', '-a'):
+                return 'nl_NL.utf8\nen_GB.utf8\n'
+            self.assertEqual(args, ('busctl', '--system', '--json=short', 'get-property',
+                                   'org.freedesktop.locale1', '/org/freedesktop/locale1',
+                                   'org.freedesktop.locale1', 'Locale'))
+            return json.dumps({'type': 'as', 'data': previous})
+        real_open = open
+        def open_locale(path, *args, **kwargs):
+            if str(path) == '/etc/locale.conf':
+                return io.StringIO('LANG=nl_NL.UTF-8\nLC_TIME=nl_NL.UTF-8\n')
+            return real_open(path, *args, **kwargs)
+        request = {'field': 'locale', 'value': 'en_GB.UTF-8', 'previous': previous.copy()}
+        with patch('builtins.open', side_effect=open_locale):
+            region(self.config, request, run)
+        self.assertEqual(read(self.config / 'desktop-settings.json'), {'locale': 'en_GB.UTF-8'})
+        previous.append('LC_TIME=en_US.UTF-8')
+        with self.assertRaisesRegex(Failure, 'current regional setting changed'):
+            region(self.config, request, run)
 
     def test_nixos_service_warning_does_not_wedge_apply_or_rollback(self):
         original = self.engine.run
