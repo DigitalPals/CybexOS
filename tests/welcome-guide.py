@@ -590,6 +590,11 @@ def main():
             session.wait(lambda: session.state().get('aside'), 'the guide steps aside for the system check')
             turn = session.wait(lambda: (t := session.turn()) and t['status'] == 'completed' and t, 'the system check turn')
             assert turn['prompt'] == SYSTEM_CHECK, turn
+            # The service turned the question's purpose into the note that
+            # sends the agent to `cybex doctor`.
+            assert turn['text'] == 'I checked this computer.', turn
+            asked = [json.loads(line) for line in (session.home / 'claude-questions.jsonl').read_text().splitlines()]
+            assert asked[-1].startswith('[Cybex OS: ') and asked[-1].endswith('\n' + SYSTEM_CHECK), asked[-1]
             session.ipc('open', '')
             session.wait(lambda: not session.state().get('aside'), 'resume after the system check')
 
