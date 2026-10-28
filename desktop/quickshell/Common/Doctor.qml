@@ -47,7 +47,7 @@ Singleton {
         case "firmware-updates":
             return I18n.tr("Firmware updates are available");
         case "storage":
-            return problem ? I18n.tr("The disk is almost full") : I18n.tr("The disk is getting full");
+            return problem ? I18n.tr("Very little disk space is left") : I18n.tr("The disk is getting full");
         case "battery":
             return I18n.tr("The battery has lost much of its capacity");
         case "time":
