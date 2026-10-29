@@ -116,6 +116,16 @@ in {
     boot.plymouth.theme = mkDefault "cybexos";
     boot.plymouth.themePackages = [ (pkgs.callPackage ../packages/plymouth.nix { inherit source; }) ];
     boot.plymouth.logo = mkDefault ../../desktop/plymouth/logo.png;
+    # Shared by the ISO and installed machines. Keep console output behind
+    # Plymouth; the journal retains diagnostics and disk unlock stays visible.
+    # "quiet" precedes NixOS's loglevel= parameter, which then takes effect.
+    boot.kernelParams = lib.mkBefore [
+      "quiet" "udev.log_level=3" "rd.udev.log_level=3"
+      "systemd.show_status=false" "rd.systemd.show_status=false"
+      "vt.global_cursor_default=0"
+    ];
+    boot.consoleLogLevel = mkDefault 0;
+    boot.initrd.verbose = mkDefault false;
     # Label boot generations while keeping the upstream NixOS os-release ID.
     system.nixos.label = lib.mkOverride 900 "CybexOS-${cfg.release.version}-${config.system.nixos.release}";
     environment.etc."cybexos/release.json".text = builtins.toJSON {
@@ -185,12 +195,6 @@ in {
       if config.boot.loader.grub.enable
       then { loader = "grub"; menu = "${grubDirectory}/grub.cfg"; environment = "${grubDirectory}/grubenv"; }
       else { loader = "systemd-boot"; });
-    # Plymouth covers boot. Keep routine kernel, udev and systemd status text off
-    # the screen; critical errors still print and the journal keeps everything.
-    # "quiet" precedes NixOS's loglevel= parameter, which then takes effect.
-    boot.kernelParams = lib.mkBefore [ "quiet" "udev.log_level=3" ];
-    boot.consoleLogLevel = mkDefault 3;
-    boot.initrd.verbose = mkDefault false;
     boot.initrd.systemd.enable = true;
     boot.lanzaboote = mkIf cfg.secureBoot { enable = true; pkiBundle = "/var/lib/cybexos/secrets/secureboot"; };
   }) ];

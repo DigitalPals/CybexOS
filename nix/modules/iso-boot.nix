@@ -10,10 +10,15 @@ let
   version = config.cybexos.release.version;
   upstreamTitle = "${config.system.nixos.distroName} ${config.system.nixos.label}";
   quiet = lib.filter (param: param != "splash" && !(lib.hasPrefix "loglevel=" param)) config.boot.kernelParams;
+  diagnostic = lib.filter (param: param != "quiet" && param != "vt.global_cursor_default=0"
+    && !(lib.any (prefix: lib.hasPrefix prefix param)
+      [ "udev.log_level=" "rd.udev.log_level=" "systemd.show_status=" "rd.systemd.show_status=" ])) quiet;
   entries = [
     { label = "Install Cybex OS ${version} - safe graphics"; params = config.boot.kernelParams ++ [ "nomodeset" ]; }
     { label = "Install Cybex OS ${version} - text mode"; params = quiet ++ [ "plymouth.enable=0" "cybexos.text" ]; }
-    { label = "Verbose boot diagnostics"; params = quiet ++ [ "plymouth.enable=0" "loglevel=7" ]; }
+    { label = "Verbose boot diagnostics"; params = diagnostic ++ [
+      "plymouth.enable=0" "loglevel=7" "systemd.show_status=true" "rd.systemd.show_status=true"
+    ]; }
   ];
   kernel = "/boot${config.boot.kernelPackages.kernel}/${config.system.boot.loader.kernelFile}";
   initrd = "/boot${config.system.build.initialRamdisk}/${config.system.boot.loader.initrdFile}";

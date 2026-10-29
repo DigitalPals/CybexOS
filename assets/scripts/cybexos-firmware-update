@@ -1,8 +1,8 @@
 #!/usr/bin/python3 -I
-"""Inspect and install fwupd device firmware independently of Nix generations.
+"""Inspect and install fwupd device firmware for Software Update.
 
-The desktop opens `interactive` in a terminal. It refreshes firmware metadata,
-shows the exact device/release plan and requires confirmation before installing.
+Software Update reviews the device/release plan and calls `install --plan`
+through its supervised worker. `interactive` remains an explicit CLI review.
 fwupd handles authorization and verifies publisher signatures. Firmware changes
 are not reverted by a Nix generation rollback. No command reboots the machine.
 
@@ -265,6 +265,7 @@ def plan_entry(api, device, release):
         # A capsule or other deferred update is staged now and applied by
         # the next restart (or full shutdown); the panel must say so.
         "needsReboot": bool({"needs-reboot", "needs-shutdown"} & flags),
+        "needsShutdown": "needs-shutdown" in flags,
         "affectsFde": "affects-fde" in flags,
     })
 
@@ -402,7 +403,7 @@ class EventLog:
     def __init__(self, path=None):
         # The worker pre-creates the file as the update owner so the panel can
         # read it unprivileged; appending as root keeps that ownership.
-        self._stream = open(path, "a", encoding="utf-8") if path else None
+        self._stream = sys.stderr if path == "-" else open(path, "a", encoding="utf-8") if path else None
 
     def emit(self, event, **fields):
         record = {"event": event, **fields}
@@ -414,7 +415,8 @@ class EventLog:
 
     def close(self):
         if self._stream is not None:
-            self._stream.close()
+            if self._stream is not sys.stderr:
+                self._stream.close()
             self._stream = None
 
     def __enter__(self):
@@ -557,6 +559,7 @@ class Installer:
     def run(self, plan):
         installed = failed = 0
         needs_reboot = False
+        needs_shutdown = False
         self.events.emit("plan", devices=[planned.info for planned in plan])
         if not plan:
             self.out.line("No firmware updates are available.")
@@ -580,6 +583,7 @@ class Installer:
                 if event == "installed":
                     installed += 1
                     needs_reboot = needs_reboot or fields["needsReboot"]
+                    needs_shutdown = needs_shutdown or planned.info.get("needsShutdown", False)
                     suffix = "; restart to finish" if fields["needsReboot"] else ""
                     self.out.line(f"{planned.label}: installed{suffix}")
                 elif event == "failed":
@@ -595,25 +599,53 @@ class Installer:
             self.events.emit("failed", id=planned_id, reason="other",
                              message=error_message(error) or FAILURE_MESSAGES["other"])
             self.out.line(f"Firmware update stopped: {error_message(error)}")
-        self.events.emit("summary", installed=installed, failed=failed, needsReboot=needs_reboot)
+        self.events.emit("summary", installed=installed, failed=failed, needsReboot=needs_reboot,
+                         needsShutdown=needs_shutdown)
         if plan:
             summary = f"Firmware: {installed} installed, {failed} failed"
             self.out.line(summary + ("; restart to finish installing" if needs_reboot else ""))
         return EXIT_FAILED if failed else EXIT_OK
 
 
-def command_plan(out):
+def command_plan(out, refresh=False):
     try:
+        if refresh:
+            result = subprocess.run(["fwupdmgr", "refresh", "--no-authenticate",
+                                     "--no-reboot-check", "--no-unreported-check"],
+                                    capture_output=True, timeout=90)
+            if result.returncode not in (0, 2):
+                raise SetupError("Firmware metadata could not be refreshed. Check the network and try again.")
         api = load_api()
-        plan = build_plan(api, open_client(api), warn=warn)
-    except SetupError as error:
+        warnings = []
+        def warning(message):
+            warnings.append(message)
+            warn(message)
+        plan = build_plan(api, open_client(api), warn=warning)
+    except (SetupError, OSError, subprocess.SubprocessError) as error:
         warn(str(error))
         return EXIT_SETUP
-    out.line(json.dumps({"devices": [planned.info for planned in plan]}, separators=(",", ":")))
+    value = {"devices": [planned.info for planned in plan]}
+    if warnings:
+        value["error"] = "Some devices could not be checked. Try checking for updates again."
+    out.line(json.dumps(value, separators=(",", ":")))
     return EXIT_OK
 
 
-def command_install(events_path, out, interactive=False):
+def reviewed_plan(plan, path):
+    """Never flash a newly discovered or changed release without review."""
+    with open(path, encoding="utf-8") as stream:
+        expected = json.load(stream)["devices"]
+    current = {item.id: item for item in plan}
+    selected = []
+    for info in expected:
+        item = current.get(info["id"])
+        if item is None or item.info != info:
+            raise SetupError("The available firmware changed. Check for updates and prepare again.")
+        selected.append(item)
+    return selected
+
+
+def command_install(events_path, out, interactive=False, plan_path=None):
     try:
         events = EventLog(events_path)
     except OSError as error:
@@ -624,6 +656,8 @@ def command_install(events_path, out, interactive=False):
             api = load_api()
             client = open_client(api)
             plan = build_plan(api, client, warn=warn)
+            if plan_path:
+                plan = reviewed_plan(plan, plan_path)
         except Exception as error:
             if isinstance(error, SetupError):
                 reason, message = "unavailable", str(error)
@@ -675,21 +709,23 @@ def main(argv=None):
         prog="cybexos-firmware-update",
         description="Install fwupd firmware updates with structured progress.")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("plan", help="print the updates `install` would apply (read-only)")
+    plan = commands.add_parser("plan", help="print the updates `install` would apply")
+    plan.add_argument("--refresh", action="store_true", help="refresh signed metadata before discovery")
     commands.add_parser("interactive", help="refresh metadata, review and confirm firmware installation in a terminal")
     install = commands.add_parser("install", help="install every available firmware update")
     install.add_argument("--events", metavar="PATH",
                          help="append JSON-lines progress events to PATH")
+    install.add_argument("--plan", metavar="PATH", help="install only the exact reviewed device releases")
     args = parser.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         # A system unit may run with a C locale; the run log is UTF-8.
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     out = HumanOutput(sys.stdout)
     if args.command == "plan":
-        return command_plan(out)
+        return command_plan(out, args.refresh)
     if args.command == "interactive":
         return command_interactive(out)
-    return command_install(args.events, out)
+    return command_install(args.events, out, plan_path=args.plan)
 
 
 if __name__ == "__main__":

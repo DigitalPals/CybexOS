@@ -51,15 +51,15 @@ Singleton {
     readonly property bool runActive: Helpers.active(deployment.state) || requestPending
     readonly property string runState: runActive ? "running" : deployment.state === "done" ? "done"
         : ["failed", "interrupted", "rolled-back", "recovery-failed"].includes(deployment.state) ? "failed" : "idle"
-    readonly property bool hasUpdates: sourcesLoaded && [sources.upstream, sources.cybexos].some(source => source.state === "available")
-    readonly property bool showIndicator: Helpers.indicator(hasUpdates, deployment.state)
+    readonly property bool hasUpdates: sourcesLoaded && [sources.upstream, sources.cybexos, sources.firmware || {}].some(source => source.state === "available")
+    readonly property bool showIndicator: !Helpers.firmwareRestart(deployment) && Helpers.indicator(hasUpdates, deployment.state)
     readonly property string selectedScope: sourcesLoaded ? Helpers.scope(sources, selectedSources) : ""
     readonly property var actions: Helpers.capabilities(deployment, runActive || !statusLoaded || statusError !== "", available, selectedScope)
     readonly property bool ready: deployment.state === "ready"
-    readonly property bool rebootRecommended: ["awaiting-boot", "awaiting-login"].includes(deployment.state)
+    readonly property bool rebootRecommended: ["awaiting-boot", "awaiting-login"].includes(deployment.state) || Helpers.firmwareRestart(deployment)
     readonly property string rebootRecommendation: deployment.state === "awaiting-login"
         ? "Confirm this boot after signing in. No further restart is needed."
-        : deployment.state === "awaiting-boot" ? "Restart when ready to finish this update." : ""
+        : rebootRecommended ? "Restart when ready to finish this update." : ""
     readonly property string runPhaseLabel: deployment.phase || ""
     readonly property var automatic: deployment.automatic || ({prepare: false, confirm: false})
     readonly property bool choosingAutomatic: chooser.busy
@@ -68,14 +68,16 @@ Singleton {
         || ((deployment.request || {}).state === "failed" ? deployment.request.error || "" : "")
     readonly property string page: Helpers.page({statusLoaded: statusLoaded, statusError: statusError,
         sourcesLoaded: sourcesLoaded, hasUpdates: hasUpdates, error: error, state: deployment.state,
-        request: deployment.request, requestAction: requestAction, automatic: automatic})
+        request: deployment.request, requestAction: requestAction, automatic: automatic,
+        firmwareRestart: Helpers.firmwareRestart(deployment)})
     readonly property string problem: Helpers.problem({statusLoaded: statusLoaded, state: deployment.state})
     readonly property var review: Helpers.summary(deployment)
     readonly property bool upstreamOnlyAvailable: deployment.state === "failed" && deployment.scope === "both"
         && sourcesLoaded && sources.upstream.state === "available"
     readonly property string error: [...new Set([requestError, statusError, checkError,
         (deployment.request || {}).error || "", deployment.error || "",
-        sources.error || "", sources.upstream.error || "", sources.cybexos.error || ""].filter(value => value))].join("\n\n")
+        sources.error || "", sources.upstream.error || "", sources.cybexos.error || "",
+        (sources.firmware || {}).error || "", (deployment.firmware || {}).error || ""].filter(value => value))].join("\n\n")
     readonly property string projectNotes: ready || rebootRecommended ? deployment.notes || "" : sources.cybexos.notes || ""
     readonly property string installedVersion: ready ? deployment.installedVersion || "" : sources.cybexos.installed || ""
     readonly property string projectVersion: ready ? deployment.availableVersion || "" : sources.cybexos.available || ""
@@ -160,9 +162,6 @@ Singleton {
     function openRecoveryPoints() {
         Quickshell.execDetached(["cybexos-apps", "terminal", "--hold", "--", "cybex", "update", "history"]);
     }
-    function openFirmware() {
-        Quickshell.execDetached(["cybexos-apps", "terminal", "--hold", "--", "cybexos-firmware-update", "interactive"]);
-    }
     // A machine policy, so changing it asks for administrator authorization.
     function setAutomatic(name, enabled) {
         if (chooser.busy || !["prepare", "confirm"].includes(name)) return;
@@ -175,7 +174,7 @@ Singleton {
         Quickshell.execDetached(["systemctl", "--no-ask-password", "start", "--no-block", unit]);
     }
     function maybePrepare() {
-        if (!preparationAllowed || !statusLoaded || !sourcesLoaded
+        if (!preparationAllowed || !statusLoaded || !sourcesLoaded || Helpers.firmwareRestart(deployment)
                 || !Helpers.autoPrepare(hasUpdates, automatic, deployment.state, runActive)) return;
         const target = Helpers.targetKey(sources, installedIdentity);
         if (target === preparedTarget) return;
@@ -183,10 +182,16 @@ Singleton {
         startUnit("cybexos-update-auto.service");
     }
     function finished(previous, value) {
+        if (previous === "firmware" && ["done", "failed"].includes(value.state)) {
+            sourcesLoaded = false;
+            check();
+        }
         if (!["awaiting-login", "activating"].includes(previous) || value.state !== "done") return;
         Quickshell.execDetached(["notify-send", "--app-name=Software Update", "--icon=cybexos",
             value.changeKind === "update" ? I18n.tr("Update complete") : I18n.tr("System change complete"),
-            I18n.tr("Everything passed its checks after the restart.")]);
+            (value.firmware || {}).error
+                ? I18n.tr("The system update passed its checks. Some device firmware still needs attention.")
+                : I18n.tr("Everything passed its checks after the restart.")]);
     }
 
     JsonCommand {

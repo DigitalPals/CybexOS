@@ -64,7 +64,7 @@ def enqueue(state, action, payload):
 
 def update_arguments(action, values):
     identifier = lambda value: isinstance(value, str) and re.fullmatch('[0-9a-f]{32}', value)
-    valid = ((action == 'stage' and len(values) == 1 and values[0] in ('upstream', 'cybexos', 'both', 'local'))
+    valid = ((action == 'stage' and len(values) == 1 and values[0] in ('upstream', 'cybexos', 'both', 'local', 'firmware'))
              or (action == 'apply' and len(values) == 2 and identifier(values[0])
                  and isinstance(values[1], str) and re.fullmatch('[0-9a-f]{64}', values[1]))
              or (action == 'confirm' and not values)
@@ -115,15 +115,29 @@ def update_status(state=Path('/var/lib/cybexos'), working=Path('/etc/nixos')):
         latest = {}
     status['request'] = latest
     status['automatic'] = automatic.policy(state)
+    device_firmware = status.get('firmware') or {}
+    if device_firmware.get('needsReboot') and device_firmware.get('bootId'):
+        boot_id = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        if device_firmware['bootId'] != boot_id:
+            status['firmware'] = device_firmware | {'needsReboot': False}
     if (latest.get('id') == status.get('requestId') and latest.get('state') == 'failed'
-            and status.get('state') in ('discovering', 'building', 'validating', 'activating', 'recovering')):
+            and status.get('state') in ('discovering', 'building', 'validating', 'activating', 'recovering', 'firmware')):
         recovery = status['state'] in ('activating', 'recovering')
         status |= {'state': 'recovery-failed' if recovery else 'interrupted',
                    'phase': 'The update worker stopped. Restore the previous generation before continuing.' if recovery
+                            else 'Firmware installation was interrupted. Check the device before retrying; firmware cannot be rolled back.' if status['state'] == 'firmware'
                             else 'Preparation stopped before applying changes. You can prepare again.',
                    'error': latest['error'], 'reviewToken': None, 'progress': None,
                    'finishedAt': latest.get('finishedAt', status.get('updatedAt', now))}
-    busy = status.get('state') in ('discovering', 'building', 'validating', 'activating', 'recovering')
+        if device_firmware.get('state') == 'installing':
+            message = 'Firmware installation was interrupted. Check the device before retrying; firmware cannot be rolled back.'
+            status['firmware'] = device_firmware | {'state': 'failed', 'error': message}
+            if read(state / 'pending.json', {}).get('phase') == 'boot':
+                # The OS activation already passed before firmware started.
+                # Preserve its trial boot instead of offering an impossible
+                # discard or preparation over the pending deployment.
+                status.update(state='awaiting-boot', phase='Restart when ready to finish the system update.')
+    busy = status.get('state') in ('discovering', 'building', 'validating', 'activating', 'recovering', 'firmware')
     end = now if busy else status.get('finishedAt') or status.get('updatedAt', now)
     status['phaseElapsedSeconds'] = max(0, int(end - status.get('phaseStartedAt', end)))
     status['elapsedSeconds'] = max(0, int(end - status.get('operationStartedAt', status.get('startedAt', end))))
@@ -201,7 +215,7 @@ def main():
     sub.add_parser('history')
     update_request = sub.add_parser('request'); update_request.add_argument('identifier')
     log = sub.add_parser('log'); log.add_argument('transaction')
-    stage = sub.add_parser('stage'); stage.add_argument('scope', choices=('upstream', 'cybexos', 'both', 'local'))
+    stage = sub.add_parser('stage'); stage.add_argument('scope', choices=('upstream', 'cybexos', 'both', 'local', 'firmware'))
     apply = sub.add_parser('apply'); apply.add_argument('transaction'); apply.add_argument('review_token')
     rollback = sub.add_parser('rollback'); rollback.add_argument('transaction', nargs='?')
     sub.add_parser('confirm')

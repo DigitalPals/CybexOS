@@ -16,6 +16,7 @@ Item {
     readonly property string page: service.page
     readonly property string problem: service.problem
     readonly property var deployment: service.deployment
+    readonly property var firmware: deployment.firmware || ({})
     readonly property var preparation: Helpers.preparation(deployment)
     readonly property bool update: (deployment.changeKind || "update") === "update"
     readonly property var installed: service.installedComponents
@@ -40,7 +41,7 @@ Item {
         const lead = vendor.state === "available" && upstream
             ? I18n.format("Cybex OS %1 and new NixOS packages are available.", [vendor.available])
             : vendor.state === "available" ? I18n.format("Cybex OS %1 is available.", [vendor.available])
-            : I18n.tr("New NixOS packages are available.");
+            : upstream ? I18n.tr("New NixOS packages are available.") : I18n.tr("Device firmware updates are available.");
         return lead + " " + I18n.tr("Prepare the update to see exactly what changes. Nothing is installed until you choose to.");
     }
 
@@ -60,8 +61,13 @@ Item {
                 body: I18n.tr("Downloading packages, building components when needed, and checking compatibility. Nothing changes until you choose Install.") };
         case "installing":
             return { tone: "accent", busy: true, title: I18n.tr("Installing the update"),
-                body: I18n.tr("This takes a few minutes. Keep your computer on. The desktop may restart briefly; this window opens again by itself.") };
+                body: deployment.state === "firmware"
+                    ? I18n.tr("Installing device firmware. Keep your computer on and external power connected. Follow any device instructions below.")
+                    : I18n.tr("This takes a few minutes. Keep your computer on. The desktop may restart briefly; this window opens again by itself.") };
         case "restart":
+            if (firmware.needsShutdown)
+                return { tone: "warn", busy: false, title: I18n.tr("Shut down to finish updating"),
+                    body: I18n.tr("This device firmware requires a full shutdown. Save your work, shut down, then turn your computer on again.") };
             return { tone: "warn", busy: false, title: I18n.tr("Restart to finish updating"),
                 body: I18n.tr("The update is installed and starts the next time you restart. Save your work first.") };
         case "finishing":
@@ -85,10 +91,14 @@ Item {
             return { tone: "error", busy: false, title: I18n.tr("The update status is unavailable"),
                 body: I18n.tr("The updater didn't respond. Try again in a moment.") };
         case "failed":
+            if (firmware.state === "failed")
+                return { tone: "error", busy: false, title: I18n.tr("Some firmware updates did not finish"), body: I18n.tr(firmware.error || "Check the device and try again.") };
             return { tone: "error", busy: false,
                 title: update ? I18n.tr("The update couldn't be prepared") : I18n.tr("The system change couldn't be prepared"),
                 body: I18n.tr("Nothing on your computer was changed.") };
         case "interrupted":
+            if (["installing", "failed"].includes(firmware.state))
+                return { tone: "warn", busy: false, title: I18n.tr("Firmware installation was interrupted"), body: I18n.tr("Check the device before retrying. Firmware changes cannot be undone by restoring the previous OS version.") };
             return { tone: "warn", busy: false, title: I18n.tr("Preparing the update was interrupted"),
                 body: I18n.tr("Nothing on your computer was changed.") };
         case "stale":
@@ -137,9 +147,54 @@ Item {
         busy: root.current.busy
         title: root.current.title
         body: root.current.body
-        progress: root.page === "preparing" ? root.preparation.fraction : -1
+        progress: root.page === "preparing" ? root.preparation.fraction
+            : root.deployment.state === "firmware" && typeof root.firmware.percent === "number" ? root.firmware.percent / 100 : -1
         progressLabel: root.page !== "preparing" ? root.current.title : root.preparation.fraction >= 0
             ? I18n.tr("Download progress") : I18n.tr("Update preparation progress")
+
+        Column {
+            width: parent.width
+            spacing: Theme.scaled(8)
+            visible: ["installing", "restart", "current", "problem", "confirm", "finishing"].includes(root.page)
+                && (root.firmware.state === "installing" || !!root.firmware.error || (root.firmware.requests || []).length > 0)
+            Text {
+                width: parent.width
+                text: (root.firmware.devices || []).find(device => device.id === root.firmware.current)?.name || ""
+                visible: root.deployment.state === "firmware"
+                color: Theme.textHi
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.primary
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                textFormat: Text.PlainText
+            }
+            Repeater {
+                model: root.firmware.requests || []
+                delegate: Text {
+                    required property var modelData
+                    objectName: "updateFirmwareRequest"
+                    width: parent.width
+                    text: modelData.message || ""
+                    color: Theme.amber
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.typography.primary
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.Wrap
+                    textFormat: Text.PlainText
+                }
+            }
+            Text {
+                width: parent.width
+                text: I18n.tr(root.firmware.error || "")
+                visible: text !== ""
+                color: Theme.redText
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.secondary
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                textFormat: Text.PlainText
+            }
+        }
 
         // Preparation steps follow the worker's phases.
         Row {
@@ -452,14 +507,17 @@ Item {
                     : root.service.actions.prepare)
                 text: root.service.requestPending && !root.service.runActive ? I18n.tr("Waiting for authorization…")
                     : root.page === "available" ? I18n.tr("Prepare Update")
-                    : root.page === "restart" ? I18n.tr("Restart Now")
+                    : root.page === "restart" ? (root.firmware.needsShutdown ? I18n.tr("Shut Down Now") : I18n.tr("Restart Now"))
                     : root.page === "confirm" ? I18n.tr("Keep This Version")
                     : root.problem === "rolled-back" ? I18n.tr("OK")
                     : root.problem === "recovery-failed" ? I18n.tr("Try Restoring Again")
                     : root.problem === "stale" ? I18n.tr("Prepare Again")
                     : I18n.tr("Try Again")
                 onTriggered: {
-                    if (root.page === "restart") Session.reboot();
+                    if (root.page === "restart") {
+                        if (root.firmware.needsShutdown) Session.shutdown();
+                        else Session.reboot();
+                    }
                     else if (root.page === "confirm") root.service.confirm();
                     else if (root.problem === "rolled-back") root.service.discard();
                     else if (root.problem === "recovery-failed") root.service.rollback();
@@ -596,10 +654,6 @@ Item {
             Popovers.LinkText {
                 text: I18n.tr("Update history")
                 onClicked: root.service.openRecoveryPoints()
-            }
-            Popovers.LinkText {
-                text: I18n.tr("Device firmware…")
-                onClicked: root.service.openFirmware()
             }
         }
     }

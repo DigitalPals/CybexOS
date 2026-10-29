@@ -222,7 +222,7 @@ in {
       "tg3" "bnx2" "atlantic" "ax88179_178a" "cdc_ether" "cdc_ncm"
     ];
     # Keep serial diagnostics, but send /dev/console prompts to the local screen.
-    boot.kernelParams = [ "console=ttyS0,115200n8" "console=tty0" ];
+    boot.kernelParams = [ "console=ttyS0,115200n8" "console=tty0" "plymouth.ignore-serial-consoles" ];
     # The screen draws with the CPU through any KMS driver (amdgpu, i915/xe,
     # nouveau, virtio) or the firmware framebuffer (simpledrm with nomodeset),
     # so the medium needs no GPU userspace and no separate NVIDIA kernel. The

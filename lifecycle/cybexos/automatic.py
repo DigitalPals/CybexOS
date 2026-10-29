@@ -57,7 +57,10 @@ def target(config, discovery):
     sources = {name: discovery[name].get('available') if discovery[name].get('state') == 'available' else None
                for name in ('upstream', 'cybexos')}
     scope = 'both' if all(sources.values()) else 'upstream' if sources['upstream'] else 'cybexos' if sources['cybexos'] else ''
-    identity = hashlib.sha256(json.dumps({'config': config, **sources}, sort_keys=True).encode()).hexdigest()
+    devices = (discovery.get('firmware') or {}).get('devices', [])
+    if not scope and devices:
+        scope = 'firmware'
+    identity = hashlib.sha256(json.dumps({'config': config, **sources, 'firmware': devices}, sort_keys=True).encode()).hexdigest()
     return scope, identity
 
 
@@ -67,6 +70,8 @@ def prepare(engine, enqueue, status, config_digest, discover=None, is_metered=me
     if not policy(state)['prepare']:
         return {'skipped': 'disabled'}
     current = status()
+    if (current.get('firmware') or {}).get('needsReboot'):
+        return {'skipped': 'restart'}
     last = read(state / LAST_RUN, {}) or {}
     own_failure = (current.get('state') in ('failed', 'interrupted') and last.get('requestId')
                    and current.get('requestId') == last.get('requestId'))

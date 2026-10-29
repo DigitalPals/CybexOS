@@ -129,6 +129,7 @@
           candidate = self.checks.${system}.system;
         };
         boot = import ./nix/tests/boot.nix { inherit pkgs module; };
+        firmware = import ./nix/tests/firmware.nix { inherit pkgs module; };
         hyprland-pointer = import ./nix/tests/hyprland-pointer.nix { inherit pkgs module; };
         mac-style = import ./nix/tests/mac-style.nix { inherit pkgs module; };
         # 1Password and Brave Origin are the proprietary application choice.

@@ -151,12 +151,24 @@ URLs or configuration details: inspect its output locally and redact secrets
 before sharing it. Checks do not retry automatically or require an account or
 authentication token.
 
-The launcher's **Review device firmware…** action opens a terminal, refreshes fwupd's
-signed metadata, shows the selected devices and versions, and asks before
-installation. The CLI is `cybexos-firmware-update interactive`. fwupd supplies authentication,
-signature checks and device progress. Keep external power connected and follow
-device-specific instructions. Firmware changes are outside the Nix transaction
-and are not reverted by a generation rollback. Reboots remain explicit.
+Device firmware is included in the regular **Software Update** flow. Checks
+refresh fwupd's signed metadata; a firmware-only update uses the same
+**Prepare Update → Install Update** actions when the OS sources are current.
+The ready page lists each device and its old/new firmware versions. Preparation
+never flashes hardware. The reviewed device releases are bound to the review
+token, and installation rejects changed versions instead of silently adding
+new releases. A failed firmware check remains unknown, rather than up to date;
+it does not block a separately available OS update.
+
+The supervised worker installs firmware after successful OS activation, or on
+its own when only firmware is available. Closing the app or restarting the
+shell leaves the worker running. Software Update displays device progress,
+unplug/replug instructions, failures and the need for a restart or full
+shutdown. Keep external power connected. Firmware changes are outside the Nix
+transaction and are not reverted by a generation rollback. A device failure
+does not roll back a successfully activated OS. Reboots and shutdowns remain
+explicit. The optional terminal CLI is `cybexos-firmware-update interactive`;
+the desktop has no separate firmware button or terminal launch.
 
 `cybex update stage upstream|cybexos|both|local` authenticates selected release
 metadata before evaluation, snapshots the entire personal configuration and

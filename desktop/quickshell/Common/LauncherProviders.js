@@ -159,20 +159,11 @@ var BUILTIN_ACTIONS = [
         command: ["cybexos-runtime", "ipc", "updates", "check"]
     },
     {
-        id: "firmware-update",
-        verb: "update",
-        name: "Review device firmware…",
-        subtitle: "Check signed device firmware and confirm installation separately",
-        keywords: ["firmware", "bios", "uefi", "device", "update"],
-        glyph: "refresh",
-        command: ["cybexos-apps", "terminal", "--hold", "--", "cybexos-firmware-update", "interactive"]
-    },
-    {
         id: "updates-open",
         verb: "update",
         name: "Open Software Update…",
-        subtitle: "Review and install Cybex OS and NixOS updates",
-        keywords: ["upgrade", "install", "update", "pending", "kernel", "security", "software update"],
+        subtitle: "Review and install system, app and device firmware updates",
+        keywords: ["upgrade", "install", "update", "pending", "kernel", "security", "software update", "firmware", "bios", "uefi"],
         glyph: "circle-arrow-up",
         command: ["cybexos-software-update"]
     },

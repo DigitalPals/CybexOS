@@ -50,7 +50,7 @@ let
         firmwareEntries = map (boot: boot.efiBootloaderId) c.boot.loader.grub.mirroredBoots;
         selection = builtins.fromJSON c.environment.etc."cybexos/boot.json".text;
       };
-      quiet = { inherit (c.boot) consoleLogLevel; inherit (c.boot.initrd) verbose; params = lib.take 2 c.boot.kernelParams; };
+      quiet = { inherit (c.boot) consoleLogLevel; inherit (c.boot.initrd) verbose; params = lib.take 6 c.boot.kernelParams; };
     };
     fonts = map toString c.fonts.packages;
     compositor = c.programs.hyprland.package.version;
@@ -195,7 +195,13 @@ assert installed.bootBrand.menu.theme == toString installer.isoImage.grubTheme;
 assert installed.bootBrand.menu.enable && installed.bootBrand.menu.efiSupport;
 assert installed.bootBrand.menu.firmwareEntries == [ "CybexOS" ];
 assert installed.bootBrand.menu.selection == { loader = "grub"; menu = "/boot/grub/grub.cfg"; environment = "/boot/grub/grubenv"; };
-assert installed.bootBrand.quiet == { consoleLogLevel = 3; verbose = false; params = [ "quiet" "udev.log_level=3" ]; };
+assert installed.bootBrand.quiet == { consoleLogLevel = 0; verbose = false; params = [
+  "quiet" "udev.log_level=3" "rd.udev.log_level=3"
+  "systemd.show_status=false" "rd.systemd.show_status=false" "vt.global_cursor_default=0"
+]; };
+assert installer.boot.consoleLogLevel == 0 && !installer.boot.initrd.verbose;
+assert lib.all (param: lib.elem param installer.boot.kernelParams) installed.bootBrand.quiet.params;
+assert lib.elem "plymouth.ignore-serial-consoles" installer.boot.kernelParams;
 # Secure Boot keeps signed Lanzaboote UKIs and the systemd-boot selection.
 assert !secureBoot.boot.loader.grub.enable && secureBoot.boot.lanzaboote.enable;
 assert (builtins.fromJSON secureBoot.environment.etc."cybexos/boot.json".text).loader == "systemd-boot";

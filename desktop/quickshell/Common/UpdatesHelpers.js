@@ -1,6 +1,6 @@
 // Shared update capabilities and presentation; no Qt APIs, so behavior is testable.
 function active(state) {
-    return ["discovering", "building", "validating", "activating", "recovering"].includes(state);
+    return ["discovering", "building", "validating", "activating", "recovering", "firmware"].includes(state);
 }
 
 function pending(request) {
@@ -24,7 +24,7 @@ function validSources(value) {
 
 function validDeployment(value) {
     const states = ["idle", "unavailable", "discovering", "building", "validating", "ready", "stale",
-        "activating", "awaiting-boot", "awaiting-login", "done", "recovering", "failed",
+        "activating", "firmware", "awaiting-boot", "awaiting-login", "done", "recovering", "failed",
         "interrupted", "rolled-back", "recovery-failed"];
     return value && states.includes(value.state) && (value.state !== "ready"
         || (/^[a-f0-9]{32}$/.test(value.transaction || "")
@@ -35,18 +35,19 @@ function validDeployment(value) {
 function scope(sources, selected) {
     const upstream = selected.includes("upstream") && sources.upstream.state === "available";
     const vendor = selected.includes("cybexos") && sources.cybexos.state === "available";
-    return upstream && vendor ? "both" : upstream ? "upstream" : vendor ? "cybexos" : "";
+    return upstream && vendor ? "both" : upstream ? "upstream" : vendor ? "cybexos"
+        : (sources.firmware || {}).state === "available" ? "firmware" : "";
 }
 
 function scopeLabel(value) {
     return value === "both" ? "NixOS packages and Cybex OS"
         : value === "upstream" ? "NixOS packages" : value === "cybexos" ? "Cybex OS"
-        : "Your system configuration";
+        : value === "firmware" ? "Device firmware" : "Your system configuration";
 }
 
 function capabilities(deployment, busy, available, selectedScope) {
     const state = deployment.state || "idle";
-    const blocked = busy || active(state) || !available;
+    const blocked = busy || active(state) || !available || firmwareRestart(deployment);
     const waiting = ["awaiting-boot", "awaiting-login", "recovery-failed"].includes(state);
     return {
         prepare: !blocked && !waiting && state !== "ready" && selectedScope !== "",
@@ -60,13 +61,17 @@ function capabilities(deployment, busy, available, selectedScope) {
 }
 
 function overviewVisible(hasUpdates, deployment, error) {
-    return hasUpdates || active(deployment.state) || pending(deployment.request)
+    return hasUpdates || active(deployment.state) || pending(deployment.request) || firmwareRestart(deployment)
         || ["ready", "stale", "awaiting-boot", "awaiting-login", "recovery-failed", "failed", "interrupted"].includes(deployment.state)
         || error !== "";
 }
 
 function indicator(hasUpdates, state) {
-    return hasUpdates && !["activating", "awaiting-boot", "awaiting-login", "recovering", "recovery-failed"].includes(state);
+    return hasUpdates && !["activating", "firmware", "awaiting-boot", "awaiting-login", "recovering", "recovery-failed"].includes(state);
+}
+
+function firmwareRestart(deployment) {
+    return !active(deployment.state) && deployment.state !== "awaiting-login" && !!(deployment.firmware || {}).needsReboot;
 }
 
 // ---- Software Update app ---------------------------------------------------
@@ -98,7 +103,7 @@ function page(m) {
         return "unavailable";
     if (["discovering", "building", "validating"].includes(state))
         return "preparing";
-    if (state === "activating")
+    if (state === "activating" || state === "firmware")
         return "installing";
     if (state === "recovering")
         return "recovering";
@@ -111,7 +116,7 @@ function page(m) {
     }
     if (state === "ready")
         return "ready";
-    if (state === "awaiting-boot")
+    if (state === "awaiting-boot" || m.firmwareRestart)
         return "restart";
     if (state === "awaiting-login")
         return confirmFailed(state, request) || !(m.automatic || {}).confirm ? "confirm" : "finishing";
@@ -190,7 +195,8 @@ function sizeChange(bytes) {
 // A discovered target, so background preparation is requested once for it.
 function targetKey(sources, installedIdentity) {
     const pick = source => source && source.state === "available" ? source.available || "" : "";
-    return JSON.stringify([installedIdentity || "", pick((sources || {}).upstream), pick((sources || {}).cybexos)]);
+    return JSON.stringify([installedIdentity || "", pick((sources || {}).upstream), pick((sources || {}).cybexos),
+        ((sources || {}).firmware || {}).devices || []]);
 }
 
 function autoPrepare(hasUpdates, automatic, state, busy) {
@@ -240,7 +246,7 @@ function downloadSize(bytes) {
 }
 
 if (typeof module !== "undefined") module.exports = {
-    active, pending, statusPollInterval, validSources, validDeployment, scope, scopeLabel, capabilities,
+    active, pending, statusPollInterval, validSources, validDeployment, scope, scopeLabel, capabilities, firmwareRestart,
     overviewVisible, indicator, COMPONENTS, component, page, confirmFailed, problem, versionParts,
     summary, noteItems, sizeChange, targetKey, autoPrepare, PREPARATION_LABELS, preparation, elapsed, downloadSize
 };

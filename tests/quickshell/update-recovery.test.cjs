@@ -181,7 +181,7 @@ test("a trial boot is confirmed automatically unless that failed or is switched 
 
 test("background preparation is requested for each new target, never over a person's work", () => {
     const sources = { upstream: { state: "available", available: "a" }, cybexos: { state: "current", available: "1.0.0" } };
-    assert.equal(H.targetKey(sources, "lock"), JSON.stringify(["lock", "a", ""]));
+    assert.equal(H.targetKey(sources, "lock"), JSON.stringify(["lock", "a", "", []]));
     assert.notEqual(H.targetKey(sources, "lock"), H.targetKey(sources, "other lock"));
     assert.equal(H.autoPrepare(true, { prepare: true }, "idle", false), true);
     assert.equal(H.autoPrepare(true, { prepare: true }, "done", false), true);

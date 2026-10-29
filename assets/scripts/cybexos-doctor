@@ -558,8 +558,8 @@ def check_firmware_updates():
                for device in plan['devices'] if isinstance(device, dict)]
     if not updates:
         return finding('ok', "No firmware updates in fwupd's downloaded list.", updates=[])
-    detail = ('Install them with the firmware action in the Update drawer, which shows each device and asks '
-              'before installing. Firmware changes are not undone by a system rollback.')
+    detail = ('Install them with the regular update in Software Update, which shows each device before installing. '
+              'Firmware changes are not undone by a system rollback.')
     restart = sum(update['needsReboot'] for update in updates)
     if restart:
         who = 'Some' if restart < len(updates) else 'It' if restart == 1 else 'They'

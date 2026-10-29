@@ -82,7 +82,7 @@ class Highlights(unittest.TestCase):
             import hashlib
             changes = 'hello: 1 → 2\n'
             expected = hashlib.sha256((record['configDigest'] + changes + review.identity(record['packageChanges'])
-                                       + review.identity(record['highlights'])).encode()).hexdigest()
+                                       + review.identity(record['highlights']) + review.identity(record['firmware'])).encode()).hexdigest()
             self.assertEqual(record['reviewToken'], expected)
             # A new transaction must not inherit an earlier review summary.
             fresh = engine.engine.status(transaction='c' * 32, state='discovering')

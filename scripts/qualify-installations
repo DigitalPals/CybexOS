@@ -1196,7 +1196,8 @@ grep -q 'text = "Cybex OS"' /boot/theme/theme.txt && test -s /boot/theme/logo.pn
 cmp /boot/EFI/CybexOS/grubx64.efi /boot/EFI/BOOT/BOOTX64.EFI
 efibootmgr | grep -q "^Boot$(efibootmgr | sed -n 's/^BootCurrent: //p')\\* CybexOS"
 ! efibootmgr | grep -qi nixos
-grep -qw quiet /proc/cmdline && test "$(cut -f1 /proc/sys/kernel/printk)" = 3''')
+grep -qw quiet /proc/cmdline && test "$(cut -f1 /proc/sys/kernel/printk)" = 0
+grep -qw systemd.show_status=false /proc/cmdline && grep -qw rd.systemd.show_status=false /proc/cmdline''')
         milestones['installedBootMenu'] = {'result': 'passed', 'checks': [
             'GRUB with the installer theme', 'labelled exact-system generations', 'removable fallback loader',
             'firmware boot entry', 'quiet kernel command line']}

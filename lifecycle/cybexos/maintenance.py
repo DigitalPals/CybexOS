@@ -99,7 +99,7 @@ class Maintenance:
     def guard(self):
         status = read(self.engine.status_path, {})
         if self.engine.pending_path.exists() or status.get('state') in (
-                'discovering', 'building', 'validating', 'ready', 'activating', 'recovering',
+                'discovering', 'building', 'validating', 'ready', 'activating', 'recovering', 'firmware',
                 'awaiting-boot', 'awaiting-login', 'recovery-failed'):
             raise Failure('Finish or recover the current deployment before storage cleanup.')
         if self.pending.exists():
@@ -136,6 +136,9 @@ class Maintenance:
                 # An incomplete stage is unresolved and keeps all its roots.
                 records.append({'id': tx.name, 'createdAt': 0, 'good': False, 'incomplete': True,
                                 'roots': self.roots(tx), 'retired': False})
+                continue
+            # Device-only updates own no Nix generation or configuration roots.
+            if record.get('scope') == 'firmware' and record.get('id') == tx.name:
                 continue
             if (record.get('id') != tx.name or not STORE.fullmatch(record.get('system', ''))
                     or not STORE.fullmatch(record.get('previousSystem', ''))

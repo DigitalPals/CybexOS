@@ -372,6 +372,11 @@ class FakeRunner:
 
 class EngineTests(unittest.TestCase):
     def setUp(self):
+        # Firmware's command boundary is exercised in test_update_firmware;
+        # these fixtures isolate Nix source authentication and activation.
+        device_firmware = patch('cybexos.engine.firmware.discover', return_value={'state': 'current', 'devices': []})
+        device_firmware.start()
+        self.addCleanup(device_firmware.stop)
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         base=Path(self.temp.name);self.base=base
         self.config=base/'config';self.config.mkdir()

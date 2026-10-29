@@ -17,10 +17,14 @@ Item {
     readonly property var nixos: review.components.find(row => row.id === "nixos") || null
     readonly property string nixosRelease: nixos ? Helpers.versionParts("nixos", nixos.after).text : ""
     readonly property var notes: Helpers.noteItems(service.deployment.notes || "", 6)
+    readonly property var firmware: service.deployment.firmware || ({})
+    readonly property var devices: firmware.devices || []
+    readonly property bool firmwareOnly: service.deployment.scope === "firmware"
     readonly property string size: Helpers.sizeChange(review.sizeChange)
     readonly property bool onlyTools: review.components.length === 0 && review.apps.length === 0
 
     function subtitle() {
+        if (firmwareOnly) return I18n.tr("Device firmware updates");
         if (cybexos && nixosRelease !== "")
             return I18n.format("Cybex OS %1 with the latest NixOS %2 updates", [cybexos.after, nixosRelease]);
         if (cybexos)
@@ -126,8 +130,8 @@ Item {
                         width: parent.width
                         topPadding: Theme.scaled(6)
                         spacing: Theme.scaled(6)
-                        Chip { text: I18n.tr("Downloaded and checked"); ink: Theme.ok; fill: Theme.okBg }
-                        Chip { text: I18n.tr("Restart required"); ink: Theme.amber; fill: Theme.amberBg }
+                        Chip { text: root.firmwareOnly ? I18n.tr("Ready to install") : I18n.tr("Downloaded and checked"); ink: Theme.ok; fill: Theme.okBg }
+                        Chip { visible: !root.firmwareOnly || root.devices.some(device => device.needsReboot); text: root.devices.some(device => device.needsShutdown) ? I18n.tr("Shutdown required") : I18n.tr("Restart required"); ink: Theme.amber; fill: Theme.amberBg }
                         Chip { visible: root.size !== ""; text: I18n.format("%1 on disk", [root.size]) }
                     }
                 }
@@ -171,6 +175,60 @@ Item {
                         }
                     }
                 }
+            }
+
+            SectionTitle {
+                visible: root.devices.length > 0
+                text: I18n.tr("Device firmware")
+            }
+            Column {
+                width: parent.width
+                visible: root.devices.length > 0
+                spacing: Theme.scaled(8)
+                Repeater {
+                    model: root.devices
+                    delegate: ChangeRow {
+                        required property var modelData
+                        required property int index
+                        objectName: "updateFirmwareDevice"
+                        width: parent.width
+                        divider: index > 0
+                        glyph: "devices"
+                        title: modelData.name
+                        detail: modelData.vendor || ""
+                        before: modelData.from || ""
+                        after: modelData.to || ""
+                    }
+                }
+                Text {
+                    width: parent.width
+                    text: I18n.tr("Firmware is included when you install this update. Keep external power connected. Firmware changes cannot be undone by restoring the previous OS version.")
+                    color: Theme.textMid
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.typography.secondary
+                    wrapMode: Text.Wrap
+                    textFormat: Text.PlainText
+                }
+                Text {
+                    visible: root.devices.some(device => device.affectsFde)
+                    width: parent.width
+                    text: I18n.tr("This firmware can change disk-encryption measurements. Keep your disk passphrase or recovery key available for the next boot.")
+                    color: Theme.amber
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.typography.secondary
+                    wrapMode: Text.Wrap
+                    textFormat: Text.PlainText
+                }
+            }
+            Text {
+                visible: root.firmware.state === "unavailable"
+                width: parent.width
+                text: I18n.tr(root.firmware.error || "")
+                color: Theme.amber
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.secondary
+                wrapMode: Text.Wrap
+                textFormat: Text.PlainText
             }
 
             SectionTitle {
@@ -384,6 +442,7 @@ Item {
                 width: parent.width - keepGlyph.width - later.width - install.width - parent.spacing * 3
                 objectName: "updateRequestError"
                 text: root.service.requestFailure !== "" ? root.service.requestFailure
+                    : root.firmwareOnly ? I18n.tr("Keep your computer on and follow any instructions for your devices.")
                     : I18n.tr("Your current version is kept. If the update doesn't start properly, your computer returns to it.")
                 color: root.service.requestFailure !== "" ? Theme.redText : Theme.textDim
                 font.family: Theme.fontMenu

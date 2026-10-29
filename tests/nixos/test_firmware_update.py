@@ -388,11 +388,11 @@ class PlanTests(unittest.TestCase):
         run = run_helper(client, "plan")
 
         self.assertEqual(run.rc, 0)
-        self.assertEqual(json.loads(run.stdout), {"devices": [
+        self.assertEqual(json.loads(run.stdout), {"error": "Some devices could not be checked. Try checking for updates again.", "devices": [
             {"id": "sysfw", "name": "System Firmware", "vendor": "HP", "from": "0x01060200",
-             "to": "0x01070000", "needsReboot": True, "affectsFde": False},
+             "to": "0x01070000", "needsReboot": True, "needsShutdown": False, "affectsFde": False},
             {"id": "disk", "name": "NVMe SSD", "vendor": "Micron", "from": "HPS0050",
-             "to": "HPS0060", "needsReboot": True, "affectsFde": True},
+             "to": "HPS0060", "needsReboot": True, "needsShutdown": True, "affectsFde": True},
         ]})
         # A device that is not updatable costs no query at all.
         self.assertEqual(client.upgrade_queries, ["sysfw", "disk", "touchpad", "dock"])
@@ -466,7 +466,7 @@ class InstallTests(unittest.TestCase):
             "event": "installed", "id": "sysfw", "needsReboot": True,
             "message": "Restart to finish."})
         self.assertEqual(run.events[-1], {"event": "summary", "installed": 1, "failed": 0,
-                                          "needsReboot": True})
+                                          "needsReboot": True, "needsShutdown": False})
         self.assertEqual(run.kinds().count("summary"), 1)
         # Compact JSON lines, one object per line, for the panel's reader.
         first = run.raw.decode("ascii").splitlines()[1]
@@ -495,7 +495,7 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(run.only("installed"), {
             "event": "installed", "id": "pad", "needsReboot": False, "message": ""})
         self.assertEqual(run.events[-1], {"event": "summary", "installed": 1, "failed": 1,
-                                          "needsReboot": False})
+                                          "needsReboot": False, "needsShutdown": False})
         self.assertEqual([event["index"] for event in run.events if event["event"] == "device"],
                          [1, 2])
         # Events are ASCII, so every byte offset is a character boundary.
@@ -515,7 +515,7 @@ class InstallTests(unittest.TestCase):
             "event": "installed", "id": "sysfw", "needsReboot": True,
             "message": "Already scheduled for the next restart."})
         self.assertEqual(run.events[-1], {"event": "summary", "installed": 1, "failed": 0,
-                                          "needsReboot": True})
+                                          "needsReboot": True, "needsShutdown": False})
 
     def test_nothing_to_install_is_success(self):
         client = FakeClient(devices=[FakeDevice("pad", "Touchpad", "1.2")])
@@ -523,7 +523,7 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(run.rc, 0)
         self.assertEqual(run.events, [
             {"event": "plan", "devices": []},
-            {"event": "summary", "installed": 0, "failed": 0, "needsReboot": False},
+            {"event": "summary", "installed": 0, "failed": 0, "needsReboot": False, "needsShutdown": False},
         ])
 
     def test_version_race_is_skipped_not_failed(self):
@@ -680,6 +680,29 @@ class InteractiveTests(unittest.TestCase):
 
 
 class ProgressTests(unittest.TestCase):
+    def test_reviewed_plan_excludes_new_devices_and_rejects_changed_releases(self):
+        api = fake_api()
+        client = FakeClient(devices=[system_firmware(), FakeDevice("dock", "Dock", "1")],
+                            upgrades={"sysfw": [FakeRelease("2")], "dock": [FakeRelease("2")]})
+        plan = module.build_plan(api, client)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'plan.json'
+            path.write_text(json.dumps({'devices': [plan[0].info]}))
+            self.assertEqual(module.reviewed_plan(plan, path), [plan[0]])
+            changed = json.loads(path.read_text())
+            changed['devices'][0]['to'] = '3'
+            path.write_text(json.dumps(changed))
+            with self.assertRaisesRegex(module.SetupError, 'firmware changed'):
+                module.reviewed_plan(plan, path)
+            self.assertEqual(client.installs, [])
+
+    def test_event_stream_uses_stderr_without_closing_it(self):
+        with contextlib.redirect_stderr(io.StringIO()) as stream:
+            with module.EventLog('-') as events:
+                events.emit('progress', id='bios', percent=42)
+            self.assertFalse(stream.closed)
+            self.assertEqual(json.loads(stream.getvalue()), {'event': 'progress', 'id': 'bios', 'percent': 42})
+
     def test_progress_is_deduplicated(self):
         progress = module.ProgressFilter()
         observed = [progress.observe(status, percent) for status, percent in [

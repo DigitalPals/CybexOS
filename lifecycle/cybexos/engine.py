@@ -13,11 +13,11 @@ from urllib.parse import urlencode
 from .common import CommandFailure, Failure, Runner, atomic, link, locked, parse, read, syncdir
 from . import inputs
 from .trust import Fetcher, NoPublishedRelease, discover, version
-from . import review
+from . import review, firmware
 from .progress import NixProgress
 
-SCOPES = ('upstream', 'cybexos', 'both', 'local')
-BUSY = ('discovering', 'building', 'validating', 'activating', 'recovering')
+SCOPES = ('upstream', 'cybexos', 'both', 'local', 'firmware')
+BUSY = ('discovering', 'building', 'validating', 'activating', 'recovering', 'firmware')
 UPSTREAM_METADATA = ('nix', 'flake', 'metadata', '--refresh', '--json',
                      'github:NixOS/nixpkgs/nixos-26.05')
 UPSTREAM_LOOKUP_FAILED = 'Nix metadata lookup failed. Check network access and Nix configuration.'
@@ -139,7 +139,7 @@ class Engine:
             previous = {'schema': 1, 'startedAt': now, 'phase': '', 'error': '', 'notes': '',
                         'changes': '', 'packageChanges': [], 'highlights': None, 'reviewToken': None, 'inputs': {},
                         'recovery': '', 'retry': '', 'restart': '', 'requestId': None,
-                        'workerUnit': None, 'software': None}
+                        'workerUnit': None, 'software': None, 'firmware': None}
         if (values.get('state', previous.get('state')) != previous.get('state')
                 or values.get('phase', previous.get('phase')) != previous.get('phase')):
             previous['phaseStartedAt'] = now
@@ -188,7 +188,8 @@ class Engine:
         return candidate, sequence
 
     def check(self):
-        result = {'upstream': {}, 'cybexos': {}, 'checkedAt': int(time.time())}
+        result = {'upstream': {}, 'cybexos': {}, 'firmware': firmware.discover(self.run, refresh=True),
+                  'checkedAt': int(time.time())}
         try:
             lock_body = (self.working / 'flake.lock').read_bytes()
             old = parse(lock_body)
@@ -267,7 +268,7 @@ class Engine:
 
     def stage(self, scope, region=None, software=None, maintenance=None, request_id=None):
         if scope not in SCOPES:
-            raise Failure('Select upstream, cybexos, both, or local')
+            raise Failure('Select upstream, cybexos, both, firmware, or local')
         with locked(self.state / 'operation.lock'):
             if (self.state / 'maintenance-pending.json').exists():
                 raise Failure('Storage cleanup awaits recovery. Complete it before staging another deployment.')
@@ -282,6 +283,18 @@ class Engine:
                         changeKind=kind, requestId=request_id, software=None)
             self.run.log = tx / 'build.log'
             try:
+                device_firmware = firmware.discover(self.run) if kind == 'update' else None
+                if scope == 'firmware':
+                    if device_firmware['state'] != 'available':
+                        raise Failure(device_firmware.get('error') or 'No device firmware updates are available. Check again.')
+                    record = {'id': identifier, 'scope': scope, 'changeKind': kind,
+                              'createdAt': int(time.time()), 'firmware': device_firmware,
+                              'packageChanges': [], 'highlights': None}
+                    record['reviewToken'] = hashlib.sha256(review.identity(device_firmware).encode()).hexdigest()
+                    atomic(tx / 'deployment.json', record)
+                    self.status(state='ready', phase='Device firmware ready for review', firmware=device_firmware,
+                                packageChanges=[], changes='', reviewToken=record['reviewToken'])
+                    return record
                 # Authentication and metadata compatibility precede lock mutation,
                 # evaluation, download of selected code, and activation.
                 candidate, sequence = self.channel() if scope in ('cybexos', 'both') else (None, None)
@@ -375,12 +388,13 @@ class Engine:
                           'baseline': baseline, 'configDigest': config_digest(config), 'createdAt': int(time.time()),
                           'inputs': {name: inputs.identity(new, name) for name in ('nixpkgs', 'cybexos')},
                           'changeKind': kind, 'requestId': request_id, 'software': selections,
-                          'packageChanges': package_changes, 'highlights': highlights}
+                          'packageChanges': package_changes, 'highlights': highlights,
+                          'firmware': device_firmware}
                 record['reviewToken'] = hashlib.sha256((record['configDigest'] + changes + review.identity(package_changes)
-                                                        + review.identity(highlights)).encode()).hexdigest()
+                                                        + review.identity(highlights) + review.identity(device_firmware)).encode()).hexdigest()
                 atomic(tx / 'deployment.json', record)
                 self.status(state='ready', phase='Built and checked; review changes before applying',
-                            changes=changes, packageChanges=package_changes, highlights=highlights,
+                            changes=changes, packageChanges=package_changes, highlights=highlights, firmware=device_firmware,
                             reviewToken=record['reviewToken'], inputs=record['inputs'],
                             installedVersion=read(self.release)['version'], availableVersion=candidate['version'] if candidate else read(self.release)['version'],
                             notes=candidate['notes'] if candidate else '', software=selections,
@@ -508,6 +522,13 @@ class Engine:
                 raise Failure('This deployment is not ready for application')
             if token != record['reviewToken']:
                 raise Failure('Staged configuration changed after review; stage and review again')
+            if record['scope'] == 'firmware':
+                result = firmware.install(self, tx, record['firmware'])
+                self.status(state='failed' if result['error'] else 'done', phase='Firmware update finished', error=result['error'])
+                self.run.log = None
+                if result['error']:
+                    raise Failure(result['error'])
+                return
             reason = ''
             try:
                 unchanged = (config_digest(tx / 'config') == record['configDigest']
@@ -554,6 +575,12 @@ class Engine:
                 self.restore(record, 'Activation failed',
                              preserve_working=self.working.resolve() != selected.resolve())
                 raise
+            # Firmware is outside generation rollback. Flash only after OS
+            # activation passed; a device failure must not roll back that OS.
+            if (record.get('firmware') or {}).get('devices'):
+                result = firmware.install(self, tx, record['firmware'])
+                self.status(state='awaiting-boot', phase='Restart when ready to finish updating.',
+                            error=result['error'])
 
     def restore(self, record, reason, preserve_working=False):
         tx = self.tx(record['id'])
@@ -610,7 +637,12 @@ class Engine:
             if not pending:
                 status = read(self.status_path, {})
                 if status.get('state') in BUSY:
-                    self.status(state='interrupted', phase='Interrupted before activation; working system retained. Stage again.')
+                    if status['state'] == 'firmware':
+                        message = 'Firmware installation was interrupted. Check the device before retrying; firmware cannot be rolled back.'
+                        self.status(state='interrupted', phase=message,
+                                    firmware=(status.get('firmware') or {}) | {'state': 'failed', 'error': message})
+                    else:
+                        self.status(state='interrupted', phase='Interrupted before activation; working system retained. Stage again.')
                 return
             self.run.log = self.tx(pending['id']) / 'build.log'
             current = str(self.current_system.resolve())
@@ -680,6 +712,8 @@ class Engine:
             record = read(self.pending_path) if identifier is None else read(self.tx(identifier) / 'deployment.json')
             if not record:
                 raise Failure('Select a retained deployment from cybex update history')
+            if record.get('scope') == 'firmware':
+                raise Failure('Device firmware cannot be reverted by a NixOS generation rollback.')
             self.restore(record, 'Explicit rollback requested')
 
     def discard(self, identifier):

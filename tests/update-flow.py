@@ -68,6 +68,8 @@ else:
             'scope':args[2], 'changeKind':'update', 'changes':'hello: 1 → 2',
             'packageChanges':[{'name':'hello','kind':'updated','before':'1','after':'2'}],
             'highlights':HIGHLIGHTS, 'automatic':state['automatic']}
+        if fixture.get('firmware'):
+            state['firmware'] = fixture['firmware']
     elif args[1] == 'apply':
         assert args[2:] == ['a'*32, 'b'*64]
         state.update(state='awaiting-boot',reviewToken=None)
@@ -160,6 +162,8 @@ IPC = '''
                 progress: progress ? progress.Accessible.description : null,
                 buildLog: !!shell.updateItem("updateBuildLog"),
                 components: shell.updateCount(content, "updateComponent"),
+                firmwareDevices: shell.updateCount(content, "updateFirmwareDevice"),
+                firmwareRequests: shell.updateCount(content, "updateFirmwareRequest"),
                 apps: shell.updateCount(content, "updateApp"),
                 details: !!shell.updateItem("updateChanges"),
                 automaticToggle: !!shell.updateItem("updateAutomatic"),
@@ -432,6 +436,35 @@ def main():
             session.wait(lambda:session.state().get('state')=='idle','dismissed')
             assert session.calls()[-1]==['discard','a'*32], session.calls()
 
+            # Firmware uses the same review/install flow, including when the
+            # Nix sources are current. Device actions stay inside the app.
+            device = {'id':'bios', 'name':'System Firmware', 'vendor':'Example',
+                'from':'1', 'to':'2', 'needsReboot':True, 'affectsFde':True}
+            firmware = {'state':'available', 'devices':[device]}
+            session.fixture(sources={'upstream':{'state':'current'},'cybexos':{'state':'current'},
+                'firmware':firmware}, firmware=firmware)
+            session.status(state='idle')
+            session.wait(lambda:session.state().get('page')=='available' and session.state().get('scope')=='firmware',
+                'firmware-only update discovered')
+            session.trigger('updatePrimary')
+            session.wait(lambda:session.state().get('page')=='ready' and session.state().get('firmwareDevices')==1,
+                'firmware in the regular review')
+            assert session.state()['primary']['label']=='Install Update', session.state()
+            assert session.calls()[-1]==['stage','firmware'], session.calls()
+            session.trigger('updatePrimary')
+            session.wait(lambda:session.state().get('page')=='restart','firmware uses ordinary install')
+            session.status(state='firmware',firmware={**firmware, 'state':'installing', 'current':'bios',
+                'percent':42, 'requests':[{'id':'bios','kind':'immediate','message':'Reconnect the device.'}]})
+            session.wait(lambda:session.state().get('page')=='installing' and session.state().get('firmwareRequests')==1
+                and session.state().get('progress')=='42%', 'firmware progress and instructions inside the app')
+            session.start_shell('qs-firmware.log')
+            session.wait(lambda:session.state().get('window') and session.state().get('firmwareRequests')==1,
+                'firmware instructions survive shell restart')
+            session.status(state='done',firmware={**firmware,'state':'done','needsReboot':True, 'needsShutdown':True})
+            session.wait(lambda:session.state().get('page')=='restart' and session.state().get('primary',{}).get('label')=='Shut Down Now',
+                'firmware full shutdown requirement')
+            assert not session.state()['indicator'], session.state()
+
             # Closing the app forgets it: neither a later shell restart nor
             # another session's marker reopens it.
             marker = session.runtime/'cybexos-software-update-open'
@@ -454,6 +487,7 @@ def main():
                   'shell restart, readable review, install once, reopening after the activation restart, restart, '
                   'automatic and manual confirmation, '
                   'automatic download policy and single background request, discovery error, recovery, dismissal '
+                  'firmware-only review, graphical device progress, instructions and shutdown requirement, '
                   'and no reopening once closed or in another session')
         except BaseException:
             for log in session.logs:

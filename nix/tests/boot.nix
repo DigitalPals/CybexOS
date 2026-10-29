@@ -24,7 +24,7 @@ pkgs.testers.runNixOSTest {
       cybexos = { enable = true; primaryUser = "tester"; features = { proprietary = false; steam = false; docker = false; }; };
       networking.hostName = "machine";
       users.users.tester.initialPassword = "qualification-only";
-      boot.consoleLogLevel = lib.mkForce 3;
+      boot.consoleLogLevel = lib.mkForce 0;
       boot.kernelParams = [ "plymouth.ignore-serial-consoles" ];
       environment.etc."cybexos-boot-test".text = lib.mkDefault "previous";
       # The candidate is a separate system; this generation's own menu entries
@@ -121,9 +121,10 @@ pkgs.testers.runNixOSTest {
       with subtest("boot is quiet"):
           cmdline = machine.succeed("cat /proc/cmdline").split()
           assert "quiet" in cmdline and "udev.log_level=3" in cmdline, cmdline
-          assert [p for p in cmdline if p.startswith("loglevel=")] == ["loglevel=3"], cmdline
-          assert cmdline.index("quiet") < cmdline.index("loglevel=3"), cmdline
-          assert machine.succeed("cut -f1 /proc/sys/kernel/printk").strip() == "3"
+          assert [p for p in cmdline if p.startswith("loglevel=")] == ["loglevel=0"], cmdline
+          assert cmdline.index("quiet") < cmdline.index("loglevel=0"), cmdline
+          assert {"systemd.show_status=false", "rd.systemd.show_status=false", "rd.udev.log_level=3"} <= set(cmdline), cmdline
+          assert machine.succeed("cut -f1 /proc/sys/kernel/printk").strip() == "0"
           machine.succeed("grep -q \"background_color '${node.cybexos.bootTheme.background}'\" /boot/grub/grub.cfg")
 
       # A newer generation with the floating top-level entry, like profile().
