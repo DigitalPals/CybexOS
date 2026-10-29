@@ -1,4 +1,5 @@
-import { Theme, Icons } from "theme.slint";
+import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
 import { Store } from "store.slint";
 
 export component Icon inherits Path {
@@ -7,7 +8,9 @@ export component Icon inherits Path {
     in property <length> size: 18px;
     commands: root.d;
     stroke: root.tint;
-    stroke-width: 1.8px;
+    // Tabler's line at 1.5 of its 24 units, scaled with the icon; Slint does
+    // not scale strokes by the viewbox. Small icons keep one physical pixel.
+    stroke-width: max(1phx, root.size * 1.5 / 24);
     stroke-line-cap: round;
     stroke-line-join: round;
     fill: transparent;

@@ -1,0 +1,22 @@
+{
+  "alert": "alert-triangle",
+  "check": "check",
+  "close": "x",
+  "disk": "server",
+  "dots": "dots",
+  "ethernet": "network",
+  "firmware": "device-desktop-cog",
+  "globe": "world",
+  "keyboard": "keyboard",
+  "lock": "lock",
+  "log": "file-text",
+  "offline": "wifi-off",
+  "power": "power",
+  "refresh": "refresh",
+  "restart": "reload",
+  "right": "chevron-right",
+  "shield": "shield-check",
+  "terminal": "terminal-2",
+  "usb": "usb",
+  "wifi": "wifi"
+}

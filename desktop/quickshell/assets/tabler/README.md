@@ -21,6 +21,10 @@ the spinner wobble during rotation. Its outline and stroke match Tabler.
 The old `fill`, `animateFill`, `glyphFill` and `symbolFill` component properties
 remain accepted as inert compatibility inputs for existing plugins.
 
+The installer draws the same Tabler release from its SVG paths
+(`scripts/update-installer-icons`, see `installer/kiosk/README.md`). Update
+both pins together so installation and desktop icons match.
+
 This policy covers interface symbols. Product artwork and application/tray
 icons keep their original artwork, and functional UI shapes (switch tracks,
 progress meters, radio indicators and status dots) still express their state.

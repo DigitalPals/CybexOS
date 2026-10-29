@@ -22,7 +22,8 @@ libseat backend through logind rather than direct device access as root.
 | `ui/screens.slint` | welcome and system check, disk, account, review, installing, done, stop and failure screens |
 | `ui/sheets.slint` | Wi-Fi, keyboard, language, menu, log and USB save, applications, NVIDIA driver, time zone picker |
 | `ui/store.slint` | the `Store` global: every property the screens show and every request they make |
-| `ui/widgets.slint`, `ui/theme.slint` | controls, brand tokens and icons |
+| `ui/widgets.slint`, `ui/theme.slint` | controls and brand tokens |
+| `ui/icons.slint` | generated Tabler icon paths; the names are in `assets/tabler/icons.json` |
 | `src/ui.rs` | daemon snapshots → `Store`, requests → daemon |
 | `src/names.rs` | the username and computer-name filter (`[a-z][a-z0-9-]{0,30}`) |
 | `src/zones.rs` | time zone search, live local time and the next clock change from TZif data |
@@ -46,6 +47,15 @@ cargo run --features preview --bin installer-preview -- /tmp/static.json /tmp/re
 Renders use fixture snapshots at a fixed moment (2026-10-23 19:00 UTC). Compare
 them with the design reference, `../ui-reference/index.html`, when changing the
 screens. The time zone tests read the host's TZif files (`TZDIR`).
+
+Icons are Tabler outline paths, the release the desktop's icon font uses.
+`Icon` draws them at Tabler's 1.5-unit line, scaled with the icon size and
+never thinner than one physical pixel. To add or change an icon, edit
+`assets/tabler/icons.json`, then run `scripts/update-installer-icons` from the
+repository root (Python standard library only). It verifies the archive
+checksum, rejects paths Slint could not parse (Slint draws nothing for them),
+and rewrites `ui/icons.slint`, `assets/tabler/LICENSE` and the design
+reference's icon table.
 
 ## Runtime contract
 
@@ -95,6 +105,7 @@ screens. The time zone tests read the host's TZif files (`TZDIR`).
 | `assets/fonts/SpaceGrotesk-{Regular,Medium,Bold}.ttf` | [floriankarsten/space-grotesk](https://github.com/floriankarsten/space-grotesk) `fonts/ttf/static/`, master on 2026-10-23 | SIL OFL 1.1, `assets/fonts/OFL-SpaceGrotesk.txt` |
 | `assets/fonts/JetBrainsMono-{Regular,Medium,SemiBold,Bold}.ttf` | [JetBrains/JetBrainsMono](https://github.com/JetBrains/JetBrainsMono) tag v2.304, `fonts/ttf/` | SIL OFL 1.1, `assets/fonts/OFL-JetBrainsMono.txt` |
 | `assets/landmask.txt` | Derived from [Natural Earth](https://www.naturalearthdata.com/) 1:110m land (`ne_110m_land.geojson`), sampled at 2° cell centres | Public domain |
+| `ui/icons.slint` | Generated from [`@tabler/icons` 3.48.0](https://www.npmjs.com/package/@tabler/icons/v/3.48.0) `tabler-nodes-outline.json`; archive SHA-256 `28447dcf6f0bb2b8d92c59a1b3d30900a180de2e97d7db4d267e6320dc68f449` | MIT, `assets/tabler/LICENSE` |
 | `assets/logo.svg`, `assets/symbol.svg` | Copies of `assets/brand/logo/svg/cybexos-logo-on-dark.svg` and `assets/brand/symbol/svg/cybexos-symbol-on-dark.svg` | Repository MIT licence |
 
 Font SHA-256 at import: SpaceGrotesk-Regular
