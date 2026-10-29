@@ -1,12 +1,15 @@
 # Cybex OS Plymouth Theme Script
 
-Window.SetBackgroundTopColor(0.051, 0.051, 0.051);
-Window.SetBackgroundBottomColor(0.051, 0.051, 0.051);
+# Black, like the boot menu and GRUB's screen while it loads the system.
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
 
+# The logo's centre sits 38% from the top, where the GRUB menu draws it
+# (desktop/boot/theme.py), so it stays in place from the boot menu onwards.
 logo.image = Image("logo.png");
 logo.sprite = Sprite(logo.image);
 logo.sprite.SetX (Window.GetWidth()  / 2 - logo.image.GetWidth()  / 2);
-logo.sprite.SetY (Window.GetHeight() / 2 - logo.image.GetHeight() / 2);
+logo.sprite.SetY (Window.GetHeight() * 0.38 - logo.image.GetHeight() / 2);
 logo.sprite.SetOpacity (1);
 
 # Use these to adjust the progress bar timing
@@ -216,7 +219,7 @@ fun update_layout ()
     global.layout_height = new_height;
 
     logo.x = new_width / 2 - logo.image.GetWidth() / 2;
-    logo.y = new_height / 2 - logo.image.GetHeight() / 2;
+    logo.y = new_height * 0.38 - logo.image.GetHeight() / 2;
     logo.sprite.SetX(logo.x);
     logo.sprite.SetY(logo.y);
 

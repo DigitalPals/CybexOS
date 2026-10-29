@@ -30,10 +30,22 @@ fn configure_display() {
     if std::env::var_os("SLINT_BACKEND").is_none() {
         std::env::set_var("SLINT_BACKEND", "linuxkms-software");
     }
+    // The boot menu's rotation entries (nix/modules/iso-boot.nix).
+    let degrees = match std::env::var("SLINT_KMS_ROTATION") {
+        Ok(value) => value.parse().unwrap_or(0),
+        Err(_) => {
+            let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+            let degrees = zoom::rotation(&cmdline).unwrap_or(0);
+            if degrees != 0 {
+                std::env::set_var("SLINT_KMS_ROTATION", degrees.to_string());
+            }
+            degrees
+        }
+    };
     if std::env::var_os("SLINT_SCALE_FACTOR").is_none() {
         let factor = match std::env::var("CYBEXOS_INSTALLER_ZOOM") {
             Ok(value) if value != "auto" => value.parse().unwrap_or(1.0),
-            _ => zoom::zoom_for(zoom::detect_resolution()),
+            _ => zoom::zoom_for(zoom::rotated(zoom::detect_resolution(), degrees)),
         };
         std::env::set_var("SLINT_SCALE_FACTOR", format!("{factor}"));
         eprintln!("cybexos-installer: display zoom {factor}");

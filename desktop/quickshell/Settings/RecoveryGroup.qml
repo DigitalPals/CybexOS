@@ -10,7 +10,7 @@ SettingsGroup {
     ValueRow {
         width: parent.width
         label: I18n.tr("Boot menu")
-        hint: Updates.deployment.recovery || I18n.tr("Previous generations are available in the boot menu.")
+        hint: Updates.deployment.recovery || I18n.tr("Earlier versions are in the boot menu: press Esc while the computer starts.")
         SettingsAction { text: I18n.tr("View generations"); onTriggered: Updates.openRecoveryPoints() }
     }
 }

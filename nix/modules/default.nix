@@ -7,28 +7,20 @@ let
   # entry and its EFI directory carry this name.
   esp = config.boot.loader.efi.efiSysMountPoint;
   grubDirectory = "/boot/grub";
+  # install-grub copies the theme here; its row variants are chosen per menu.
+  themeDirectory = "/boot/theme";
   efiArch = pkgs.stdenv.hostPlatform.efiArch;
   bootloaderId = "CybexOS";
   grubLoader = "${esp}/EFI/${bootloaderId}/grub${efiArch}.efi";
   # The same closing entries as the installation medium's menu.
-  closingEntries = pkgs.writeText "cybexos-boot-closing-entries.cfg" ''
-    menuentry 'Firmware Setup' --class settings {
-      fwsetup
-      clear
-      echo ""
-      echo "If you see this message, your EFI system doesn't support this feature."
-      echo ""
-    }
-    menuentry 'Shutdown' --class shutdown {
-      halt
-    }
-  '';
+  closingEntries = source + /desktop/boot/closing.cfg;
   bootMenu = pkgs.writeShellScript "cybexos-boot-menu-install" ''
     set -eu
     PATH=${lib.makeBinPath [ pkgs.coreutils pkgs.diffutils ]}
     # Brand the generated menu and identify each exact system for the updater.
     ${cfg.updaterPackage}/bin/cybexos-boot-menu --distro ${lib.escapeShellArg config.system.nixos.distroName} \
-      --append ${closingEntries} --check ${pkgs.grub2_efi}/bin/grub-script-check ${grubDirectory}/grub.cfg
+      --append ${closingEntries} --theme ${themeDirectory} \
+      --check ${pkgs.grub2_efi}/bin/grub-script-check ${grubDirectory}/grub.cfg
     # Firmware that loses its boot entry still finds the removable fallback
     # path, as with systemd-boot's installation.
     fallback=${esp}/EFI/BOOT/BOOT${lib.toUpper efiArch}.EFI
@@ -90,7 +82,7 @@ in {
       internal = true;
       readOnly = true;
       description = "GRUB menu theme shared by the installation ISO and installed systems";
-      default = pkgs.callPackage ../packages/boot-theme.nix { inherit source; };
+      default = pkgs.callPackage ../packages/boot-theme.nix { inherit source; inherit (cfg.release) version; };
     };
     desktopPackage = mkOption { type = types.package; default = pkgs.callPackage ../packages/desktop.nix { inherit source; }; };
     updaterPackage = mkOption { type = types.package; default = pkgs.callPackage ../packages/updater.nix { inherit source; }; };
@@ -174,6 +166,11 @@ in {
     # systems through GRUB's environment block (lifecycle/cybexos/boot.py), so
     # the menu's own default and last-booted memory stay unused. Secure Boot
     # keeps Lanzaboote's signed systemd-boot UKIs.
+    # The menu stays hidden: Esc opens it during GRUB's one-second wait, and
+    # systemd-boot shows its own when a key is held. GRUB marks each start as
+    # pending; cybexos-boot-started clears the mark, and a start that never got
+    # there opens the menu with a notice on the next boot (boot.py).
+    boot.loader.timeout = mkDefault (if cfg.secureBoot then 0 else 1);
     boot.loader.grub = {
       enable = mkDefault (!cfg.secureBoot);
       efiSupport = true;
@@ -187,7 +184,23 @@ in {
       gfxmodeEfi = mkDefault "1920x1200,1920x1080,1366x768,1280x800,1280x720,1200x1920,1024x768,800x1280,800x600,auto";
       default = "\"\${saved_entry}\"";
       extraConfig = "background_color '${cfg.bootTheme.background}'";
+      timeoutStyle = mkDefault "hidden";
+      extraPerEntryConfig = ''
+        set cybexos_boot=pending
+        save_env cybexos_boot
+      '';
       extraInstallCommands = "${bootMenu}\n";
+    };
+    systemd.services.cybexos-boot-started = mkIf config.boot.loader.grub.enable {
+      description = "Record that this start of Cybex OS finished";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "multi-user.target" ];
+      unitConfig.RequiresMountsFor = esp;
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = "${cfg.updaterPackage}/bin/cybexos-boot-started";
+      };
     };
     boot.loader.systemd-boot.configurationLimit = mkDefault 10;
     boot.loader.efi.canTouchEfiVariables = mkDefault true;

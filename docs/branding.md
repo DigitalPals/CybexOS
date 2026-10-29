@@ -19,9 +19,20 @@ Plymouth is packaged and selected by the shared NixOS installation module for
 the ISO and installed system. Its wordmark is 189×44 (378×88 at double
 density), approximately 66% of the 286-pixel password field width and retaining
 the source aspect ratio. Password masking, callback, display recentering and boot
-progress behavior are preserved. The GRUB and ISOLINUX artwork uses the same
-wordmark; the menu layout accommodates its height. Progress and selected items
-are blue.
+progress behavior are preserved. Progress and selected items are blue.
+
+The boot menus share that wordmark and keep its centre 38% from the top, where
+Plymouth draws it too, so the logo does not move from menu to splash. Both
+use a black background, as firmware logo screens do: GRUB's plain terminal,
+shown while a hidden menu loads the system, cannot use any other colour.
+`desktop/boot/theme.py` builds the GRUB theme at Nix build time for both the ISO
+and installed systems: a card of Space Grotesk entries (GRUB's 1-bit PF2 fonts,
+one fixed size) with Tabler 3.48.0 icons (`desktop/boot/icons.json`, refreshed
+by `scripts/update-installer-icons`) and a tinted blue selection. Headings, key
+hints and notices are static, so they are pre-rendered with anti-aliasing in
+Space Grotesk and JetBrains Mono. GRUB sizes a list from its theme, so each
+list comes in row variants that the menus choose. The ISOLINUX screen for a
+legacy BIOS start is the same build's 800×600 notice.
 
 The graphical and terminal installers, timezone map, password dialog and
 brand controls use blue with charcoal text. New desktop preferences, the

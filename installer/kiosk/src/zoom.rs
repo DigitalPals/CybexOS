@@ -38,6 +38,22 @@ pub fn detect_resolution() -> Option<(u32, u32)> {
     best
 }
 
+/// The boot menu's "Rotate the screen" choice, `cybexos.rotate=` on the kernel
+/// command line, in degrees for Slint's KMS backend (`SLINT_KMS_ROTATION`).
+pub fn rotation(cmdline: &str) -> Option<u32> {
+    cmdline
+        .split_whitespace()
+        .rev()
+        .find_map(|word| word.strip_prefix("cybexos.rotate="))
+        .and_then(|value| value.parse().ok())
+        .filter(|degrees| matches!(degrees, 0 | 90 | 180 | 270))
+}
+
+/// The panel as the interface sees it after rotating by `degrees`.
+pub fn rotated(resolution: Option<(u32, u32)>, degrees: u32) -> Option<(u32, u32)> {
+    resolution.map(|(width, height)| if degrees % 180 == 90 { (height, width) } else { (width, height) })
+}
+
 pub fn zoom_for(resolution: Option<(u32, u32)>) -> f32 {
     let Some((width, height)) = resolution else {
         return 1.0;
@@ -59,5 +75,18 @@ mod tests {
         assert_eq!(zoom_for(Some((3840, 2160))), 2.7);
         assert_eq!(zoom_for(Some((1024, 600))), 0.8);
         assert_eq!(zoom_for(None), 1.0);
+    }
+
+    #[test]
+    fn rotation_comes_from_the_boot_menu() {
+        assert_eq!(rotation("quiet cybexos.rotate=90 splash"), Some(90));
+        assert_eq!(rotation("cybexos.rotate=90 cybexos.rotate=270"), Some(270));
+        assert_eq!(rotation("quiet fbcon=rotate:1"), None);
+        assert_eq!(rotation("cybexos.rotate=45"), None);
+        assert_eq!(rotation("cybexos.rotate=-90"), None);
+        assert_eq!(rotated(Some((1920, 1080)), 90), Some((1080, 1920)));
+        assert_eq!(rotated(Some((1920, 1080)), 180), Some((1920, 1080)));
+        // The landscape design canvas fits the panel's portrait width.
+        assert_eq!(zoom_for(rotated(Some((1920, 1200)), 270)), 0.94);
     }
 }

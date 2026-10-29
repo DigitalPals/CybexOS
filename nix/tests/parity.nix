@@ -45,7 +45,9 @@ let
       logo = toString c.boot.plymouth.logo;
       label = c.system.nixos.label;
       menu = {
-        inherit (c.boot.loader.grub) enable efiSupport device default gfxmodeEfi;
+        inherit (c.boot.loader.grub) enable efiSupport device default gfxmodeEfi timeoutStyle extraPerEntryConfig;
+        inherit (c.boot.loader) timeout;
+        started = c.systemd.services.cybexos-boot-started.serviceConfig.ExecStart or null;
         theme = toString c.boot.loader.grub.theme;
         firmwareEntries = map (boot: boot.efiBootloaderId) c.boot.loader.grub.mirroredBoots;
         selection = builtins.fromJSON c.environment.etc."cybexos/boot.json".text;
@@ -202,6 +204,12 @@ assert installed.bootBrand.quiet == { consoleLogLevel = 0; verbose = false; para
 assert installer.boot.consoleLogLevel == 0 && !installer.boot.initrd.verbose;
 assert lib.all (param: lib.elem param installer.boot.kernelParams) installed.bootBrand.quiet.params;
 assert lib.elem "plymouth.ignore-serial-consoles" installer.boot.kernelParams;
+# The menu stays hidden for a second; GRUB marks each start, the system clears
+# the mark, and a start that did not finish opens the menu (boot.py).
+assert installed.bootBrand.menu.timeoutStyle == "hidden" && installed.bootBrand.menu.timeout == 1;
+assert lib.hasInfix "save_env cybexos_boot" installed.bootBrand.menu.extraPerEntryConfig;
+assert installed.bootBrand.menu.started == "${installed.updater}/bin/cybexos-boot-started";
+assert secureBoot.boot.loader.timeout == 0;
 # Secure Boot keeps signed Lanzaboote UKIs and the systemd-boot selection.
 assert !secureBoot.boot.loader.grub.enable && secureBoot.boot.lanzaboote.enable;
 assert (builtins.fromJSON secureBoot.environment.etc."cybexos/boot.json".text).loader == "systemd-boot";

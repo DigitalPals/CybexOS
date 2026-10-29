@@ -1,4 +1,5 @@
 """Boot-selection command fixtures, not boot or Secure Boot qualification."""
+from datetime import datetime
 import json
 from pathlib import Path
 import shutil
@@ -8,15 +9,31 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'lifecycle'))
-from cybexos.boot import (dump_environment, entry, grub_entry, label, label_menu, load_environment,
-                          menu, trial)
+from cybexos.boot import (Systems, confirm_start, dump_environment, entry, grub_entry, label, label_menu,
+                          load_environment, menu, trial)
 from cybexos.common import Failure
 
 OLD = '/nix/store/' + 'a' * 32 + '-nixos-system-old'
 NEW = '/nix/store/' + 'b' * 32 + '-nixos-system-new'
 RESCUE = '/nix/store/' + 'c' * 32 + '-nixos-system-rescue'
 SYSTEMD = {'loader': 'systemd-boot'}
-CLOSING = "menuentry 'Firmware Setup' --class settings {\n  fwsetup\n}\n"
+CLOSING = "menuentry 'Firmware settings' --class firmware {\n  fwsetup\n}\n"
+VERSIONS = {NEW: '1.0.0-beta.19', OLD: '1.0.0-beta.18', RESCUE: '1.0.0-beta.18'}
+THEME = {f'{kind}-{rows}' for kind in ('startup', 'notice', 'earlier') for rows in range(1, 7)}
+
+
+class FakeSystems(Systems):
+    """Versions from release.json and generation times from profile links."""
+
+    def __init__(self, missing=(), now=datetime(2026, 10, 29, 9)):
+        super().__init__('/nonexistent', now)
+        self.missing = missing
+
+    def version(self, system):
+        return VERSIONS.get(system)
+
+    def created(self, generation):
+        return None if int(generation) in self.missing else datetime(2026, 10, 20 + int(generation), 14, 5)
 
 
 def boot_entry(system, identifier, kind='type1'):
@@ -137,30 +154,67 @@ class BootSelectionTests(unittest.TestCase):
 
 class GrubMenuTests(unittest.TestCase):
     def test_label_brands_titles_and_identifies_exact_systems(self):
-        labelled = label(generated(), 'NixOS', CLOSING)
-        self.assertIn('menuentry "Cybex OS" --class nixos --unrestricted --id cybexos-current {\n', labelled)
-        self.assertIn('submenu "Cybex OS - All configurations" --class submenu --id cybexos-generations {\n', labelled)
-        self.assertIn('menuentry "Cybex OS - Configuration 2 (2026-10-22 - 26.05.20261020.da6dc0e)" --class nixos'
+        labelled = label(generated(), 'NixOS', CLOSING, systems=FakeSystems())
+        self.assertIn("menuentry 'Cybex OS 1.0.0-beta.19' --class cybexos --class nixos --unrestricted --id cybexos-current {\n",
+                      labelled)
+        self.assertIn("submenu 'Earlier versions  ›' --class history --class submenu --id cybexos-generations {\n", labelled)
+        self.assertIn("menuentry 'Cybex OS 1.0.0-beta.19  ·  22 Oct, 14:05' --class cybexos --class nixos"
                       ' --id cybexos-system-' + 'b' * 32 + ' {\n', labelled)
-        self.assertIn('--id cybexos-system-' + 'a' * 32 + ' {\n', labelled)
+        self.assertIn("menuentry 'Cybex OS 1.0.0-beta.18  ·  21 Oct, 14:05' --class history --class nixos"
+                      ' --id cybexos-system-' + 'a' * 32 + ' {\n', labelled)
         self.assertNotIn('NixOS', ''.join(line for line in labelled.splitlines() if 'menuentry' in line or 'submenu' in line))
         # The floating entry is highlighted only when it is the exact selection.
+        # A start GRUB marked but the system never confirmed opens the menu.
         self.assertTrue(labelled.endswith('}\n# Cybex OS additions, regenerated with this menu.\n' + CLOSING
                                           + 'if [ "${default}" = "cybexos-generations>cybexos-system-' + 'b' * 32 + '" ]; then\n'
-                                          '  set default=cybexos-current\nfi\n'))
+                                          '  set default=cybexos-current\nfi\n'
+                                          'if [ "${cybexos_boot}" = "pending" ]; then\n'
+                                          '  set timeout_style=menu\n  set timeout=30\nfi\n'))
         # Everything other than the opening lines is unchanged.
-        self.assertEqual(len(labelled.splitlines()), len(generated().splitlines()) + 1 + len(CLOSING.splitlines()) + 3)
+        self.assertEqual(len(labelled.splitlines()), len(generated().splitlines()) + 1 + len(CLOSING.splitlines()) + 3 + 4)
         self.assertIn('‘grub-reboot’', labelled)
         # Labelling again, as after an interrupted installation, is stable.
-        self.assertEqual(label(labelled, 'NixOS', CLOSING), labelled)
+        self.assertEqual(label(labelled, 'NixOS', CLOSING, systems=FakeSystems()), labelled)
+
+    def test_theme_variants_follow_each_list_length(self):
+        labelled = label(generated(specialised=1), 'NixOS', CLOSING, THEME.__contains__, FakeSystems())
+        lines = labelled.splitlines()
+        generations = lines.index("submenu 'Earlier versions  ›' --class history --class submenu --id cybexos-generations {")
+        self.assertEqual(lines[generations + 1], '  set theme=($drive1)//theme/earlier-2.txt')
+        group = next(i for i, line in enumerate(lines) if line.startswith("submenu 'Cybex OS 1.0.0-beta.18  ·  21 Oct, 14:05  ›'"))
+        self.assertEqual(lines[group + 1], '  set theme=($drive1)//theme/earlier-2.txt')
+        # The current entry, the generations and the closing entry.
+        self.assertIn('set theme=($drive1)//theme/startup-3.txt\nif [ "${cybexos_boot}" = "pending" ]; then\n'
+                      '  set theme=($drive1)//theme/notice-3.txt\n  set timeout_style=menu\n  set timeout=30\nfi\n', labelled)
+        self.assertEqual(label(labelled, 'NixOS', CLOSING, THEME.__contains__, FakeSystems()), labelled)
+        many = generated(generations=tuple((n, NEW if n % 2 else OLD) for n in range(9, 0, -1)))
+        self.assertIn('  set theme=($drive1)//theme/earlier-6.txt\n', label(many, 'NixOS', '', THEME.__contains__, FakeSystems()))
+        # A personal theme without the variants keeps its own theme.txt.
+        personal = label(generated(), 'NixOS', CLOSING, lambda name: False, FakeSystems())
+        self.assertNotIn('-1.txt', personal)
+        self.assertNotIn('/theme/startup-', personal)
+        self.assertIn('  set timeout_style=menu\n', personal)
+        self.assertNotIn('/theme/', label(generated().replace('        set theme=($drive1)//theme/theme.txt\n', ''),
+                                          'NixOS', CLOSING, THEME.__contains__, FakeSystems()))
+
+    def test_titles_without_version_or_profile_time(self):
+        labelled = label(generated(), 'NixOS', systems=FakeSystems(missing=(2,), now=datetime(2027, 1, 3)))
+        self.assertIn("menuentry 'Cybex OS 1.0.0-beta.19  ·  22 Oct 2026' --class cybexos", labelled)
+        self.assertIn("menuentry 'Cybex OS 1.0.0-beta.18  ·  21 Oct 2026, 14:05' --class history", labelled)
+        unknown = label(generated(), 'NixOS', systems=Systems('/nonexistent', datetime(2026, 10, 29)))
+        self.assertIn("menuentry 'Cybex OS' --class cybexos --class nixos --unrestricted --id cybexos-current {\n", unknown)
+        self.assertIn("menuentry 'Cybex OS  ·  22 Oct' --class cybexos --class nixos --id cybexos-system-", unknown)
+        quoted = generated(specialised=1).replace('(rescue - 2026-10-21 - 26.05)', "it's $ \\\"odd\\\"")
+        self.assertIn('menuentry "Cybex OS 1.0.0-beta.18  ·  21 Oct, 14:05  ·  it\'s \\$ \\\"odd\\\"" --class history',
+                      label(quoted, 'NixOS', systems=FakeSystems()))
 
     def test_specialised_current_system_is_never_highlighted_by_identity(self):
         specialised = generated().replace('menuentry "NixOS" --class nixos --unrestricted {\n' + grub_body(NEW),
                                           'menuentry "NixOS - Default" --class nixos --unrestricted {\n' + grub_body(NEW)
                                           + 'menuentry "NixOS - (rescue - 2026-10-22 - 26.05)"  {\n' + grub_body(RESCUE))
-        labelled = label(specialised, 'NixOS')
-        self.assertIn('menuentry "Cybex OS - Default" --class nixos --unrestricted {\n', labelled)
-        self.assertIn('menuentry "Cybex OS - (rescue - 2026-10-22 - 26.05)" {\n', labelled)
+        labelled = label(specialised, 'NixOS', systems=FakeSystems())
+        self.assertIn("menuentry 'Cybex OS 1.0.0-beta.19' --class cybexos --class nixos --unrestricted {\n", labelled)
+        self.assertIn("menuentry 'Cybex OS 1.0.0-beta.18  ·  rescue' --class cybexos {\n", labelled)
         self.assertNotIn('cybexos-current', labelled)
         self.assertEqual(grub_entry(NEW, labelled), 'cybexos-generations>cybexos-system-' + 'b' * 32)
 
@@ -175,9 +229,13 @@ class GrubMenuTests(unittest.TestCase):
             grub_entry('/nix/store/' + 'd' * 32 + '-nixos-system-absent', labelled)
 
     def test_specialised_generation_is_a_nested_identified_submenu(self):
-        labelled = label(generated(specialised=1), 'NixOS')
-        self.assertIn('submenu "Cybex OS - Configuration 1 (2026-10-21 - 26.05.20261020.da6dc0e)" --class submenu'
+        labelled = label(generated(specialised=1), 'NixOS', systems=FakeSystems())
+        self.assertIn("submenu 'Cybex OS 1.0.0-beta.18  ·  21 Oct, 14:05  ›' --class history --class submenu"
                       ' --id cybexos-group-' + 'a' * 32 + ' {\n', labelled)
+        self.assertIn("menuentry 'Cybex OS 1.0.0-beta.18  ·  21 Oct, 14:05' --class history --class nixos --id cybexos-system-"
+                      + 'a' * 32 + ' {\n', labelled)
+        self.assertIn("menuentry 'Cybex OS 1.0.0-beta.18  ·  21 Oct, 14:05  ·  rescue' --class history --id cybexos-system-"
+                      + 'c' * 32 + ' {\n', labelled)
         self.assertEqual(grub_entry(OLD, labelled),
                          'cybexos-generations>cybexos-group-' + 'a' * 32 + '>cybexos-system-' + 'a' * 32)
         self.assertEqual(grub_entry(RESCUE, labelled),
@@ -217,7 +275,10 @@ class GrubEnvironmentTests(unittest.TestCase):
         self.menu = self.directory / 'grub.cfg'
         self.menu.write_text(label(generated(), 'NixOS'), encoding='utf-8')
         self.environment = self.directory / 'grubenv'
-        self.settings = {'loader': 'grub', 'menu': str(self.menu), 'environment': str(self.environment)}
+        run = Path(tempfile.mkdtemp(prefix='cybexos-boot-run-'))
+        self.addCleanup(shutil.rmtree, run)
+        self.settings = {'loader': 'grub', 'menu': str(self.menu), 'environment': str(self.environment),
+                         'lock': str(run / 'boot.lock')}
 
     def values(self):
         data = self.environment.read_bytes()
@@ -268,6 +329,20 @@ class GrubEnvironmentTests(unittest.TestCase):
             trial(['--disarm'], settings=self.settings)
         self.assertEqual(self.environment.read_bytes(), b'corrupt')
 
+    def test_finished_start_clears_only_its_mark(self):
+        kept = {'saved_entry': 'cybexos-generations>cybexos-system-' + 'a' * 32, 'next_entry': ''}
+        self.environment.write_bytes(dump_environment({**kept, 'cybexos_boot': 'pending'}))
+        self.assertTrue(confirm_start(self.settings))
+        self.assertEqual(self.values(), kept)
+        before = self.environment.read_bytes()
+        self.assertFalse(confirm_start(self.settings))
+        self.assertEqual(self.environment.read_bytes(), before)
+        for settings in [SYSTEMD, {}, {'loader': 'grub'}]:
+            self.assertFalse(confirm_start(settings))
+        self.environment.unlink()
+        self.assertFalse(confirm_start(self.settings))
+        self.assertFalse(self.environment.exists())
+
     def test_absent_block_is_created_at_grub_size(self):
         trial(['--commit', OLD], settings=self.settings)
         self.assertEqual(self.values(), {'saved_entry': 'cybexos-generations>cybexos-system-' + 'a' * 32})
@@ -299,9 +374,16 @@ class GrubEnvironmentTests(unittest.TestCase):
         closing = self.directory / 'closing.cfg'
         closing.write_text(CLOSING)
         check = shutil.which('grub-script-check')
+        theme = self.directory / 'theme'
+        theme.mkdir()
+        (theme / 'startup-3.txt').write_text('')
         self.menu.write_text(generated(specialised=1), encoding='utf-8')
-        label_menu(['--distro', 'NixOS', '--append', str(closing), '--check', check, str(self.menu)])
-        self.assertEqual(self.menu.read_text(encoding='utf-8'), label(generated(specialised=1), 'NixOS', CLOSING))
+        label_menu(['--distro', 'NixOS', '--append', str(closing), '--theme', str(theme), '--check', check, str(self.menu)])
+        labelled = self.menu.read_text(encoding='utf-8')
+        self.assertEqual(labelled, label(generated(specialised=1), 'NixOS', CLOSING, {'startup-3'}.__contains__))
+        self.assertIn('set theme=($drive1)//theme/startup-3.txt\n', labelled)
+        theme.joinpath('startup-3.txt').unlink()
+        theme.rmdir()
         broken = self.directory / 'broken.cfg'
         broken.write_text("menuentry 'Broken' {\n  if true; then\n}\n")
         self.menu.write_text(generated(), encoding='utf-8')

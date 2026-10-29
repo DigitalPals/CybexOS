@@ -2,22 +2,36 @@
 
 Boot a completed Cybex OS x86_64 ISO in UEFI mode. The ISO starts only the
 installer: there is no live desktop, display manager, live account or sudo. The
-boot menu offers:
+boot menu (`nix/modules/iso-boot.nix`) starts the default after ten seconds and
+offers:
 
-- **Install Cybex OS VERSION**, the default.
-- **Install Cybex OS VERSION - safe graphics**: `nomodeset`, so the screen draws on
-  the firmware framebuffer (simpledrm) when a native display driver fails.
-- **Install Cybex OS VERSION - text mode**: the terminal installer on tty1.
-- **Verbose boot diagnostics**: the default installer with kernel messages.
+- **Install Cybex OS**, the default.
+- **Install with basic graphics**: `nomodeset`, so the screen draws on the
+  firmware framebuffer (simpledrm) when a native display driver fails.
+- **Start Cybex OS on this computer**, only when GRUB finds an installed Cybex OS
+  boot loader on partition 1 of a disk: it chainloads that loader, for a USB
+  stick left plugged in after installation. Firmware that connects only the
+  boot drive (some fast-boot settings) leaves the entry out.
+- **Troubleshooting ›**: **Show all boot messages** (the installer with kernel
+  and systemd output), **Install in text mode** (the terminal installer on
+  tty1), **Run from memory** (`copytoram`, 16 GB RAM or more, after which the USB
+  drive can be removed), **Serial console** (ttyS0, 115200), **Rotate the
+  screen ›** (the console and the graphical installer, through `fbcon=rotate`
+  and `cybexos.rotate`) and **Memory test** (Memtest86+).
+- **Firmware settings** and **Shut down**.
 
-Every entry starts the same fresh installer; none starts a disk operation by
-itself. The upstream **Options** submenu, firmware setup and shutdown entries
-remain. The installed system's boot menu uses the same theme, with **Cybex OS**,
-its previous generations, firmware setup and shutdown; the firmware lists it as
-**CybexOS**. Installed systems boot
-quietly behind the Plymouth splash. PXE uses the same ISO. iVentoy's NixOS hook needs the upstream scripted
-live initrd; installed machines use systemd stage one. A successful virtual-CD
-boot does not establish a successful iVentoy boot.
+Every installer entry starts the same fresh installer; none starts a disk
+operation by itself. NixOS's text-mode menu remains on `t`. A legacy BIOS start
+shows how to start the drive in UEFI mode instead of an installer that would
+refuse to install; it offers restart, shut down, or continuing without
+installing.
+
+The installed system's boot menu uses the same theme (see
+[recovery](recovery.md)); the firmware lists it as **CybexOS**. Installed
+systems boot quietly behind the Plymouth splash, whose logo stays where the
+menu drew it. PXE uses the same ISO and shows the same menu. iVentoy's NixOS hook
+needs the upstream scripted live initrd; installed machines use systemd stage
+one. A successful virtual-CD boot does not establish a successful iVentoy boot.
 
 ## The installer screen
 

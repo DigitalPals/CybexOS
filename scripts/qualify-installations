@@ -1189,10 +1189,13 @@ def qualify(iso, encrypted, base, lifecycle=True, evidence=None, *, interactive=
         vm.command('cybex update automatic prepare off')
         milestones['automaticUpdatePolicy'] = {'result': 'passed', 'default': policy, 'preparationDuringRun': False}
         milestones['quietBoot'] = vm.quiet_boot()
-        vm.command('''grep -q 'submenu "Cybex OS - All configurations" --class submenu --id cybexos-generations {' /boot/grub/grub.cfg
-grep -q '^ *set theme=.*/theme/theme.txt$' /boot/grub/grub.cfg
-grep -q 'text = "Cybex OS"' /boot/theme/theme.txt && test -s /boot/theme/logo.png && test -s /boot/theme/unicode.pf2
-! grep -E '^ *(menuentry|submenu) "NixOS' /boot/grub/grub.cfg
+        vm.command('''grep -q "^submenu 'Earlier versions  ›' --class history --class submenu --id cybexos-generations {$" /boot/grub/grub.cfg
+grep -q '^ *set theme=.*/theme/theme.txt$' /boot/grub/grub.cfg && grep -qx 'set theme=.*/theme/startup-4.txt' /boot/grub/grub.cfg
+grep -q "^menuentry 'Cybex OS $(sed -E 's/.*"version":"([^"]+)".*/\\1/' /etc/cybexos/release.json)' --class cybexos " /boot/grub/grub.cfg
+grep -q 'file = "eyebrow-startup.png"' /boot/theme/theme.txt && test -s /boot/theme/logo.png && test -s /boot/theme/entries.pf2 && test -s /boot/theme/unicode.pf2
+! grep -E "^ *(menuentry|submenu) .(NixOS|Cybex OS - )" /boot/grub/grub.cfg
+grep -q '^ *set timeout_style=hidden$' /boot/grub/grub.cfg
+systemctl is-active -q cybexos-boot-started.service && ! grep -aq '^cybexos_boot=' /boot/grub/grubenv
 cmp /boot/EFI/CybexOS/grubx64.efi /boot/EFI/BOOT/BOOTX64.EFI
 efibootmgr | grep -q "^Boot$(efibootmgr | sed -n 's/^BootCurrent: //p')\\* CybexOS"
 ! efibootmgr | grep -qi nixos
@@ -1200,7 +1203,8 @@ grep -qw quiet /proc/cmdline && test "$(cut -f1 /proc/sys/kernel/printk)" = 0
 grep -qw systemd.show_status=false /proc/cmdline && grep -qw rd.systemd.show_status=false /proc/cmdline''')
         milestones['installedBootMenu'] = {'result': 'passed', 'checks': [
             'GRUB with the installer theme', 'labelled exact-system generations', 'removable fallback loader',
-            'firmware boot entry', 'quiet kernel command line']}
+            'firmware boot entry', 'quiet kernel command line', 'hidden menu with versioned titles',
+            'confirmed start cleared its pending mark']}
         vm.command('test -L /etc/nixos && test -e /etc/cybexos/runtime/quickshell/shell.qml')
         installation = json.loads(vm.command('cat /var/lib/cybexos/installation.json').strip())
         if 'prebuilt' in installation:

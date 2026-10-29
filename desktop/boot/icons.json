@@ -1,0 +1,16 @@
+{
+  "alert": "alert-triangle",
+  "basic": "device-desktop-off",
+  "disk": "server",
+  "firmware": "device-desktop-cog",
+  "history": "history",
+  "installer": "download",
+  "log": "file-text",
+  "memtest": "cpu",
+  "power": "power",
+  "rotate": "rotate-clockwise-2",
+  "serial": "plug-connected",
+  "terminal": "terminal-2",
+  "troubleshoot": "lifebuoy",
+  "usb": "usb"
+}

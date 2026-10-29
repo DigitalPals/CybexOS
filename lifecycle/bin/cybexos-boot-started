@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+"""Clear GRUB's pending mark once this start reached the running system."""
+from cybexos.boot import confirm_start
+from cybexos.cli import entry
+
+
+def main():
+    if confirm_start():
+        print("This start finished; cleared GRUB's pending start mark.")
+
+
+entry(main)

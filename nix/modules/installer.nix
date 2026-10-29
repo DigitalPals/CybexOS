@@ -237,7 +237,8 @@ in {
       prependToMenuLabel = "Install ";
       appendToMenuLabel = "";
       grubTheme = config.cybexos.bootTheme;
-      splashImage = ../../desktop/boot/splash.png;
+      # The legacy BIOS notice (nix/modules/iso-boot.nix).
+      splashImage = "${config.cybexos.bootTheme}/bios.png";
       efiSplashImage = ../../desktop/boot/splash.png;
     };
     image.baseName = lib.mkForce "cybexos-${config.cybexos.release.version}-${pkgs.stdenv.hostPlatform.system}";

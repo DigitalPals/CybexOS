@@ -39,16 +39,31 @@ becomes the persistent default. Failed systems are quarantined against normal
 reapplication. `cybex update history` and `cybex update rollback [ID]` expose the
 retained identities and restore coherent system/updater configuration.
 
-Installed machines boot GRUB with the installation medium's theme. Each time the
-boot loader is installed, `cybexos-boot-menu` labels every entry in
-**Cybex OS - All configurations** with an identifier derived from its exact
-system. `cybexos-boot-trial` keeps the persistent selection in GRUB's
+Installed machines boot GRUB with the installation medium's theme. Its menu is
+hidden: GRUB waits one second, and **Esc** opens **Startup options** with the
+newest **Cybex OS VERSION**, **Earlier versions ›**, **Firmware settings** and
+**Shut down**. Each time the boot loader is installed, `cybexos-boot-menu`
+titles every generation in **Earlier versions** with its Cybex OS version and
+time, and labels it with an identifier derived from its exact system; titles
+never select. `cybexos-boot-trial` keeps the persistent selection in GRUB's
 environment block (`/boot/grub/grubenv`) as `saved_entry` and arms the trial
 as `next_entry`, which GRUB clears as it boots that entry. The top-level
 **Cybex OS** entry always follows the newest generation, so it is never pinned.
 It is highlighted when it is the selected system. Selecting another entry by
-hand boots it once and leaves the default unchanged. With Secure Boot, signed
-Lanzaboote UKIs are selected through systemd-boot's `bootctl` interface instead.
+hand boots it once and leaves the default unchanged.
+
+GRUB marks every Linux start as pending (`cybexos_boot=pending`), and
+`cybexos-boot-started.service` clears the mark once the system reaches
+`multi-user.target`. When a start never got there, the next boot shows the
+menu with **The last start didn't finish** and starts the default after 30
+seconds, unless an earlier version is chosen. Turning the computer off at the
+disk passphrase also leaves the mark, so the notice then appears once without
+anything being wrong. An unconfirmed update trial still returns to the previous
+version by itself, and Software Update explains that after sign-in.
+
+With Secure Boot, signed Lanzaboote UKIs are selected through systemd-boot's
+`bootctl` interface instead; its plain menu is hidden too and appears when a
+key is held during start.
 
 System health requires the boot target, NetworkManager and login manager to be
 active. When Libreswan is enabled, its managed `ipsec.service` must also be
