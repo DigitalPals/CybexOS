@@ -65,6 +65,8 @@ function settingsHarness() {
         console: { warn() {} },
         Quickshell: { env: () => "" },
         clearUndo() {},
+        // The QML signal Home's Recently changed list listens to.
+        valueSet(key, before, after) { (calls.valueSets = calls.valueSets || []).push([key, before, after]); },
         backUpCorruptFile() { calls.backups++; },
         // Runs once per full application of a loaded file.
         applyScrollFactor() {}, applyGlassEffect() { calls.applied++; }
@@ -229,7 +231,11 @@ test("closing settings releases the page after a short keep-alive", () => {
     const view = read("Settings/SettingsView.qml");
     const loader = view.slice(view.indexOf("id: pageLoader"), view.indexOf("sourceComponent:", view.indexOf("id: pageLoader")));
     assert.match(loader, /active: Settings\.panelOpen \|\| pageRelease\.running/);
-    assert.match(view, /function onPanelOpenChanged\(\) \{\s*if \(Settings\.panelOpen\)\s*pageRelease\.stop\(\);\s*else\s*pageRelease\.restart\(\);/);
+    assert.match(view, /function onPanelOpenChanged\(\) \{\s*if \(Settings\.panelOpen\) \{\s*pageRelease\.stop\(\);\s*\} else \{\s*pageRelease\.restart\(\);/);
+    // Closing also folds away the palette and the review sheet, and forgets
+    // the Back trail, so a reopened window starts clean.
+    assert.match(view, /pageRelease\.restart\(\);\s*palette\.hide\(\);\s*changesSheet\.hide\(\);/);
+    assert.match(read("Common/Settings.qml"), /function closePanel\(\) \{\s*panelOpen = false;\s*pageHistory = \[\];/);
 });
 
 test("plugin discovery keeps the last good state and cannot wedge", () => {

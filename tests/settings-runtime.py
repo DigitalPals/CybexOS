@@ -61,10 +61,22 @@ class Audit:
             time.sleep(.15)
         raise AssertionError('Timed out: ' + expression)
 
+    # Views the audit names, as the 2026-10 pages and tabs hold them: About
+    # became Home, Keyboard shortcuts a Keyboard tab, and Storage & cleanup
+    # the Disk space and Recovery points tabs of Backup & storage.
+    VIEWS = {'about': ('home', ''), 'shortcuts': ('keyboard', 'shortcuts'), 'keyboard': ('keyboard', 'layouts'),
+             'storage': ('backup', 'storage'), 'recovery': ('backup', 'recovery'), 'backup': ('backup', 'backups')}
+    KINDS = {'bar': 'ModulesPage', 'shortcuts': 'ShortcutsPage', 'storage': 'StoragePage', 'recovery': 'StoragePage',
+             'about': 'HomePage'}
+
     def page(self, page):
-        self.evaluate('Settings.showPanel(' + json.dumps(page) + ')')
-        kind = 'ModulesPage' if page == 'bar' else page.capitalize()+'Page'
-        self.wait('Settings.page === ' + json.dumps(page) + ' && shell.auditItems().some(item => String(item).startsWith('+json.dumps(kind+'_')+'))')
+        target, tab = self.VIEWS.get(page, (page, ''))
+        self.evaluate('Settings.showPanel(' + json.dumps(target) + ')')
+        if tab:
+            self.evaluate('Settings.setTab(' + json.dumps(target) + ',' + json.dumps(tab) + ')')
+        kind = self.KINDS.get(page, page.capitalize()+'Page')
+        self.wait('Settings.page === ' + json.dumps(target) + ' && Settings.tab === ' + json.dumps(tab)
+                  + ' && shell.auditItems().some(item => String(item).startsWith('+json.dumps(kind+'_')+'))')
         time.sleep(.35)
 
     def edit(self, value, *, key='', label=''):
@@ -943,7 +955,7 @@ class Audit:
             raise AssertionError(clients())
         def close_windows(windows):
             for c in windows:self.user(['hyprctl','dispatch','hl.dsp.window.close({window='+json.dumps('address:'+c['address'])+'})'])
-        self.page('storage')
+        self.page('recovery')
         self.wait('Maintenance.snapshot.space.total > 0 && !Maintenance.busy')
         for key, values in [('automatic',[True,False]),('keepConfirmed',[5,10,20,50,100]),('keepDays',[30,60,90,180,365])]:
             for value in values:
@@ -953,7 +965,7 @@ class Audit:
                 assert actual==value,(key,value,actual)
         self.action('Discard')
         assert not self.evaluate('shell.auditPage().dirty')
-        self.page('about')
+        self.page('home')
         self.wait('!ShellHealth.busy')
         self.action('Refresh')
         self.wait('!ShellHealth.busy && ShellHealth.serviceActive')
@@ -973,9 +985,9 @@ class Audit:
         self.action('Open Software…')
         self.wait('Software.open')
         self.evaluate('Software.close()')
-        self.page('about')
+        self.page('home')
         before={c['address'] for c in clients()}
-        self.evaluate('shell.auditWalk(shell.auditRow("~/.config/cybexos/shell.json","")).find(i=>/^SettingsAction_/.test(String(i))).triggered()')
+        self.evaluate('shell.auditWalk(shell.auditRow("Settings file","")).find(i=>/^SettingsAction_/.test(String(i))).triggered()')
         self.wait('!Settings.panelOpen')
         close_windows(new_window(before))
         self.page('wallpaper')
@@ -1040,7 +1052,8 @@ class Audit:
 
     def run(self, *, scalars=True):
         self.test('one managed shell before audit', self.guard)
-        pages = self.evaluate('Settings.validPages')
+        # Every page, and the second views of the tabbed ones.
+        pages = self.evaluate('Settings.validPages') + ['shortcuts', 'recovery', 'storage']
         for page in pages:
             if self.test('page: '+page, lambda page=page:self.inventory(page)) and scalars:
                 rows = self.report['pages'][page]

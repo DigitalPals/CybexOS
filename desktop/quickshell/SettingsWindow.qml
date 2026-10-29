@@ -11,10 +11,12 @@ FloatingWindow {
     title: "Cybex OS Settings" // i18n: untranslated (compositor identity)
     visible: false
     color: Theme.panelSurface
-    implicitWidth: Math.min(Theme.scaled(900, Theme.contentScale),
-        screen ? screen.width - Theme.panelPadding * 2 : 900)
-    implicitHeight: Math.min(Theme.scaled(664),
-        screen ? screen.height - Theme.barHeight - Theme.panelPadding * 2 : 664)
+    // 960 by 700 (2026-10 redesign): room for the rail's nineteen entries
+    // without scrolling; smaller screens get a scrolling rail.
+    implicitWidth: Math.min(Theme.scaled(960, Theme.contentScale),
+        screen ? screen.width - Theme.panelPadding * 2 : 960)
+    implicitHeight: Math.min(Theme.scaled(700),
+        screen ? screen.height - Theme.barHeight - Theme.panelPadding * 2 : 700)
     minimumSize: Qt.size(480, 400)
     onClosed: Settings.closePanel()
 
@@ -37,6 +39,7 @@ FloatingWindow {
 
     SettingsUi.SettingsView {
         id: view
+        objectName: "settingsView"
         anchors.fill: parent
         implicitWidth: preferredWidth
         implicitHeight: preferredHeight

@@ -47,19 +47,17 @@ test("a timestamp reads as today, yesterday, a weekday or a date", () => {
     assert.equal(LocalTime.label(Number.NaN, now, true), "");
 });
 
-test("About reads status in the status colours and the check as a time", () => {
-    const about = read("Settings/AboutPage.qml");
-    assert.match(about, /: Theme\.connected/, "healthy is the green status colour");
-    assert.doesNotMatch(about, /Theme\.accent\b/, "the accent is a mark, not a health verdict");
-    assert.match(about, /!ShellHealth\.serviceActive \? Theme\.red/);
-    assert.match(about, /ShellHealth\.issueCount > 0 \? Theme\.amber/);
-    assert.match(about, /label: "Last deploy check"[\s\S]{0,200}?LocalTime\.fromText\(ShellHealth\.deploymentCheckedAt, clock\.date\.getTime\(\),\s*Settings\.clock24/);
-    assert.match(about, /SystemClock \{\s*id: clock\s*precision: SystemClock\.Hours\s*enabled: page\.visible/,
-        "relative dates roll over at midnight without a per-minute tick");
-    assert.match(about, /label: "~\/\.config\/cybexos\/shell\.json"\s*labelMono: true/);
-    assert.match(about, /hint: "Every page back to its defaults\. You can undo for 8 seconds\."/);
-    assert.match(read("Settings/ValueRow.qml"), /elide: Text\.ElideMiddle/,
-        "a path label keeps both of its ends");
+test("Home reads shell health in the status colours and the deploy check as a time", () => {
+    const home = read("Settings/HomePage.qml");
+    assert.match(home, /healthColor: !ShellHealth\.serviceActive \? Theme\.red\s*: !ShellHealth\.healthy \|\| ShellHealth\.issueCount > 0 \? Theme\.amber\s*: Theme\.connected/,
+        "green healthy, amber with a problem, red not running: the accent is a mark, not a verdict");
+    assert.match(home, /LocalTime\.fromText\(ShellHealth\.deploymentCheckedAt,\s*page\.nowMs, Settings\.clock24/);
+    assert.match(home, /Timer \{\s*interval: 60000\s*running: page\.visible/, "relative times tick only while Home shows");
+    assert.match(home, /label: "Settings file"\s*hint: "~\/\.config\/cybexos\/shell\.json"/);
+    assert.match(home, /hint: "Every page back to its defaults\. You can undo for 8 seconds\."/);
+    assert.match(home, /onTriggered: Welcome\.show\(""\)/);
+    // The old About id still opens it.
+    assert.match(read("Common/Settings.qml"), /about: "home"/);
 
     const recovery = read("Settings/RecoveryGroup.qml");
     assert.match(recovery, /generation|Generation/);
@@ -108,7 +106,9 @@ test("each plugin is one row: an Enabled switch and a ⋯ menu", () => {
 test("the Omarchy plugins page links the directory and explains adding one", () => {
     const page = read("Settings/PluginsPage.qml");
     const settings = read("Common/Settings.qml");
-    assert.match(settings, /id: "plugins", group: "System", label: "Omarchy plugins"/);
+    // Plugins add widgets and panels, so they sit with the rest of Personalize;
+    // where they come from stays in the description.
+    assert.match(settings, /id: "plugins", group: "Personalize", label: "Plugins", glyph: "extension",\s*description: "Community widgets, panels and services from Omarchy"/);
     assert.match(page, /directoryUrl: "https:\/\/plugins\.omarchy\.org\/"/);
     assert.match(page, /text: "Browse plugins"[\s\S]{0,160}?onTriggered: Settings\.openExternalUrl\(page\.directoryUrl\)/);
     assert.equal((page.match(/^\s*Step \{/gm) ?? []).length, 3, "three numbered steps");

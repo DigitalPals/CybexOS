@@ -58,21 +58,18 @@ SettingsPage {
         return choice ? choice.family : Theme.fontMenu;
     }
 
-    // Named themes: one dropdown whose options preview each theme in three
-    // dots. Picking one sets mode, colors, bar and font in one undoable step
-    // (Common/Themes.qml); a change made afterwards marks it "(modified)".
+    // Named themes: a gallery that draws each theme in its own colors
+    // (ThemeGallery). Picking one sets mode, colors, bar and font in one
+    // undoable step (Common/Themes.qml); a change made afterwards marks it
+    // "(modified)".
     readonly property var themeState: Themes.current
-    readonly property var themeChoices: ThemeHelpers.choices(Themes.entries, page.themeState)
     readonly property var themeReferences: ({
-        dark: { background: Theme.darkBackground.toString(), text: Theme.darkTextHi.toString() },
-        light: { background: Theme.lightBackground.toString(), text: Theme.lightTextHi.toString() }
+        dark: { background: Theme.darkBackground.toString(), surface: Theme.darkPopBg.toString(),
+            raised: Theme.darkMenuBg.toString(), text: Theme.darkTextHi.toString(), dim: Theme.darkTextDim.toString() },
+        light: { background: Theme.lightBackground.toString(), surface: Theme.lightPopBg.toString(),
+            raised: Theme.lightMenuBg.toString(), text: Theme.lightTextHi.toString(), dim: Theme.lightTextDim.toString() }
     })
     property bool savingTheme: false
-
-    function themeSwatches(id) {
-        const entry = Themes.entries.find(item => item.id === id);
-        return entry ? ThemeHelpers.swatches(entry, page.themeReferences) : [];
-    }
 
     function saveTheme() {
         if (Themes.saveCurrent(themeNameRow.text)) {
@@ -107,6 +104,16 @@ SettingsPage {
             width: parent.width
             title: I18n.tr("Theme")
 
+            ThemeGallery {
+                id: themeGallery
+                width: parent.width
+                references: page.themeReferences
+                onSaveRequested: {
+                    page.savingTheme = !page.savingTheme;
+                    if (page.savingTheme)
+                        themeNameRow.focusField();
+                }
+            }
             SettingsRow {
                 id: themeRow
                 width: parent.width
@@ -121,38 +128,17 @@ SettingsPage {
                 }
                 hint: Themes.error !== "" ? Themes.error
                     : Themes.message !== "" ? Themes.message
-                    : "Sets mode, colors, bar and font together"
+                    : page.themeState.label + " · " + I18n.tr("sets mode, colors, bar and font together")
                 hintTone: Themes.error !== "" ? "error" : "info"
                 disabledReason: !Themes.loaded && Themes.busy ? "Loading themes…" : ""
-                narrowHeight: Theme.settingsStackOffset + Theme.settingsControlHeight
-                narrowLabelInset: themeRow.undoWidth
-                controlLeft: themeSelect.x
+                controlLeft: saveThemeAction.x
 
-                SettingsSelect {
-                    id: themeSelect
-                    readonly property real available: themeRow.contentRight
-                        - saveThemeAction.width - Theme.controlSpacing
-                    width: themeRow.narrow ? Math.max(0, available - themeRow.markInset)
-                        : Math.min(naturalWidth, Math.max(0, available - themeRow.labelWidth))
-                    x: themeRow.narrow ? themeRow.markInset : available - width
-                    y: themeRow.narrow ? Theme.settingsStackOffset
-                        : (themeRow.lineHeight - height) / 2
-                    opacity: themeRow.controlOpacity
-                    model: page.themeChoices
-                    current: page.themeState.value
-                    accessibleName: "Theme"
-                    swatchesFor: value => page.themeSwatches(value)
-                    onPicked: value => {
-                        if (value !== "")
-                            Themes.apply(value);
-                    }
-                }
                 SettingsAction {
                     id: saveThemeAction
                     x: themeRow.contentRight - width
-                    y: themeSelect.y + (themeSelect.height - height) / 2
+                    y: (themeRow.lineHeight - height) / 2
                     opacity: themeRow.controlOpacity
-                    compact: true
+                    compact: themeRow.narrow
                     glyph: "save"
                     text: I18n.tr("Save current as theme…")
                     onTriggered: {

@@ -255,12 +255,16 @@ class RegionTransactions(unittest.TestCase):
         self.assertEqual(result['locales'], ['en_US.UTF-8', 'nl_NL.UTF-8'])
         self.service.call.assert_not_called()
 
+    def stage(self, *changes):
+        return self.service.dispatch({'action': 'stage', 'changes': [
+            {'field': field, 'value': value, 'previous': previous} for field, value, previous in changes]})
+
     def test_locale_stages_nixos_preview_preserving_all_previous_categories(self):
         previous = self.locale.copy()
         with patch.object(region.subprocess, 'run', return_value=Mock(returncode=0)) as run:
-            result = self.service.dispatch({'action': 'locale', 'value': 'nl_NL.UTF-8', 'previous': previous})
+            result = self.stage(('locale', 'nl_NL.UTF-8', previous))
         self.assertTrue(result['staged'])
-        self.assertIn('review', result['message'])
+        self.assertIn('Software Update', result['message'])
         command = run.call_args.args[0]
         self.assertEqual(command[:5], ['cybex', 'config', 'region', 'locale', 'nl_NL.UTF-8'])
         self.assertEqual(json.loads(command[5]), previous)
@@ -269,32 +273,50 @@ class RegionTransactions(unittest.TestCase):
 
     def test_timezone_stages_nixos_preview_without_mutable_service_writes(self):
         with patch.object(region.subprocess, 'run', return_value=Mock(returncode=0)) as run:
-            result = self.service.dispatch({'action': 'timezone', 'value': 'UTC', 'previous': self.timezone})
+            result = self.stage(('timezone', 'UTC', self.timezone))
         self.assertTrue(result['staged'])
         self.assertEqual(run.call_args.args[0],
                          ['cybex', 'config', 'region', 'timezone', 'UTC', json.dumps(self.timezone)])
         self.assertEqual(self.timezone, 'Europe/Amsterdam')
         self.service.call.assert_not_called()
 
+    def test_timezone_and_language_stage_one_preview(self):
+        previous = self.locale.copy()
+        with patch.object(region.subprocess, 'run', return_value=Mock(returncode=0)) as run:
+            result = self.stage(('timezone', 'UTC', self.timezone), ('locale', 'nl_NL.UTF-8', previous))
+        self.assertTrue(result['staged'])
+        run.assert_called_once()
+        self.assertEqual(run.call_args.args[0],
+                         ['cybex', 'config', 'region', 'timezone', 'UTC', json.dumps(self.timezone),
+                          'locale', 'nl_NL.UTF-8', json.dumps(previous)])
+        self.service.call.assert_not_called()
+
     def test_denied_preview_reports_failure_without_success(self):
         with patch.object(region.subprocess, 'run', return_value=Mock(returncode=1)):
             with self.assertRaisesRegex(ValueError, 'authorization'):
-                self.service.dispatch({'action': 'timezone', 'value': 'UTC', 'previous': self.timezone})
+                self.stage(('timezone', 'UTC', self.timezone))
         self.assertEqual(self.timezone, 'Europe/Amsterdam')
         self.service.call.assert_not_called()
 
     def test_stale_and_uninstalled_choices_never_start_a_preview(self):
         with patch.object(region.subprocess, 'run') as run:
-            for request in [{'action': 'timezone', 'value': 'UTC', 'previous': 'stale'},
-                            {'action': 'locale', 'value': 'nl_NL.UTF-8', 'previous': ['LANG=changed']},
-                            {'action': 'locale', 'value': 'missing', 'previous': self.locale},
-                            {'action': 'timezone', 'value': '../etc/passwd', 'previous': self.timezone},
-                            {'action': 'timezone', 'value': ['UTC'], 'previous': self.timezone}]:
+            for changes in [[('timezone', 'UTC', 'stale')],
+                            [('locale', 'nl_NL.UTF-8', ['LANG=changed'])],
+                            [('locale', 'missing', self.locale)],
+                            [('timezone', '../etc/passwd', self.timezone)],
+                            [('timezone', ['UTC'], self.timezone)],
+                            # A valid timezone never stages beside a stale language.
+                            [('timezone', 'UTC', self.timezone), ('locale', 'nl_NL.UTF-8', ['LANG=changed'])],
+                            [('timezone', 'UTC', self.timezone), ('timezone', 'UTC', self.timezone)],
+                            [('keyboard', 'us', '')], []]:
+                with self.subTest(changes=changes), self.assertRaises(ValueError):
+                    self.stage(*changes)
+            for request in [{'action': 'stage'}, {'action': 'stage', 'changes': 'UTC'},
+                            {'action': 'timezone', 'value': 'UTC', 'previous': self.timezone}]:
                 with self.subTest(request=request), self.assertRaises(ValueError):
                     self.service.dispatch(request)
             run.assert_not_called()
         self.service.call.assert_not_called()
-
 
 if __name__ == '__main__':
     unittest.main()

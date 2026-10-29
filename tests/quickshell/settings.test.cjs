@@ -418,9 +418,9 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
     const system = ["PowerPage", "RegionPage", "TouchpadPage"]
         .map(name => read(`Settings/${name}.qml`)).join("\n");
 
-    assert.match(view, /preferredWidth:\s*Theme\.scaled\(900, Theme\.contentScale\)/);
-    assert.match(view, /preferredHeight:\s*Theme\.scaled\(664\)/,
-        "the sheet is 44 header + 620 body, hanging from the bar");
+    assert.match(view, /preferredWidth:\s*Theme\.scaled\(960, Theme\.contentScale\)/);
+    assert.match(view, /preferredHeight:\s*Theme\.scaled\(700\)/,
+        "44 header + 656 body: room for Home and the rail's three groups of six without scrolling");
     // The gutter is unconditional: making it depend on scrollbarVisible
     // loops (narrower content re-wraps taller and flips the scrollbar).
     assert.match(page, /scrollGutter:\s*8/);
@@ -444,9 +444,9 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
     for (const row of ["SliderRow", "PickerRow", "SwitchRow", "SettingsTextRow", "SelectRow"])
         assert.match(read(`Settings/${row}.qml`), /^SettingsRow \{$/m,
             `${row} must build on SettingsRow`);
-    // Reset all keeps the rail's undo rather than a confirm step, and sits
-    // in its own group on About instead of beside Open.
-    const about = read("Settings/AboutPage.qml");
+    // Reset all keeps the header's undo rather than a confirm step, and sits
+    // in its own group on Home instead of under Open.
+    const about = read("Settings/HomePage.qml");
     assert.doesNotMatch(about, /resetArmed|Confirm reset/);
     assert.match(about, /title: "Reset"[\s\S]{0,400}?onTriggered:\s*Settings\.resetAll\(\)/);
     assert.doesNotMatch(system, /resetAll/);
@@ -495,56 +495,70 @@ test("swipe between workspaces is one touchpad switch in the saved input prefere
     assert.match(row.terms, /gesture/);
 });
 
-test("the grouped rail keeps labeled sections, the save state, and the nav search", () => {
+test("the rail is Home and three labeled groups of six, and the palette searches them", () => {
     const view = read("Settings/SettingsView.qml");
     const settings = read("Common/Settings.qml");
-    const searchData = read("Common/SettingsSearchData.js");
 
-    // Pages are grouped by task (2026-09): Personalize, Devices, System.
+    // Pages are grouped by task (2026-09): Personalize, Devices, System;
+    // the 2026-10 redesign puts Home above them and six pages in each.
     assert.match(settings, /pageGroups: \["Personalize", "Devices", "System"\]/);
     assert.match(view, /model: Settings\.pageGroups/);
-    assert.match(view, /id:\s*railFooter/);
-    // The status line speaks only while saving, briefly after, after a reset
-    // and on an error; "Saved · applies live" standing there said nothing.
+    assert.match(view, /NavItem \{\s*id: homeItem\s*modelData: Settings\.pages\[0\]/);
+    const entries = [...settings.matchAll(/\{ id: "([a-z]+)", (?:group: "([A-Za-z]+)", )?label: "[^"]+", glyph: /g)]
+        .map(m => [m[1], m[2] || ""]);
+    assert.deepEqual(entries.map(e => e[0]), ["home", "appearance", "wallpaper", "bar", "workspaces",
+        "notifications", "plugins", "displays", "sound", "network", "touchpad", "keyboard", "power",
+        "security", "accounts", "assistant", "applications", "region", "backup"]);
+    for (const group of ["Personalize", "Devices", "System"])
+        assert.equal(entries.filter(e => e[1] === group).length, 6, group);
+    const glyphs = [...settings.slice(settings.indexOf("readonly property var pages: ["),
+        settings.indexOf("readonly property var pageGroups")).matchAll(/glyph: "([a-z_]+)"/g)].map(m => m[1]);
+    assert.equal(new Set(glyphs).size, glyphs.length, "every page has its own glyph");
+    // The rail scrolls when the window is shorter than its pages.
+    assert.match(view, /Flickable \{\s*id: navFlick[\s\S]{0,300}?interactive: contentHeight > height/);
+    // The save state speaks only while saving, briefly after, after a reset
+    // and on an error; it lives in the header now, beside the Changes chip.
     assert.doesNotMatch(view, /Saved · applies live/);
     assert.match(view, /visible: root\.statusShown/);
-    assert.doesNotMatch(view, /Settings\.sectionDirty\(navItem/,
-        "the rail carries no changed-page dots; they read as unread badges");
-    assert.doesNotMatch(view, /shell-settings\.json/,
-        "the config path chip lives on the About page, not a bottom footer");
+    assert.match(view, /ChangesChip \{/);
+    // The rail's dot means a draft waiting for Apply, never "changed from
+    // its default": those read as unread badges.
+    assert.doesNotMatch(view, /Settings\.sectionDirty\(navItem/);
+    assert.match(view, /readonly property bool pending: SettingsChanges\.pages\.indexOf\(modelData\.id\) !== -1/);
     assert.match(view, /case "notifications": return notificationsPage;/);
     assert.doesNotMatch(view, /id: "drawer"|case "drawer"|id: drawerPage/);
-    for (const id of ["touchpad", "power", "region", "backup", "about"])
+    for (const id of ["touchpad", "power", "region", "home"])
         assert.match(view, new RegExp(`case "${id}": return ${id}Page;`));
     // Old ids keep working from IPC and scripts.
-    assert.match(settings, /legacyPages: \(\{\s*modules: "bar", widgets: "bar", system: "power", drawer: "bar"/);
+    assert.match(settings, /legacyPages: \(\{\s*modules: "bar", widgets: "bar", system: "power", drawer: "bar",\s*shortcuts: "keyboard", storage: "backup", about: "home"/);
 
-    // Turn-3 search: "/" focuses the nav field, results jump to and
-    // highlight the row through Settings.highlightKey.
+    // "/", Ctrl+K and Ctrl+F open the palette; Escape backs out of it before
+    // anything else; Alt+Left goes back.
     assert.match(view, /Qt\.Key_Slash/);
-    assert.match(view, /function jumpToResult\(row\)/);
-    assert.match(view, /SearchData\.search\(searchQuery, I18n\.tr\)/);
-    assert.match(view, /function handleEscape[\s\S]{0,220}?clearSearch\(\)/,
-        "Escape backs out of a search before anything else");
+    assert.match(view, /event\.key === Qt\.Key_K \|\| event\.key === Qt\.Key_F/);
+    assert.match(view, /function handleEscape[\s\S]{0,120}?palette\.hide\(\)/,
+        "Escape closes the palette before anything else");
+    assert.match(view, /event\.key === Qt\.Key_Left && event\.modifiers & Qt\.AltModifier/);
+    assert.match(read("Settings/SettingsPalette.qml"), /SearchData\.search\(q, I18n\.tr\)/);
     assert.match(settings, /property string highlightKey/);
 
-    // The index is hand-maintained; hold it against the schema so a renamed
-    // key or page cannot leave a search row jumping nowhere.
+    // The index is hand-maintained; hold it against the schema and the tabs
+    // so a renamed key, page or tab cannot leave a row jumping nowhere.
     const schemaKeys = Object.keys(load("SettingsHelpers.js").defaults());
-    const validPages = [...settings.matchAll(/\{ id: "([a-z]+)", group: "/g)].map(m => m[1]);
-    assert.deepEqual(validPages, ["appearance", "wallpaper", "bar", "workspaces", "notifications", "assistant", "displays",
-        "sound", "network", "touchpad", "keyboard", "shortcuts", "power", "applications", "storage", "region", "accounts", "security", "plugins", "backup",
-        "about"]);
-    const rows = load("SettingsSearchData.js").ROWS;
-    assert.ok(rows.length >= 30, "the search index must cover the workspace");
-    for (const row of rows) {
-        assert.ok(validPages.includes(row.page),
-            `search row "${row.label}" names unknown page "${row.page}"`);
-        if (row.key !== "")
+    const tabs = { keyboard: ["layouts", "shortcuts"], backup: ["backups", "recovery", "storage"] };
+    const { ROWS, ACTIONS } = load("SettingsSearchData.js");
+    assert.ok(ROWS.length >= 30, "the search index must cover the workspace");
+    for (const row of ROWS.concat(ACTIONS.filter(entry => entry.page))) {
+        assert.ok(entries.some(e => e[0] === row.page),
+            `search entry "${row.label}" names unknown page "${row.page}"`);
+        if (tabs[row.page])
+            assert.ok(tabs[row.page].includes(row.tab), `"${row.label}" names no tab of ${row.page}`);
+        else
+            assert.ok(!row.tab, `"${row.label}" names a tab on an untabbed page`);
+        if (row.key)
             assert.ok(schemaKeys.includes(row.key),
                 `search row "${row.label}" names unknown key "${row.key}"`);
     }
-    void searchData;
 });
 
 test("settings workspace uses shared responsive groups and bounded header lanes", () => {
@@ -553,10 +567,10 @@ test("settings workspace uses shared responsive groups and bounded header lanes"
     const action = read("Settings/ResponsiveActionRow.qml");
     const qmldir = read("Settings/qmldir");
 
-    assert.match(view, /preferredWidth:\s*Theme\.scaled\(900, Theme\.contentScale\)/);
-    assert.match(view, /preferredHeight:\s*Theme\.scaled\(664\)/);
+    assert.match(view, /preferredWidth:\s*Theme\.scaled\(960, Theme\.contentScale\)/);
+    assert.match(view, /preferredHeight:\s*Theme\.scaled\(700\)/);
     assert.match(view, /compactNav:\s*availableWidth < Theme\.scaled\(860, Theme\.typeScale\)/);
-    assert.match(view, /height:\s*Theme\.panelRowHeight \+ 2/,
+    assert.match(view, /height:\s*Theme\.panelRowHeight\n/,
         "navigation rows follow the shared panel rhythm, not a local literal");
     assert.match(view, /headerHeight:\s*Theme\.scaled\(44\)/,
         "the header is one line; the two-line form made it the tallest thing here");
@@ -597,10 +611,10 @@ test("settings workspace uses shared responsive groups and bounded header lanes"
     assert.match(valueRow, /actionsLeft: contentRight - actionsWidth/,
         "actions end at the control edge, not in the reset column");
     assert.match(valueRow, /elide: Text\.ElideRight/, "a long value is bounded, not clipped");
-    for (const page of ["PowerPage", "AboutPage", "AccountsPage", "RecoveryGroup"])
+    for (const page of ["PowerPage", "HomePage", "AccountsPage", "RecoveryGroup"])
         assert.match(read(`Settings/${page}.qml`), /ValueRow \{/,
             `${page} must put its actions on labeled rows`);
-    for (const page of ["PowerPage", "AboutPage", "AccountsPage", "PluginsPage", "RecoveryGroup"])
+    for (const page of ["PowerPage", "HomePage", "AccountsPage", "PluginsPage", "RecoveryGroup"])
         assert.doesNotMatch(read(`Settings/${page}.qml`), /ResponsiveActionRow \{/,
             `${page} must not end actions outside the control column`);
 });
@@ -768,7 +782,7 @@ test("bar geometry reset ownership moves from Appearance to Bar", () => {
         assert.doesNotMatch(appearanceKeys, new RegExp(`"${key}"`));
         assert.match(barKeys, new RegExp(`"${key}"`));
     }
-    assert.match(settings, /\{ id: "bar", group: "Personalize", label: "Bar"/,
+    assert.match(settings, /\{ id: "bar", group: "Personalize", label: "Bar & Control Center"/,
         "the reset announcement uses the page's visible name");
     assert.match(settings, /pageInfo\(section\)\.label/);
 });

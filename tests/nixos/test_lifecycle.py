@@ -413,19 +413,19 @@ class EngineTests(unittest.TestCase):
                 return '"Europe/Amsterdam"'
             return original(*args, **kwargs)
         self.engine.run = run
-        record = self.engine.stage('local', region={'field': 'timezone', 'value': 'Europe/Amsterdam', 'previous': 'UTC'})
+        record = self.engine.stage('local', region={'changes': [{'field': 'timezone', 'value': 'Europe/Amsterdam', 'previous': 'UTC'}]})
         staged = read(self.engine.tx(record['id']) / 'config/desktop-settings.json')
         self.assertEqual(staged, {'locale': 'en_US.UTF-8', 'timezone': 'Europe/Amsterdam'})
         self.assertEqual(config_digest(self.working), baseline)
         with self.assertRaises(Failure):
-            self.engine.stage('local', region={'field': 'timezone', 'value': 'Europe/Amsterdam', 'previous': 'wrong'})
+            self.engine.stage('local', region={'changes': [{'field': 'timezone', 'value': 'Europe/Amsterdam', 'previous': 'wrong'}]})
         def overridden(*args, **kwargs):
             if args[:3] == ('nix', 'eval', '--json'):
                 return '"UTC"'
             return run(*args, **kwargs)
         self.engine.run = overridden
         with self.assertRaisesRegex(Failure, 'stronger NixOS declaration'):
-            self.engine.stage('local', region={'field': 'timezone', 'value': 'Europe/Amsterdam', 'previous': 'UTC'})
+            self.engine.stage('local', region={'changes': [{'field': 'timezone', 'value': 'Europe/Amsterdam', 'previous': 'UTC'}]})
         self.assertEqual(read(self.engine.status_path)['state'], 'failed')
         self.assertEqual(config_digest(self.working), baseline)
 
@@ -446,9 +446,48 @@ class EngineTests(unittest.TestCase):
                 return '"nl_NL.UTF-8"'
             return original(*args, **kwargs)
         self.engine.run = run
-        record = self.engine.stage('local', region={'field':'locale','value':'nl_NL.UTF-8','previous':previous})
+        record = self.engine.stage('local', region={'changes': [{'field':'locale','value':'nl_NL.UTF-8','previous':previous}]})
         self.assertEqual(read(self.engine.tx(record['id']) / 'config/desktop-settings.json'),
                          {'timezone':'UTC','locale':'nl_NL.UTF-8'})
+        self.assertEqual(config_digest(self.working), baseline)
+
+    def test_timezone_and_locale_preview_as_one_generation(self):
+        atomic(self.config / 'desktop-settings.json', {})
+        baseline = config_digest(self.working)
+        previous = ['LANG=en_US.UTF-8']
+        original = self.engine.run
+        evaluated = []
+        def run(*args, **kwargs):
+            if args == ('timedatectl', 'list-timezones', '--no-pager'):
+                return 'UTC\nEurope/Berlin\n'
+            if args == ('timedatectl', 'show', '--property=Timezone', '--value'):
+                return 'UTC\n'
+            if args == ('locale', '-a'):
+                return 'en_US.utf8\nde_DE.utf8\n'
+            if args[:3] == ('busctl', '--system', '--json=short'):
+                return json.dumps({'type': 'as', 'data': previous})
+            if args[:3] == ('nix', 'eval', '--json'):
+                evaluated.append(str(args[-1]).rsplit('.', 2)[-2:])
+                return '"Europe/Berlin"' if str(args[-1]).endswith('time.timeZone') else '"de_DE.UTF-8"'
+            return original(*args, **kwargs)
+        self.engine.run = run
+        record = self.engine.stage('local', region={'changes': [
+            {'field': 'timezone', 'value': 'Europe/Berlin', 'previous': 'UTC'},
+            {'field': 'locale', 'value': 'de_DE.UTF-8', 'previous': previous}]})
+        self.assertEqual(read(self.engine.tx(record['id']) / 'config/desktop-settings.json'),
+                         {'timezone': 'Europe/Berlin', 'locale': 'de_DE.UTF-8'})
+        self.assertEqual(record['changeKind'], 'region')
+        self.assertEqual(len(evaluated), 2)
+        self.assertEqual(config_digest(self.working), baseline)
+        # One stale value refuses the whole preview; nothing is half-staged.
+        with self.assertRaisesRegex(Failure, 'current regional setting changed'):
+            self.engine.stage('local', region={'changes': [
+                {'field': 'timezone', 'value': 'Europe/Berlin', 'previous': 'UTC'},
+                {'field': 'locale', 'value': 'de_DE.UTF-8', 'previous': ['LANG=nl_NL.UTF-8']}]})
+        for request in ({'field': 'timezone', 'value': 'UTC', 'previous': 'UTC'}, {'changes': []},
+                        {'changes': [{'field': 'timezone', 'value': 'UTC', 'previous': 'UTC'}] * 2}):
+            with self.subTest(request=request), self.assertRaisesRegex(Failure, 'Invalid regional'):
+                self.engine.stage('local', region=request)
         self.assertEqual(config_digest(self.working), baseline)
 
     def test_locale_preview_matches_localed_normalization_and_rejects_stale_snapshot(self):
@@ -467,7 +506,7 @@ class EngineTests(unittest.TestCase):
             if str(path) == '/etc/locale.conf':
                 return io.StringIO('LANG=nl_NL.UTF-8\nLC_TIME=nl_NL.UTF-8\n')
             return real_open(path, *args, **kwargs)
-        request = {'field': 'locale', 'value': 'en_GB.UTF-8', 'previous': previous.copy()}
+        request = {'changes': [{'field': 'locale', 'value': 'en_GB.UTF-8', 'previous': previous.copy()}]}
         with patch('builtins.open', side_effect=open_locale):
             region(self.config, request, run)
         self.assertEqual(read(self.config / 'desktop-settings.json'), {'locale': 'en_GB.UTF-8'})

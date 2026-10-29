@@ -182,26 +182,4 @@ Column {
         }
     }
 
-    // The dock lives with the bar: both are edge furniture, and the
-    // dock steps above a bottom bar rather than covering it. Pins are edited
-    // from the dock itself (right-click an app).
-    SettingsGroup {
-        width: parent.width
-        title: I18n.tr("Dock")
-
-        SwitchRow {
-            width: parent.width
-            label: I18n.tr("Show in all layouts")
-            settingKey: "dock"
-            description: I18n.tr("The dock appears automatically on floating workspaces. Also show it in tiled and scrolling layouts.")
-        }
-
-        SwitchRow {
-            width: parent.width
-            label: I18n.tr("Auto-hide")
-            resetLabel: "Dock auto-hide"
-            settingKey: "dockAutoHide"
-            description: I18n.tr("Hides until you point at the bottom edge")
-        }
-    }
 }

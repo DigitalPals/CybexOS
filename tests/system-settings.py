@@ -46,11 +46,13 @@ class Region(unittest.TestCase):
         previous = ['LANG=en_US.UTF-8', 'LC_TIME=nl_NL.UTF-8']
         service.properties = Mock(return_value={'Locale': previous})
         service.stage = Mock(return_value={'staged': True})
+        stage = lambda value: service.dispatch({'action': 'stage', 'changes': [
+            {'field': 'locale', 'value': value, 'previous': previous}]})
         with patch.object(region, 'choices', return_value=['nl_NL.utf8', 'C', 'POSIX']):
-            self.assertTrue(service.dispatch({'action':'locale', 'value':'nl_NL.UTF-8', 'previous':previous})['staged'])
+            self.assertTrue(stage('nl_NL.UTF-8')['staged'])
             with self.assertRaisesRegex(ValueError, 'installed locale'):
-                service.dispatch({'action':'locale', 'value':'de_DE.UTF-8', 'previous':previous})
-        service.stage.assert_called_once_with('locale', 'nl_NL.UTF-8', previous)
+                stage('de_DE.UTF-8')
+        service.stage.assert_called_once_with([('locale', 'nl_NL.UTF-8', previous)])
 
 
 class NetworkValidation(unittest.TestCase):

@@ -2,27 +2,26 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
 
+// Two tabs of Backup & storage (2026-10 redesign). "storage" is Disk space:
+// free space and the reviewed system cleanup. "recovery" is Recovery points:
+// how long they are kept, which exist, and the boot menu's generations.
+// They used to sit on the Storage page and again under Backup; each now has
+// one home. The retention draft lives in RetentionDraft, so it survives a
+// tab switch and joins the header's Changes review.
 SettingsPage {
     id: page
-    property var draft: ({automatic:true, keepConfirmed:5, keepDays:30})
+    property string section: "storage"
     readonly property var status: Maintenance.snapshot
-    readonly property var configuredPolicy: status.desiredPolicy || status.policy
-    property var policyBaseline: ({automatic:true, keepConfirmed:5, keepDays:30})
-    function same(a, b) { return a.automatic === b.automatic && a.keepConfirmed === b.keepConfirmed && a.keepDays === b.keepDays; }
-    readonly property bool dirty: !same(draft, policyBaseline)
-    readonly property bool conflict: dirty && !same(policyBaseline, configuredPolicy)
-    function discard() { policyBaseline = Object.assign({}, configuredPolicy); draft = Object.assign({}, policyBaseline); }
-    function edit(values) { draft = Object.assign({}, draft, values); }
+    readonly property var draft: RetentionDraft.draft
+    readonly property bool dirty: RetentionDraft.dirty
     Binding { target: Maintenance; property: "watched"; value: page.visible && Settings.panelOpen }
-    Connections {
-        target: Maintenance
-        function onSnapshotChanged() { if (!page.dirty || page.same(page.draft, page.configuredPolicy)) page.discard(); }
-    }
-    Component.onCompleted: { discard(); Maintenance.refresh(); }
+    Component.onCompleted: Maintenance.refresh()
+
     Column {
         width: parent.width; spacing: Theme.settingsGroupSpacing
         SettingsGroup {
-            width: parent.width; title: I18n.tr("Storage")
+            width: parent.width; title: I18n.tr("Disk space")
+            visible: page.section === "storage"
             ValueRow { width: parent.width; label: I18n.tr("Available space"); value: Maintenance.bytes(page.status.space.available) + " / " + Maintenance.bytes(page.status.space.total); valueColor: page.status.space.low ? Theme.amber : Theme.textMid }
             SettingsHint { width: parent.width; visible: page.status.space.low === true; text: I18n.tr("Storage is running low. Review cleanup before building another deployment."); tone: "warning" }
             SettingsHint { width: parent.width; text: I18n.tr("Cleanup removes obsolete system references and unreachable Nix store contents. Documents, downloads, application data and saved personal configuration stay yours.") }
@@ -42,34 +41,9 @@ SettingsPage {
             ValueRow { width: parent.width; visible: page.status.reclaimedBytes !== undefined; label: I18n.tr("Last cleanup removed"); value: Maintenance.bytes(page.status.reclaimedBytes); hint: I18n.tr("Uncompressed store contents; filesystem space can differ.") }
         }
         SettingsGroup {
-            width: parent.width; title: I18n.tr("Retention")
-            SwitchRow {
-                width: parent.width; label: I18n.tr("Automatic weekly cleanup"); property string searchAnchor: "storage-automatic"
-                checked: page.draft.automatic
-                description: I18n.tr("Runs after a confirmed boot and skips active updates or unresolved recovery. Changes are staged for review.")
-                onToggled: value => page.edit({automatic:value})
-            }
-            SelectRow {
-                width: parent.width; label: I18n.tr("Confirmed deployments to keep")
-                model: [5, 10, 20, 50, 100].map(v => ({value:v, label:String(v)})); current: page.draft.keepConfirmed
-                onPicked: value => page.edit({keepConfirmed:value})
-            }
-            SelectRow {
-                width: parent.width; label: I18n.tr("Days of recovery history")
-                model: [30, 60, 90, 180, 365].map(v => ({value:v, label:String(v)})); current: page.draft.keepDays
-                onPicked: value => page.edit({keepDays:value})
-            }
-            ValueRow {
-                width: parent.width; label: I18n.tr("Cleanup preferences")
-                SettingsAction { text: I18n.tr("Discard"); enabled: page.dirty; onTriggered: page.discard() }
-                SettingsAction { text: I18n.tr("Preview changes"); enabled: (page.dirty || page.status.configurationChanged === true) && !page.status.configurationError && !page.conflict && !Maintenance.busy && !Updates.runActive && !Updates.rebootRecommended; onTriggered: Maintenance.changePolicy(page.draft, page.policyBaseline) }
-            }
-        }
-        SettingsHint { width: parent.width; visible: page.conflict; tone: "warning"; text: I18n.tr("Cleanup preferences changed elsewhere. Discard your draft and review the current preferences.") }
-        SettingsHint { width: parent.width; visible: !!page.status.configurationError; tone: "error"; text: page.status.configurationError || "" }
-        DeploymentReview { width: parent.width; kind: "maintenance" }
-        SettingsGroup {
             width: parent.width; title: I18n.tr("Recovery points")
+            visible: page.section === "recovery"
+            property string searchAnchor: "recoveryPoints"
             SettingsHint { width: parent.width; text: I18n.tr("The running system, its fallback and pending recovery are always protected. Pin another confirmed recovery point to keep it indefinitely.") }
             Repeater {
                 model: page.status.deployments || []
@@ -88,5 +62,37 @@ SettingsPage {
                 }
             }
         }
+        SettingsGroup {
+            width: parent.width; title: I18n.tr("Retention")
+            visible: page.section === "recovery"
+            changeTag: "restart"
+            SwitchRow {
+                width: parent.width; label: I18n.tr("Automatic weekly cleanup"); property string searchAnchor: "storage-automatic"
+                checked: page.draft.automatic
+                description: I18n.tr("Runs after a confirmed boot and skips active updates or unresolved recovery.")
+                onToggled: value => RetentionDraft.edit({automatic:value})
+            }
+            SelectRow {
+                width: parent.width; label: I18n.tr("Confirmed deployments to keep")
+                model: [5, 10, 20, 50, 100].map(v => ({value:v, label:String(v)})); current: page.draft.keepConfirmed
+                onPicked: value => RetentionDraft.edit({keepConfirmed:value})
+            }
+            SelectRow {
+                width: parent.width; label: I18n.tr("Days of recovery history")
+                model: [30, 60, 90, 180, 365].map(v => ({value:v, label:String(v)})); current: page.draft.keepDays
+                onPicked: value => RetentionDraft.edit({keepDays:value})
+            }
+            ValueRow {
+                width: parent.width; label: I18n.tr("Cleanup preferences")
+                hint: RetentionDraft.dirty && SettingsChanges.systemBusy && !Maintenance.busy
+                    ? I18n.tr("Prepare these after the current system change is finished.") : ""
+                SettingsAction { text: I18n.tr("Discard"); enabled: RetentionDraft.dirty; onTriggered: RetentionDraft.discard() }
+                SettingsAction { text: I18n.tr("Prepare change"); primary: true; enabled: RetentionDraft.canPrepare; onTriggered: RetentionDraft.prepare() }
+            }
+        }
+        SettingsHint { width: parent.width; visible: page.section === "recovery" && RetentionDraft.conflict; tone: "warning"; text: I18n.tr("Cleanup preferences changed elsewhere. Discard your draft and review the current preferences.") }
+        SettingsHint { width: parent.width; visible: page.section === "recovery" && !!page.status.configurationError; tone: "error"; text: page.status.configurationError || "" }
+        DeploymentReview { width: parent.width; kind: "maintenance"; visible: page.section === "recovery" && Updates.deployment.changeKind === "maintenance" }
+        RecoveryGroup { visible: page.section === "recovery" }
     }
 }

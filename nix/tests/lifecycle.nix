@@ -17,7 +17,7 @@ let
       outputs = { nixpkgs, cybexos, ... }: {
         nixosConfigurations.cybexos = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
-          modules = [ cybexos.nixosModules.default ./local ];
+          modules = [ cybexos.nixosModules.default ./settings.nix ./local ];
         };
       };
     }
@@ -43,6 +43,8 @@ in pkgs.testers.runNixOSTest {
     virtualisation = { memorySize = 4096; cores = 4; graphics = true; diskSize = 4096; };
     networking.hostName = "machine";
     users.users.tester.initialPassword = "qualification-only";
+    # As in machine.nix: the languages a regional preview may choose from.
+    i18n.supportedLocales = [ "en_US.UTF-8/UTF-8" "nl_NL.UTF-8/UTF-8" ];
     # Retain the complete candidate and its exact input sources. Staging must
     # use the real Nix/updater path without requiring external delivery in a VM.
     system.extraDependencies = inputSources ++ [ candidate previewFlake initialLock pkgs.hello pkgs.sshpass ];
@@ -51,6 +53,7 @@ in pkgs.testers.runNixOSTest {
   };
   testScript = ''
     import json
+    import shlex
     machine.start()
     machine.wait_for_unit("multi-user.target")
     machine.wait_for_unit("display-manager.service")
@@ -172,6 +175,7 @@ in pkgs.testers.runNixOSTest {
     machine.succeed("mkdir -p /etc/nixos/local; cp ${previewFlake} /etc/nixos/flake.nix; cp ${initialLock} /etc/nixos/flake.lock")
     machine.succeed("cp ${./machine.nix} /etc/nixos/local/configuration.nix; cp ${previewLocal} /etc/nixos/local/default.nix")
     machine.succeed("cp ${../../templates/machine/local/software.nix} /etc/nixos/local/software.nix; cp ${../../templates/machine/local/software.json} /etc/nixos/local/software.json; cp ${../../templates/machine/local/maintenance.nix} /etc/nixos/local/maintenance.nix; cp ${../../templates/machine/local/maintenance.json} /etc/nixos/local/maintenance.json")
+    machine.succeed("cp ${../../templates/machine/settings.nix} /etc/nixos/settings.nix; cp ${../../templates/machine/desktop-settings.json} /etc/nixos/desktop-settings.json")
     machine.succeed("echo personal-sentinel > /etc/nixos/local/preserved.txt")
     machine.succeed("nix flake lock --offline path:/etc/nixos", timeout=120)
     machine.succeed("cp -r /etc/nixos /var/lib/cybexos/deployed; sha256sum /etc/nixos/flake.nix /etc/nixos/flake.lock /etc/nixos/local/maintenance.json /etc/nixos/local/preserved.txt > /run/cybexos-preview-before.sha256")
@@ -224,6 +228,30 @@ in pkgs.testers.runNixOSTest {
     machine.wait_until_succeeds("cybex update request " + discarded["requestId"] + " | grep '\"state\": \"done\"'")
     cleared = json.loads(machine.succeed("runuser -u tester -- cybex update status"))
     assert cleared["state"] == "idle" and cleared["transaction"] is None and not cleared["packageChanges"], cleared
+    # A timezone and a system language chosen together in Settings (2026-10):
+    # one authenticated request, one regional preview, one candidate with both,
+    # and the running system untouched until that candidate is applied.
+    previous_zone = machine.succeed("timedatectl show --property=Timezone --value").strip()
+    previous_locale = json.loads(machine.succeed("busctl --system --json=short get-property org.freedesktop.locale1 /org/freedesktop/locale1 org.freedesktop.locale1 Locale"))["data"]
+    machine.succeed("locale -a | grep -x nl_NL.utf8")
+    machine.succeed("cybex config region timezone Europe/Berlin " + shlex.quote(json.dumps(previous_zone))
+                    + " locale nl_NL.UTF-8 " + shlex.quote(json.dumps(previous_locale)))
+    try:
+        machine.wait_until_succeeds("runuser -u tester -- cybex update status | python3 -c 'import json,sys; s=json.load(sys.stdin); assert s[\"changeKind\"] == \"region\" and s[\"state\"] in (\"ready\", \"failed\")'", timeout=900)
+        region_status = json.loads(machine.succeed("cybex update status"))
+        assert region_status["state"] == "ready", region_status
+    except Exception:
+        machine.log(machine.succeed("cybex update status; journalctl -u cybexos-region.service --no-pager -n 40; tail -n 60 /var/lib/cybexos/transactions/*/build.log"))
+        raise
+    region_tx = "/var/lib/cybexos/transactions/" + region_status["transaction"]
+    assert json.loads(machine.succeed("cat " + region_tx + "/config/desktop-settings.json")) == {"timezone": "Europe/Berlin", "locale": "nl_NL.UTF-8"}
+    machine.succeed("readlink -f " + region_tx + "/roots/system/etc/localtime | grep -F zoneinfo/Europe/Berlin")
+    machine.succeed("grep -x 'LANG=nl_NL.UTF-8' " + region_tx + "/roots/system/etc/locale.conf")
+    assert machine.succeed("timedatectl show --property=Timezone --value").strip() == previous_zone
+    assert json.loads(machine.succeed("cat /etc/nixos/desktop-settings.json")) == {}, "the working configuration is untouched"
+    machine.fail("cybex config region timezone Europe/Berlin '\"UTC\"' timezone UTC '\"UTC\"'")
+    region_discard = json.loads(machine.succeed("cybex update discard " + region_status["transaction"]))
+    machine.wait_until_succeeds("cybex update request " + region_discard["requestId"] + " | grep '\"state\": \"done\"'")
     update = json.loads(machine.succeed("cybex update stage local"))
     assert update["unit"] == "cybexos-update@" + update["requestId"] + ".service", update
     machine.wait_until_succeeds("cybex update request " + update["requestId"] + " | python3 -c 'import json,sys; assert json.load(sys.stdin)[\"state\"] in (\"done\",\"failed\")'", timeout=900)

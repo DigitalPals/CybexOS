@@ -23,7 +23,7 @@ Singleton {
     // Whether anything wants the bridge. The bar module is the one consumer
     // that needs it unasked; with the module off, a socket (or a retry every
     // minute for an absent bridge) is pure idle churn, and merely
-    // constructing this singleton (Settings → About) must not connect. The
+    // constructing this singleton (Settings → Home) must not connect. The
     // panel still connects while it is open. Settings.mods is replaced
     // wholesale on every edit, so this re-evaluates with the module list.
     readonly property bool enabled: {

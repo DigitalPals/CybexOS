@@ -419,7 +419,7 @@ Singleton {
         }
         switch (action.id) {
         case "settings":
-            Qt.callLater(() => Settings.showPanel("appearance"));
+            Qt.callLater(() => Settings.showPanel("home"));
             break;
         case "wallpaper-shuffle":
             Wallpaper.shuffle();

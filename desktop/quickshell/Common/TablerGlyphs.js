@@ -65,6 +65,7 @@ var ALIASES = {
     "dark_mode": "moon",
     "dashboard": "layout-dashboard",
     "data_usage": "chart-donut",
+    "database": "database",
     "delete": "trash",
     "deployed_code_update": "package-export",
     "description": "file-text",
@@ -106,6 +107,7 @@ var ALIASES = {
     "headset_mic": "headset",
     "help": "help-circle",
     "history": "history",
+    "home": "home",
     "image": "photo",
     "inbox": "inbox",
     "info": "info-circle",
@@ -116,6 +118,7 @@ var ALIASES = {
     "keyboard": "keyboard",
     "lan": "network",
     "language": "language",
+    "layers": "stack-2",
     "light": "sun",
     "light_mode": "sun",
     "link": "link",
@@ -472,6 +475,9 @@ var GLYPHS = {
     "cpu": {
         "outline": "\uef8e"
     },
+    "database": {
+        "outline": "\uea88"
+    },
     "device-desktop": {
         "outline": "\uea89"
     },
@@ -567,6 +573,9 @@ var GLYPHS = {
     },
     "history": {
         "outline": "\uebea"
+    },
+    "home": {
+        "outline": "\ueac1"
     },
     "id-badge": {
         "outline": "\ueff7"
@@ -798,6 +807,9 @@ var GLYPHS = {
     },
     "square": {
         "outline": "\ueb2c"
+    },
+    "stack-2": {
+        "outline": "\ueef7"
     },
     "stairs": {
         "outline": "\ueca6"

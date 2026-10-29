@@ -13,7 +13,7 @@ file in the same change and say why.
   account, time zone, computer name, application groups and the NVIDIA
   driver. It shows those as a summary with links to change them.
 - **Shortcut editor.** Shortcuts can be viewed and edited without writing Lua.
-  The Super+K sheet, the new **Settings → Keyboard shortcuts** page and the
+  The Super+K sheet, the **Settings → Keyboard → Shortcuts** tab and the
   welcome guide all show the same live data.
 - **Wallpaper picker.** Choosing a wallpaper is the welcome guide's main
   step. The guide opens directly in Wallhaven and applies a tile when selected.
@@ -242,8 +242,8 @@ While a shortcut is being recorded, the recording window activates Quickshell
 
 ### 1.7 Interfaces
 
-- **Settings → Keyboard shortcuts** (page id `shortcuts`, listed beside
-  Keyboard):
+- **Settings → Keyboard → Shortcuts** (the Keyboard page's second tab since
+  the 2026-10 Settings redesign; the old page id `shortcuts` still opens it):
   - search by action or keys;
   - filters: All, Changed, Conflicts, From user.lua;
   - groups in sheet order;
@@ -365,7 +365,7 @@ As built:
 - **Readiness:** Settings is loaded and the wallpaper window has rendered its
   first decoded image frame, or its solid fallback when there is no image.
 - **Reopening:** the launcher (`Welcome to Cybex OS`; search terms: welcome,
-  setup, tour, getting started), Settings → About, and
+  setup, tour, getting started), Settings → Home, and
   `cybexos-runtime ipc welcome open`.
 
 ### 2.3 Steps

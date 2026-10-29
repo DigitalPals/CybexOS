@@ -131,7 +131,9 @@ test("nothing on the page blocks the UI thread", () => {
 
 test("Security is a System page that IPC, the rail and search reach", () => {
     const settings = read("Common/Settings.qml");
-    assert.match(settings, /\{ id: "security", group: "System", label: "Security", glyph: "security",\s*description: "SSH Server, fingerprints and security keys", system: true \}/);
+    assert.match(settings, /\{ id: "security", group: "System", label: "Security", glyph: "security",\s*description: "Password, fingerprint, security keys and SSH Server", system: true \}/);
+    // Turning SSH Server on asks for an administrator; the heading says so first.
+    assert.match(read("Settings/SshServerGroup.qml"), /title: "SSH Server"\s*changeTag: "admin"/);
     const view = read("Settings/SettingsView.qml");
     assert.match(view, /case "security": return securityPage;/);
     assert.match(view, /Component \{ id: securityPage; SecurityPage \{\} \}/);

@@ -11,6 +11,7 @@ SettingsGroup {
     readonly property string command: "ssh " + ((sshState.ports || [22])[0] !== 22
         ? "-p " + sshState.ports[0] + " " : "") + (sshState.user || "") + "@" + address
     title: I18n.tr("SSH Server")
+    changeTag: "admin"
 
     Claim {
         active: root.visible && Settings.panelOpen

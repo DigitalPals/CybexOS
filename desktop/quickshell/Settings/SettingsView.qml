@@ -1,30 +1,38 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
-import "../Common/SettingsSearchData.js" as SearchData
 import "../Popovers"
 
-// Settings workspace with a sidebar that collapses as its window narrows.
+// The Settings workspace (2026-10 redesign). A rail on the left — the search
+// that opens the palette, then Home and three groups of six pages — and the
+// page on the right under a one-line header: Back, the page and what it is
+// about, the save state, the Changes chip and Close. Pages that hold more
+// than one view show their tabs above the content. The rail compresses to
+// its glyphs as the window narrows, and scrolls when it is shorter than its
+// pages.
 PopoutPanel {
     id: root
 
     // Defaults for an unhosted instance; the host assigns both.
-    availableWidth: 900
-    availableHeight: 680
+    availableWidth: 960
+    availableHeight: 700
     readonly property bool compactNav: availableWidth < Theme.scaled(860, Theme.typeScale)
     readonly property int headerHeight: Theme.scaled(44)
     readonly property int gutter: Theme.panelPadding
-    readonly property int navWidth: Theme.scaled(compactNav ? 56 : 200, Theme.typeScale)
-    readonly property int preferredWidth: Theme.scaled(900, Theme.contentScale)
-    readonly property int preferredHeight: Theme.scaled(664)
+    readonly property int navWidth: Theme.scaled(compactNav ? 58 : 228, Theme.typeScale)
+    readonly property int preferredWidth: Theme.scaled(960, Theme.contentScale)
+    readonly property int preferredHeight: Theme.scaled(700)
     property bool moduleDragActive: false
     property bool moduleSubPageActive: false
+    property string moduleSubPageTitle: ""
     signal moveRequested()
     signal cancelModuleDrag()
     signal closeModuleSubPage()
     readonly property var currentPage: Settings.pageInfo(Settings.page)
-    readonly property bool dragActive: Settings.page === "bar"
-        && moduleDragActive
+    readonly property var currentTabs: currentPage.tabs || []
+    readonly property var currentTab: currentTabs.find(entry => entry.id === Settings.tab) || currentTabs[0] || null
+    readonly property bool dragActive: Settings.page === "bar" && moduleDragActive
+    readonly property bool canGoBack: Settings.canGoBack || (Settings.page === "bar" && moduleSubPageActive)
     readonly property bool systemServicePage: currentPage.system === true
     readonly property string persistenceStatus: Settings.loadError
         ? (Settings.loadErrorText !== "" ? Settings.loadErrorText
@@ -33,9 +41,9 @@ PopoutPanel {
         : Settings.savePending ? "Saving changes…"
         : "Saved"
 
-    // The rail's status line speaks only when there is something to say:
-    // while a change saves and briefly after, after a reset (with Undo), and
-    // on an error. A standing "saved" line told nobody anything.
+    // The save state speaks only when there is something to say: while a
+    // change saves and briefly after, after a reset (with Undo), and on an
+    // error. A standing "saved" line told nobody anything.
     property bool justSaved: false
     readonly property bool statusShown: Settings.undoAvailable
         || Settings.persistenceError || Settings.newerSchema
@@ -58,38 +66,33 @@ PopoutPanel {
         onTriggered: root.justSaved = false
     }
 
-    // ---- search (turn-3 design: "/" jumps to any row) --------------------
-    property string searchQuery: ""
-    property int searchSelection: 0
-    readonly property bool searchActive: searchQuery.trim() !== ""
-    readonly property var searchResults: searchActive
-        ? SearchData.search(searchQuery, I18n.tr) : []
+    // Recently changed settings are recorded while this window is open;
+    // the recorder has to exist before the first change, not when Home
+    // first shows them.
+    readonly property int recentCount: SettingsRecent.entries.length
+    readonly property int changeCount: SettingsChanges.count
 
-    function focusSearch() {
-        searchField.forceActiveFocus();
-        searchField.selectAll();
+    function openPalette(text) {
+        changesSheet.hide();
+        palette.show(text || "");
     }
 
-    function clearSearch() {
-        searchQuery = "";
-        searchSelection = 0;
-        const item = navDelegate(Settings.page);
-        if (item)
-            item.forceActiveFocus();
+    function openChanges() {
+        palette.hide();
+        changesSheet.show();
     }
 
-    function jumpToResult(row) {
-        if (!row)
-            return;
-        searchQuery = "";
-        searchSelection = 0;
-        if (row.widget)
-            Settings.openWidgetSettings(row.widget);
-        else
-            Settings.page = row.page;
-        Settings.highlightKey = "";
-        Settings.highlightKey = row.anchor || row.key;
-        Settings.announcement = row.pageLabel + " page, " + row.label + " row.";
+    function goBack() {
+        if (Settings.page === "bar" && moduleSubPageActive) {
+            closeModuleSubPage();
+            return true;
+        }
+        return Settings.goBack();
+    }
+
+    Connections {
+        target: SettingsChanges
+        function onReviewRequested() { root.openChanges(); }
     }
 
     // Search results and Settings.showSetting() both jump by setting the key.
@@ -100,10 +103,13 @@ PopoutPanel {
                 highlightClearTimer.restart();
         }
         function onPanelOpenChanged() {
-            if (Settings.panelOpen)
+            if (Settings.panelOpen) {
                 pageRelease.stop();
-            else
+            } else {
                 pageRelease.restart();
+                palette.hide();
+                changesSheet.hide();
+            }
         }
     }
 
@@ -122,13 +128,17 @@ PopoutPanel {
     implicitHeight: Math.max(1, Math.min(preferredHeight, availableHeight > 0 ? availableHeight : preferredHeight))
     focus: true
 
-    // "/" from anywhere in the workspace focuses the nav search. A focused
-    // TextInput consumes its own keys, so typing "/" into a field never
-    // reaches this handler.
+    // "/", Ctrl+K and Ctrl+F from anywhere in the workspace open the palette;
+    // Alt+Left goes back. A focused TextInput consumes its own keys, so typing
+    // "/" into a field never reaches this handler.
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Slash
-                || (event.key === Qt.Key_F && event.modifiers & Qt.ControlModifier)) {
-            focusSearch();
+                || ((event.key === Qt.Key_K || event.key === Qt.Key_F)
+                    && event.modifiers & Qt.ControlModifier)) {
+            openPalette("");
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Left && event.modifiers & Qt.AltModifier) {
+            goBack();
             event.accepted = true;
         }
     }
@@ -140,6 +150,8 @@ PopoutPanel {
     readonly property var navItems: Settings.pages
 
     function navDelegate(id) {
+        if (homeItem.modelData.id === id)
+            return homeItem;
         for (let g = 0; g < navGroups.count; g++) {
             const group = navGroups.itemAt(g) as NavGroup;
             const item = group ? group.itemFor(id) : null;
@@ -156,8 +168,10 @@ PopoutPanel {
         // Focus first: a nav row is a tab stop only while current, and Qt
         // will not drop activeFocusOnTab from the row that still has focus.
         const item = navDelegate(navItems[clamped].id);
-        if (item)
+        if (item) {
             item.forceActiveFocus();
+            navFlick.revealItem(item);
+        }
         Settings.page = navItems[clamped].id;
     }
 
@@ -170,12 +184,17 @@ PopoutPanel {
         cancelModuleDrag();
     }
 
-    // Called by the window host. An active search consumes the first Escape, a
-    // module drag the next, an open inline widget panel the one after that,
-    // then a page's own open form or trial; otherwise the host closes the panel.
+    // Called by the window host. The palette or the review sheet consumes
+    // the first Escape, a module drag the next, an open inline widget panel
+    // the one after that, then a page's own open form or trial; otherwise
+    // the host closes the panel.
     function handleEscape(): bool {
-        if (searchActive || searchField.activeFocus) {
-            clearSearch();
+        if (palette.open) {
+            palette.hide();
+            return true;
+        }
+        if (changesSheet.open) {
+            changesSheet.hide();
             return true;
         }
         if (dragActive) {
@@ -202,12 +221,18 @@ PopoutPanel {
         required property var modelData
         required property int index
         readonly property bool current: Settings.page === modelData.id
+        // A page holding a draft that waits for Apply, or the region change
+        // being prepared: the same dot the Changes chip wears.
+        readonly property bool pending: SettingsChanges.pages.indexOf(modelData.id) !== -1
+            || (modelData.id === "region" && RegionDrafts.preparing)
+            || (modelData.id === "backup" && SettingsChanges.deploymentKind === "maintenance"
+                && SettingsChanges.deploymentState !== "")
 
         width: navColumn.width
-        height: Theme.panelRowHeight + 2
+        height: Theme.panelRowHeight
         radius: Theme.chipRadius
         // The current page lights the same surface a bar chip lights when its
-        // popout is open. A 176px slab of accent would be the loudest thing
+        // popout is open. A 200px slab of accent would be the loudest thing
         // in the workspace; the accent survives on the icon, where it is a
         // mark rather than a field.
         color: current ? Theme.chip : "transparent"
@@ -215,7 +240,7 @@ PopoutPanel {
         border.color: Theme.accentText
         activeFocusOnTab: navItem.current
         Accessible.role: Accessible.PageTab
-        Accessible.name: navItem.modelData.label
+        Accessible.name: navItem.modelData.label + (navItem.pending ? ", " + I18n.tr("changes not applied yet") : "")
         Accessible.selected: navItem.current
         Accessible.onPressAction: {
             navState.pulseCenter();
@@ -229,7 +254,10 @@ PopoutPanel {
         }
 
         Keys.onPressed: event => {
-            if (event.key === Qt.Key_Up || event.key === Qt.Key_Left) {
+            // Alt+Left is Back, which the window handles.
+            if (event.modifiers & Qt.AltModifier) {
+                event.accepted = false;
+            } else if (event.key === Qt.Key_Up || event.key === Qt.Key_Left) {
                 root.selectOffset(-1); event.accepted = true;
             } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Right) {
                 root.selectOffset(1); event.accepted = true;
@@ -271,14 +299,26 @@ PopoutPanel {
             visible: !root.compactNav
             anchors.left: navIcon.right
             anchors.leftMargin: 9
+            anchors.right: pendingDot.visible ? pendingDot.left : parent.right
+            anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
             text: navItem.modelData.label
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.navigation
             font.weight: navItem.current ? Theme.weightSemibold : Theme.weightMedium
             color: navItem.current ? Theme.textHi : Theme.textLow
-            width: parent.width - x - 10
             elide: Text.ElideRight
+        }
+
+        Rectangle {
+            id: pendingDot
+            visible: navItem.pending
+            x: root.compactNav ? parent.width - width - 7 : parent.width - width - 10
+            y: root.compactNav ? 6 : (parent.height - height) / 2
+            width: 7
+            height: 7
+            radius: 3.5
+            color: Theme.accent
         }
 
         MouseArea {
@@ -298,8 +338,7 @@ PopoutPanel {
         required property string modelData
         required property int index
         width: navColumn.width
-        spacing: navColumn.spacing
-        opacity: root.searchActive ? 0.45 : 1
+        spacing: 1
 
         function itemFor(id) {
             for (let i = 0; i < pageRepeater.count; i++) {
@@ -312,14 +351,13 @@ PopoutPanel {
 
         GroupLabel {
             text: I18n.tr(navGroup.modelData).toUpperCase()
-            topPad: navGroup.index === 0 ? 0 : 6
             visible: !root.compactNav
         }
         // In the icon rail a hairline stands in for the label.
         Item {
-            visible: root.compactNav && navGroup.index > 0
+            visible: root.compactNav
             width: parent.width
-            height: Theme.scaled(9)
+            height: Theme.scaled(13)
             Rectangle {
                 anchors.centerIn: parent
                 width: parent.width - Theme.scaled(12)
@@ -337,16 +375,15 @@ PopoutPanel {
 
     component GroupLabel: Item {
         property alias text: labelText.text
-        property int topPad: 6
         width: navColumn.width
-        height: visible ? Theme.sectionHeaderHeight + topPad : 0
+        height: visible ? Theme.sectionHeaderHeight + Theme.scaled(4) : 0
 
         Text {
             id: labelText
             anchors.left: parent.left
             anchors.leftMargin: 8
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: 2
+            anchors.bottomMargin: 3
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.section
             font.weight: Theme.weightSemibold
@@ -355,236 +392,171 @@ PopoutPanel {
         }
     }
 
+    // ---- rail ------------------------------------------------------------
     Item {
-        id: body
-        y: root.headerHeight + 1
-        width: parent.width
-        height: parent.height - root.headerHeight - 1
+        id: rail
+        width: root.navWidth
+        height: parent.height
 
-        Column {
-            id: navColumn
-            x: root.gutter / 2
-            y: root.gutter
-            width: root.navWidth - root.gutter
-            spacing: 1
-
-            // The search field ("/" focuses it): a row that filters every
-            // page's rows and jumps to the picked one. In the icon rail it
-            // compresses to its glyph; focusing it still takes typed text.
-            Rectangle {
-                id: searchBox
-                width: parent.width
-                height: Theme.settingsControlHeight
-                radius: Theme.chipRadius
-                color: searchField.activeFocus || root.searchActive
-                    ? Theme.chipHover : Theme.chip
-                border.width: searchField.activeFocus ? 1 : 0
-                border.color: Theme.accentText
-
-                Sym {
-                    id: searchGlyph
-                    anchors.left: parent.left
-                    anchors.leftMargin: root.compactNav ? 0 : 9
-                    width: root.compactNav ? parent.width : implicitWidth
-                    horizontalAlignment: Text.AlignHCenter
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: "search"
-                    size: Theme.iconSmall
-                    color: searchField.activeFocus ? Theme.textMid : Theme.textFaint
-                }
-
-                TextInput {
-                    id: searchField
-                    visible: !root.compactNav || activeFocus
-                    anchors.left: searchGlyph.right
-                    anchors.leftMargin: root.compactNav ? 0 : 7
-                    anchors.right: searchHint.visible ? searchHint.left : parent.right
-                    anchors.rightMargin: 6
-                    anchors.verticalCenter: parent.verticalCenter
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.typography.control
-                    color: Theme.textHi
-                    selectionColor: Theme.accentAlpha(0.4)
-                    selectedTextColor: Theme.textHi
-                    clip: true
-                    activeFocusOnTab: true
-                    Accessible.role: Accessible.EditableText
-                    Accessible.name: I18n.tr("Search settings")
-                    onTextChanged: {
-                        root.searchQuery = text;
-                        root.searchSelection = 0;
-                    }
-                    Keys.onPressed: event => {
-                        if (event.key === Qt.Key_Down) {
-                            root.searchSelection = Math.min(
-                                root.searchResults.length - 1, root.searchSelection + 1);
-                            event.accepted = true;
-                        } else if (event.key === Qt.Key_Up) {
-                            root.searchSelection = Math.max(0, root.searchSelection - 1);
-                            event.accepted = true;
-                        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                            const row = root.searchResults[root.searchSelection];
-                            if (row) {
-                                searchField.text = "";
-                                root.jumpToResult(row);
-                            }
-                            event.accepted = true;
-                        }
-                    }
-
-                    Text {
-                        visible: parent.text === "" && !parent.activeFocus
-                        anchors.fill: parent
-                        verticalAlignment: Text.AlignVCenter
-                        text: I18n.tr("Search")
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.typography.control
-                        color: Theme.textFaint
-                    }
-                }
-
-                Rectangle {
-                    id: searchHint
-                    visible: !root.compactNav && !searchField.activeFocus
-                        && !root.searchActive
-                    anchors.right: parent.right
-                    anchors.rightMargin: 6
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: hintText.implicitWidth + 10
-                    height: 16
-                    radius: 4
-                    color: "transparent"
-                    border.width: 1
-                    border.color: Theme.hairline
-
-                    Text {
-                        id: hintText
-                        anchors.centerIn: parent
-                        text: "/"
-                        font.family: Theme.fontMono
-                        font.pixelSize: Theme.typography.metadata
-                        font.weight: Theme.weightSemibold
-                        color: Theme.textFaint
-                    }
-                }
-
-                Sym {
-                    visible: root.searchActive && !root.compactNav
-                    anchors.right: parent.right
-                    anchors.rightMargin: 7
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: "close"
-                    size: Theme.iconSmall
-                    color: clearMouse.containsMouse ? Theme.textHi : Theme.textFaint
-
-                    MouseArea {
-                        id: clearMouse
-                        anchors.fill: parent
-                        anchors.margins: -4
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            searchField.text = "";
-                            root.clearSearch();
-                        }
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    visible: !searchField.activeFocus
-                    cursorShape: Qt.IBeamCursor
-                    onClicked: root.focusSearch()
-                }
-            }
-
-            Item { width: 1; height: 6 }
-
-            // Whole-nav dimming while a search runs: the list stays visible
-            // as a map, but the results own the workspace. Groups follow
-            // what the person is doing — personalizing the desktop, a
-            // device, the system — not where a value happens to be stored.
-            Repeater {
-                id: navGroups
-                model: Settings.pageGroups
-
-                delegate: NavGroup {}
-            }
-
+        MouseArea {
+            width: parent.width
+            height: root.headerHeight
+            cursorShape: Qt.SizeAllCursor
+            onPressed: root.moveRequested()
         }
 
-        // Save state lives in the rail footer (design 1c).
-        Column {
-            id: railFooter
-            anchors.left: parent.left
-            anchors.leftMargin: root.gutter / 2
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: root.gutter - 2
+        // The palette's field, shown where search always was. In the icon
+        // rail it compresses to its glyph.
+        Rectangle {
+            id: searchBox
+            x: root.gutter / 2
+            y: Math.round((root.headerHeight - height) / 2)
             width: root.navWidth - root.gutter
-            spacing: 5
-
-            SettingsAction {
-                visible: Settings.undoAvailable
-                compact: root.compactNav
-                text: I18n.tr("Undo")
-                glyph: "undo"
-                Accessible.name: "Undo " + Settings.resetLabel + " reset"
-                onTriggered: Settings.undoReset()
-            }
-
-            SettingsAction {
-                visible: Settings.persistenceError && !Settings.undoAvailable
-                compact: root.compactNav
-                text: I18n.tr("Retry")
-                glyph: "refresh"
-                Accessible.name: Settings.loadError
-                    ? "Retry loading settings" : "Retry saving settings"
-                onTriggered: Settings.retrySave()
-            }
-
-            Row {
-                visible: root.statusShown
-                spacing: 7
-                leftPadding: root.compactNav ? 0 : 8
-                width: parent.width
-                Accessible.role: Settings.persistenceError
-                    ? Accessible.AlertMessage : Accessible.StaticText
-                Accessible.name: root.persistenceStatus
-
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 6; height: 6; radius: 3
-                    color: Settings.undoAvailable ? Theme.accent
-                        : Settings.persistenceError ? Theme.red
-                        : Settings.savePending ? Theme.amber : Theme.connected
+            height: Theme.settingsControlHeight
+            radius: Theme.chipRadius
+            color: searchMouse.containsMouse ? Theme.chipHover : Theme.chip
+            border.width: activeFocus ? 1 : 0
+            border.color: Theme.accentText
+            activeFocusOnTab: true
+            Accessible.role: Accessible.Button
+            Accessible.name: I18n.tr("Search settings")
+            Accessible.onPressAction: root.openPalette("")
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                    root.openPalette("");
+                    event.accepted = true;
+                } else if (event.text.length === 1 && event.text.trim() !== ""
+                        && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) {
+                    // Typing on the focused field starts the search with it.
+                    root.openPalette(event.text);
+                    event.accepted = true;
                 }
+            }
+
+            Sym {
+                id: searchGlyph
+                anchors.left: parent.left
+                anchors.leftMargin: root.compactNav ? 0 : 9
+                width: root.compactNav ? parent.width : implicitWidth
+                horizontalAlignment: Text.AlignHCenter
+                anchors.verticalCenter: parent.verticalCenter
+                name: "search"
+                size: Theme.iconSmall
+                color: Theme.textFaint
+            }
+            Text {
+                visible: !root.compactNav
+                anchors.left: searchGlyph.right
+                anchors.leftMargin: 7
+                anchors.verticalCenter: parent.verticalCenter
+                text: I18n.tr("Search")
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.control
+                color: Theme.textFaint
+            }
+            Rectangle {
+                visible: !root.compactNav
+                anchors.right: parent.right
+                anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                width: hintText.implicitWidth + 10
+                height: 16
+                radius: 4
+                color: "transparent"
+                border.width: 1
+                border.color: Theme.hairline
 
                 Text {
-                    visible: !root.compactNav
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - 6 - 7 - parent.leftPadding
-                    text: Settings.undoAvailable ? Settings.resetLabel + " reset"
-                        : Settings.newerSchema ? "Newer settings file · not saving"
-                        : Settings.loadError ? "Could not read settings"
-                        : Settings.saveError ? "Could not save settings"
-                        : Settings.savePending ? "Saving changes…"
-                        : "Saved"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.typography.secondary
-                    color: Settings.persistenceError ? Theme.redText : Theme.textFaint
-                    elide: Text.ElideRight
-                    Accessible.role: Settings.persistenceError
-                        ? Accessible.AlertMessage : Accessible.StaticText
-                    Accessible.name: root.persistenceStatus
+                    id: hintText
+                    anchors.centerIn: parent
+                    text: "/"
+                    font.family: Theme.fontMono
+                    font.pixelSize: Theme.typography.metadata
+                    font.weight: Theme.weightSemibold
+                    color: Theme.textFaint
                 }
+            }
+            MouseArea {
+                id: searchMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.IBeamCursor
+                onClicked: root.openPalette("")
             }
         }
 
-        Rectangle {
-            x: root.navWidth
-            width: 1
-            height: parent.height
-            color: Theme.hairlineSoft
+        Flickable {
+            id: navFlick
+            y: root.headerHeight
+            width: parent.width
+            height: parent.height - y
+            contentHeight: navColumn.height + root.gutter
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: contentHeight > height
+            clip: true
+
+            function revealItem(item) {
+                const top = item.mapToItem(navColumn, 0, 0).y + navColumn.y;
+                if (top < contentY)
+                    contentY = Math.max(0, top - root.gutter / 2);
+                else if (top + item.height > contentY + height)
+                    contentY = Math.min(contentHeight - height, top + item.height - height + root.gutter / 2);
+            }
+
+            Column {
+                id: navColumn
+                x: root.gutter / 2
+                y: Theme.scaled(2)
+                width: root.navWidth - root.gutter
+                spacing: 1
+
+                // Groups follow what the person is doing — personalizing the
+                // desktop, a device, the system — not where a value happens
+                // to be stored. Home stands above them.
+                NavItem {
+                    id: homeItem
+                    modelData: Settings.pages[0]
+                    index: 0
+                }
+
+                Repeater {
+                    id: navGroups
+                    model: Settings.pageGroups
+
+                    delegate: NavGroup {}
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        x: root.navWidth
+        width: 1
+        height: parent.height
+        color: Theme.hairlineSoft
+    }
+
+    // ---- page ------------------------------------------------------------
+    Item {
+        id: body
+        x: root.navWidth + 1
+        y: root.headerHeight + 1
+        width: parent.width - x
+        height: parent.height - y
+
+        // A tabbed page's views, on the content column's own edges.
+        SettingsTabs {
+            id: pageTabs
+            readonly property int columnWidth: Math.min(Theme.scaled(640, Theme.typeScale),
+                Math.max(0, pageLoader.width - 8))
+            visible: root.currentTabs.length > 0
+            x: pageLoader.x + Math.max(0, Math.floor((pageLoader.width - 8 - columnWidth) / 2))
+            y: root.gutter - Theme.scaled(6)
+            width: columnWidth
+            height: visible ? implicitHeight : 0
+            tabs: root.currentTabs
+            current: root.currentTab ? root.currentTab.id : ""
+            onPicked: id => Settings.setTab(Settings.page, id)
         }
 
         Loader {
@@ -601,186 +573,38 @@ PopoutPanel {
             // it briefly so a quick reopen is instant, then release it;
             // Settings.page reopens the same page.
             active: Settings.panelOpen || pageRelease.running
-            x: root.navWidth + root.gutter
-            y: root.gutter
-            width: parent.width - root.navWidth - root.gutter * 2
-            height: parent.height - root.gutter * 2
+            x: root.gutter
+            y: pageTabs.visible ? pageTabs.y + pageTabs.height + Theme.scaled(18) : root.gutter
+            width: parent.width - root.gutter * 2
+            height: parent.height - y - root.gutter
             focus: true
             sourceComponent: {
-                if (root.searchActive)
-                    return searchResultsPage;
+                const tab = root.currentTab ? root.currentTab.id : "";
                 switch (Settings.page) {
+                case "home": return homePage;
                 case "wallpaper": return wallpaperPage;
                 case "bar": return barPage;
                 case "workspaces": return workspacesPage;
                 case "notifications": return notificationsPage;
-                case "assistant": return assistantPage;
+                case "plugins": return pluginsPage;
                 case "displays": return displaysPage;
                 case "sound": return soundPage;
                 case "network": return networkPage;
                 case "touchpad": return touchpadPage;
-                case "keyboard": return keyboardPage;
-                case "shortcuts": return shortcutsPage;
+                case "keyboard": return tab === "shortcuts" ? shortcutsPage : keyboardPage;
                 case "power": return powerPage;
-                case "applications": return applicationsPage;
-                case "storage": return storagePage;
-                case "region": return regionPage;
-                case "accounts": return accountsPage;
                 case "security": return securityPage;
-                case "plugins": return pluginsPage;
-                case "backup": return backupPage;
-                case "about": return aboutPage;
+                case "accounts": return accountsPage;
+                case "assistant": return assistantPage;
+                case "applications": return applicationsPage;
+                case "region": return regionPage;
+                case "backup": return tab === "storage" ? storagePage : tab === "recovery" ? recoveryPage : backupPage;
                 default: return appearancePage;
                 }
             }
         }
 
-        Component {
-            id: searchResultsPage
-
-            Item {
-                Column {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    spacing: 2
-
-                    Repeater {
-                        model: root.searchResults
-
-                        delegate: Rectangle {
-                            id: resultRow
-
-                            required property var modelData
-                            required property int index
-                            readonly property bool selected:
-                                index === root.searchSelection
-                            // Booleans read as words, everything else as its
-                            // stored value; container keys stay silent.
-                            readonly property string valueLabel: {
-                                void Settings.revision;
-                                if (modelData.key === "")
-                                    return "";
-                                const value = Settings[modelData.key];
-                                if (typeof value === "boolean")
-                                    return value ? "on" : "off";
-                                if (typeof value === "object")
-                                    return "";
-                                return String(value);
-                            }
-
-                            width: parent.width
-                            height: Theme.scaled(40)
-                            radius: Theme.rowRadius
-                            color: selected ? Theme.chip
-                                : resultMouse.containsMouse ? Theme.hoverFill
-                                : "transparent"
-                            Accessible.role: Accessible.ListItem
-                            Accessible.name: I18n.tr(modelData.pageLabel) + ", "
-                                + I18n.tr(modelData.group) + ", " + I18n.tr(modelData.label)
-                            Accessible.selected: selected
-
-                            Text {
-                                id: crumb
-                                anchors.left: parent.left
-                                anchors.leftMargin: 10
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 180
-                                text: I18n.tr(resultRow.modelData.pageLabel)
-                                    + "  ›  " + I18n.tr(resultRow.modelData.group)
-                                font.family: Theme.fontMenu
-                                font.pixelSize: Theme.typography.metadata
-                                color: Theme.textFaint
-                                elide: Text.ElideRight
-                            }
-
-                            Text {
-                                anchors.left: crumb.right
-                                anchors.leftMargin: 12
-                                anchors.right: valueText.left
-                                anchors.rightMargin: 10
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: I18n.tr(resultRow.modelData.label)
-                                font.family: Theme.fontMenu
-                                font.pixelSize: Theme.typography.primary
-                                font.weight: Theme.weightMedium
-                                color: resultRow.selected ? Theme.textHi : Theme.textMid
-                                elide: Text.ElideRight
-                            }
-
-                            Text {
-                                id: valueText
-                                anchors.right: parent.right
-                                anchors.rightMargin: 10
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: resultRow.valueLabel
-                                font.family: Theme.fontMono
-                                font.pixelSize: Theme.typography.control
-                                color: Theme.textFaint
-                            }
-
-                            MouseArea {
-                                id: resultMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    searchField.text = "";
-                                    root.jumpToResult(resultRow.modelData);
-                                }
-                            }
-                        }
-                    }
-
-                    Text {
-                        visible: root.searchResults.length === 0
-                        width: parent.width
-                        topPadding: 8
-                        leftPadding: 10
-                        text: "Nothing matches “" + root.searchQuery.trim()
-                            + "”. Try a setting's name, its group, or a page."
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.typography.primary
-                        color: Theme.textDim
-                        wrapMode: Text.Wrap
-                    }
-                }
-
-                Row {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 10
-                    anchors.bottom: parent.bottom
-                    spacing: 14
-
-                    Repeater {
-                        model: [
-                            { keys: "↑↓", verb: "move" },
-                            { keys: "⏎", verb: I18n.tr("open row") },
-                            { keys: "Esc", verb: I18n.tr("back to page") }
-                        ]
-
-                        delegate: Row {
-                            required property var modelData
-                            spacing: 5
-
-                            Text {
-                                text: parent.modelData.keys
-                                font.family: Theme.fontMono
-                                font.pixelSize: Theme.typography.metadata
-                                color: Theme.textDim
-                            }
-                            Text {
-                                text: I18n.tr(parent.modelData.verb)
-                                font.family: Theme.fontMenu
-                                font.pixelSize: Theme.typography.secondary
-                                color: Theme.textFaint
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
+        Component { id: homePage; HomePage {} }
         Component { id: appearancePage; AppearancePage {} }
         Component { id: wallpaperPage; WallpaperPage {} }
         // The Bar page is the widget editor with the bar's own layout,
@@ -792,13 +616,16 @@ PopoutPanel {
                 id: modulesContent
                 onDragActiveChanged: root.moduleDragActive = modulesContent.dragActive
                 onSubPageActiveChanged: root.moduleSubPageActive = modulesContent.subPageActive
+                onSubPageTitleChanged: root.moduleSubPageTitle = modulesContent.subPageTitle
                 Component.onCompleted: {
                     root.moduleDragActive = modulesContent.dragActive;
                     root.moduleSubPageActive = modulesContent.subPageActive;
+                    root.moduleSubPageTitle = modulesContent.subPageTitle;
                 }
                 Component.onDestruction: {
                     root.moduleDragActive = false;
                     root.moduleSubPageActive = false;
+                    root.moduleSubPageTitle = "";
                 }
                 Connections {
                     target: root
@@ -821,19 +648,21 @@ PopoutPanel {
         Component { id: shortcutsPage; ShortcutsPage {} }
         Component { id: powerPage; PowerPage {} }
         Component { id: applicationsPage; ApplicationsPage {} }
-        Component { id: storagePage; StoragePage {} }
+        Component { id: storagePage; StoragePage { section: "storage" } }
+        Component { id: recoveryPage; StoragePage { section: "recovery" } }
         Component { id: regionPage; RegionPage {} }
         Component { id: backupPage; BackupPage {} }
-        Component { id: aboutPage; AboutPage {} }
     }
 
-    // Declared after the body so the tab order starts at the search field,
-    // then the page list and the page, and reaches Close last. Resetting a
-    // page lives at the page's foot (SettingsPage.pageReset), not up here
-    // beside Close, where Tab then Enter used to reset the whole page.
+    // ---- header ----------------------------------------------------------
+    // Declared after the page so the tab order runs search, rail, page, then
+    // the header's actions and Close last. Resetting a page lives at the
+    // page's foot (SettingsPage.pageReset), not up here beside Close, where
+    // Tab then Enter used to reset the whole page.
     Item {
         id: header
-        width: parent.width
+        x: root.navWidth + 1
+        width: parent.width - x
         height: root.headerHeight
 
         MouseArea {
@@ -842,13 +671,24 @@ PopoutPanel {
             onPressed: root.moveRequested()
         }
 
+        SettingsAction {
+            id: backAction
+            x: root.gutter / 2
+            anchors.verticalCenter: parent.verticalCenter
+            compact: true
+            glyph: "arrow_back"
+            text: I18n.tr("Back")
+            enabled: root.canGoBack
+            Accessible.name: I18n.tr("Back to the previous page")
+            onTriggered: root.goBack()
+        }
+
         // One line, the way the clock reads: the subject, then what it is
-        // about as a quieter qualifier after a middot. Two stacked lines made
-        // the header the tallest thing on the page and said no more than this.
+        // about as a quieter qualifier after a middot.
         Row {
             id: headerCopy
-            anchors.left: parent.left
-            anchors.leftMargin: root.gutter
+            anchors.left: backAction.right
+            anchors.leftMargin: Theme.scaled(6)
             anchors.right: headerActions.left
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
@@ -857,7 +697,9 @@ PopoutPanel {
             Text {
                 id: headerTitle
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.searchActive ? I18n.tr("Search") : I18n.tr(root.currentPage.label)
+                // A widget's own settings read as a breadcrumb under its page.
+                text: I18n.tr(root.currentPage.label)
+                    + (Settings.page === "bar" && root.moduleSubPageTitle !== "" ? "  ›  " + root.moduleSubPageTitle : "")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.title
                 font.weight: Theme.weightSemibold
@@ -876,11 +718,7 @@ PopoutPanel {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: !root.compactNav
-                text: root.searchActive
-                    ? root.searchResults.length + " result"
-                        + (root.searchResults.length === 1 ? "" : "s")
-                        + " for “" + root.searchQuery.trim() + "”"
-                    : root.currentPage.description
+                text: root.currentTab ? root.currentTab.description : root.currentPage.description
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.secondary
                 color: Theme.textFaint
@@ -892,11 +730,71 @@ PopoutPanel {
         Row {
             id: headerActions
             anchors.right: parent.right
-            anchors.rightMargin: root.gutter
+            anchors.rightMargin: root.gutter / 2
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 4
+            spacing: Theme.scaled(8)
+
+            Row {
+                visible: root.statusShown
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 7
+                Accessible.role: Settings.persistenceError
+                    ? Accessible.AlertMessage : Accessible.StaticText
+                Accessible.name: root.persistenceStatus
+
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 6; height: 6; radius: 3
+                    color: Settings.undoAvailable ? Theme.accent
+                        : Settings.persistenceError ? Theme.red
+                        : Settings.savePending ? Theme.amber : Theme.connected
+                }
+
+                Text {
+                    visible: !root.compactNav
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: Settings.undoAvailable ? Settings.resetLabel + " reset"
+                        : Settings.newerSchema ? "Newer settings file · not saving"
+                        : Settings.loadError ? "Could not read settings"
+                        : Settings.saveError ? "Could not save settings"
+                        : Settings.savePending ? "Saving…"
+                        : "Saved"
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.typography.secondary
+                    color: Settings.persistenceError ? Theme.redText : Theme.textFaint
+                    elide: Text.ElideRight
+                }
+            }
 
             SettingsAction {
+                visible: Settings.undoAvailable
+                anchors.verticalCenter: parent.verticalCenter
+                compact: root.compactNav
+                text: I18n.tr("Undo")
+                glyph: "undo"
+                Accessible.name: "Undo " + Settings.resetLabel + " reset"
+                onTriggered: Settings.undoReset()
+            }
+
+            SettingsAction {
+                visible: Settings.persistenceError && !Settings.undoAvailable
+                anchors.verticalCenter: parent.verticalCenter
+                compact: root.compactNav
+                text: I18n.tr("Retry")
+                glyph: "refresh"
+                Accessible.name: Settings.loadError
+                    ? "Retry loading settings" : "Retry saving settings"
+                onTriggered: Settings.retrySave()
+            }
+
+            ChangesChip {
+                anchors.verticalCenter: parent.verticalCenter
+                compact: root.compactNav
+                onReviewRequested: root.openChanges()
+            }
+
+            SettingsAction {
+                anchors.verticalCenter: parent.verticalCenter
                 compact: true
                 text: I18n.tr("Close")
                 glyph: "close"
@@ -906,10 +804,29 @@ PopoutPanel {
     }
 
     Rectangle {
+        x: root.navWidth + 1
         y: root.headerHeight
-        width: parent.width
+        width: parent.width - x
         height: 1
         color: Theme.hairlineSoft
+    }
+
+    // ---- overlays --------------------------------------------------------
+    ChangesSheet {
+        id: changesSheet
+        objectName: "changesSheet"
+        anchors.fill: parent
+    }
+
+    SettingsPalette {
+        id: palette
+        objectName: "settingsPalette"
+        anchors.fill: parent
+        onFinished: {
+            const item = root.navDelegate(Settings.page);
+            if (item)
+                item.forceActiveFocus();
+        }
     }
 
     Item {

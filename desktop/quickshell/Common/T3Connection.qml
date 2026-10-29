@@ -33,7 +33,7 @@ Singleton {
     // Whether anything wants the link. The bar module is the one consumer
     // that needs it unasked; with the module off, a socket and its pings, or
     // a ticket helper retrying a dead host, are pure idle churn — and merely
-    // constructing this singleton (Settings → About) must not connect. The
+    // constructing this singleton (Settings → Home) must not connect. The
     // panel still connects while it is open, for an IPC or sign-in opening it
     // with the module off. Settings.mods is replaced wholesale on every edit,
     // so this re-evaluates whenever the module list changes.

@@ -135,7 +135,7 @@ Singleton {
 
     // ---- Runtime state (not persisted) -----------------------------------
     property bool panelOpen: false
-    property string page: "appearance"
+    property string page: "home"
     property bool loaded: false
     property bool firstRun: false
     property bool savePending: false
@@ -207,62 +207,72 @@ Singleton {
     readonly property bool modsModified:
         JSON.stringify(mods) !== JSON.stringify(defaults.mods)
 
-    // The Settings sidebar, in order: one entry per page, grouped by what the
-    // person is doing rather than by where the value is stored. SettingsView
-    // draws the rail from this list, SettingsPage takes its reset label from
-    // it, and IPC and search accept exactly these ids.
+    // The Settings sidebar, in order: Home, then one entry per page grouped
+    // by what the person is doing rather than by where the value is stored
+    // (2026-10 redesign: three groups of six, every page its own glyph).
+    // SettingsView draws the rail from this list, SettingsPage takes its
+    // reset label from it, and IPC and search accept exactly these ids.
+    // A page with `tabs` holds several views; the rail shows it once.
     readonly property var pages: [
+        { id: "home", label: I18n.tr("Home"), glyph: "home",
+            description: I18n.tr("This computer at a glance") },
         { id: "appearance", group: "Personalize", label: I18n.tr("Appearance"), glyph: "palette",
-            description: "Theme, text and size, colors and panels" },
+            description: I18n.tr("Theme, text and size, colors and panels") },
         { id: "wallpaper", group: "Personalize", label: I18n.tr("Wallpaper"), glyph: "image",
-            description: "Desktop image and automatic rotation" },
-        { id: "bar", group: "Personalize", label: I18n.tr("Bar"), glyph: "space_dashboard",
-            description: "Widgets, placement, shape and behavior" },
-        { id: "workspaces", group: "Personalize", label: I18n.tr("Workspaces"), glyph: "view_quilt",
-            description: "Per-display workspaces, layouts and floating windows" },
+            description: I18n.tr("Desktop image and automatic rotation") },
+        { id: "bar", group: "Personalize", label: I18n.tr("Bar & Control Center"), glyph: "space_dashboard",
+            description: I18n.tr("Widgets, Control Center, placement and behavior") },
+        { id: "workspaces", group: "Personalize", label: I18n.tr("Workspaces & dock"), glyph: "view_quilt",
+            description: I18n.tr("Per-display workspaces, layouts, floating windows and the dock") },
         { id: "notifications", group: "Personalize", label: I18n.tr("Notifications"), glyph: "notifications",
-            description: "Pop-ups, quiet hours and the on-screen display" },
-        { id: "assistant", group: "Personalize", label: I18n.tr("Assistant"), glyph: "assistant",
-            description: "Agent, voice, screen context and character" },
+            description: I18n.tr("Pop-ups, quiet hours and the on-screen display") },
+        { id: "plugins", group: "Personalize", label: I18n.tr("Plugins"), glyph: "extension",
+            description: I18n.tr("Community widgets, panels and services from Omarchy") },
         { id: "displays", group: "Devices", label: I18n.tr("Displays"), glyph: "monitor",
-            description: "Arrangement, resolution, scale and night light", system: true },
+            description: I18n.tr("Arrangement, resolution, scale and night light"), system: true },
         { id: "sound", group: "Devices", label: I18n.tr("Sound"), glyph: "volume_up",
-            description: "Devices, profiles and application audio", system: true },
+            description: I18n.tr("Devices, profiles and application audio"), system: true },
         { id: "network", group: "Devices", label: I18n.tr("Network"), glyph: "wifi",
-            description: "Connections, IP addresses and DNS", system: true },
+            description: I18n.tr("Connections, VPN, hotspot, IP addresses and DNS"), system: true },
         { id: "touchpad", group: "Devices", label: I18n.tr("Touchpad"), glyph: "mouse",
-            description: "Tap, natural scrolling and sensitivity", system: true },
+            description: I18n.tr("Tap, natural scrolling, gestures and sensitivity"), system: true },
         { id: "keyboard", group: "Devices", label: I18n.tr("Keyboard"), glyph: "keyboard",
-            description: "Layouts and layout switching", system: true },
-        { id: "shortcuts", group: "Devices", label: I18n.tr("Keyboard shortcuts"), glyph: "keyboard",
-            description: "View, change and add keyboard shortcuts" },
-        { id: "power", group: "System", label: I18n.tr("Power"), glyph: "power",
-            description: "Screen off, lock, suspend and stay awake" },
-        { id: "applications", group: "System", label: I18n.tr("Applications"), glyph: "apps",
-            description: "Default applications and native software" },
-        { id: "storage", group: "System", label: I18n.tr("Storage & cleanup"), glyph: "archive",
-            description: "Disk space, retained deployments and automatic cleanup" },
-        { id: "region", group: "System", label: I18n.tr("Region & formats"), glyph: "language",
-            description: "Timezone, language, clock and temperature formats" },
-        { id: "accounts", group: "System", label: I18n.tr("Online accounts"), glyph: "account_circle",
-            description: "Connected accounts and calendar access", system: true },
+            description: I18n.tr("Layouts, layout switching and shortcuts"), system: true,
+            tabs: [
+                { id: "layouts", label: I18n.tr("Layouts"), description: I18n.tr("Layouts and layout switching") },
+                { id: "shortcuts", label: I18n.tr("Shortcuts"), description: I18n.tr("View, change and add keyboard shortcuts") }
+            ] },
+        { id: "power", group: "Devices", label: I18n.tr("Power"), glyph: "power",
+            description: I18n.tr("Screen off, lock, suspend and stay awake") },
         { id: "security", group: "System", label: I18n.tr("Security"), glyph: "security",
-            description: "SSH Server, fingerprints and security keys", system: true },
-        { id: "plugins", group: "System", label: I18n.tr("Omarchy plugins"), glyph: "extension",
-            description: "Community widgets, panels and services from Omarchy" },
-        { id: "backup", group: "System", label: I18n.tr("Backup & recovery"), glyph: "archive",
-            description: "Personal-file backups and system recovery points" },
-        { id: "about", group: "System", label: I18n.tr("About"), glyph: "info",
-            description: "Shell health and the settings file" }
+            description: I18n.tr("Password, fingerprint, security keys and SSH Server"), system: true },
+        { id: "accounts", group: "System", label: I18n.tr("Online accounts"), glyph: "account_circle",
+            description: I18n.tr("Connected accounts and calendar access"), system: true },
+        { id: "assistant", group: "System", label: I18n.tr("Assistant"), glyph: "assistant",
+            description: I18n.tr("Agent, sign-in, voice, screen context and character") },
+        { id: "applications", group: "System", label: I18n.tr("Applications"), glyph: "apps",
+            description: I18n.tr("Default applications and installed software") },
+        { id: "region", group: "System", label: I18n.tr("Region & language"), glyph: "language",
+            description: I18n.tr("Timezone, language, clock and temperature formats") },
+        { id: "backup", group: "System", label: I18n.tr("Backup & storage"), glyph: "database",
+            description: I18n.tr("Personal-file backups, recovery points and disk space"),
+            tabs: [
+                { id: "backups", label: I18n.tr("Backups"), description: I18n.tr("Personal-file backups and restores") },
+                { id: "recovery", label: I18n.tr("Recovery points"), description: I18n.tr("System recovery points and how long they are kept") },
+                { id: "storage", label: I18n.tr("Disk space"), description: I18n.tr("Disk space and system cleanup") }
+            ] }
     ]
     readonly property var pageGroups: ["Personalize", "Devices", "System"]
     readonly property var validPages: pages.map(entry => entry.id)
-    // Ids from before the 2026-09 redesign, still accepted from IPC, scripts
-    // and muscle memory. The old System page split four ways; a key that
-    // names a row lands on the page that now holds it (see keyPages).
+    // Ids from before a redesign, still accepted from IPC, scripts and
+    // muscle memory. The 2026-09 System page split four ways; the 2026-10
+    // pages that merged open their tab (legacyTabs), and About became Home.
+    // A key that names a row lands on the page that now holds it (keyPages).
     readonly property var legacyPages: ({
-        modules: "bar", widgets: "bar", system: "power", drawer: "bar"
+        modules: "bar", widgets: "bar", system: "power", drawer: "bar",
+        shortcuts: "keyboard", storage: "backup", about: "home"
     })
+    readonly property var legacyTabs: ({ shortcuts: "shortcuts", storage: "storage" })
     readonly property var keyPages: ({
         clock24: "region", unit: "region",
         scrollFactor: "touchpad",
@@ -272,9 +282,26 @@ Singleton {
         idleLockMins: "power", idleScreenOffMins: "power", idleSuspendMins: "power",
         idleSuspendBatteryOnly: "power", idleInhibitMode: "power"
     })
+    readonly property var keyTabs: ({ recoveryPoints: "recovery" })
+    // The view each tabbed page shows, kept per page for the session, so a
+    // return to Keyboard comes back to Shortcuts if that is where you were.
+    property var pageTabs: ({ keyboard: "layouts", backup: "backups" })
+    readonly property string tab: pageTabs[page] || ""
 
     function pageInfo(id) {
         return pages.find(entry => entry.id === id) || pages[0];
+    }
+
+    function tabsOf(id) {
+        return pageInfo(id).tabs || [];
+    }
+
+    function setTab(id, tabId) {
+        if (!tabsOf(id).some(entry => entry.id === tabId) || pageTabs[id] === tabId)
+            return;
+        const next = Object.assign({}, pageTabs);
+        next[id] = tabId;
+        pageTabs = next;
     }
 
     // The page an outside caller means: a current id as is, a legacy id
@@ -291,6 +318,45 @@ Singleton {
         return "";
     }
 
+    // The tab an outside caller means on a tabbed page: the one a legacy id
+    // or a moved row names, otherwise the page's first view. Untabbed pages
+    // and unknown ids name none.
+    function resolveTab(targetPage, key) {
+        const resolved = resolvePage(targetPage, key);
+        const tabs = tabsOf(resolved);
+        if (resolved === "" || tabs.length === 0)
+            return "";
+        if (key && keyTabs[key] !== undefined)
+            return keyTabs[key];
+        if (legacyTabs[targetPage] !== undefined)
+            return legacyTabs[targetPage];
+        return tabs[0].id;
+    }
+
+    // Back (Alt+Left in the window): the pages visited since Settings
+    // opened, newest last. Search jumps, Home's links and deep links all
+    // move between pages out of rail order, so the rail alone cannot say
+    // how to return. Closing the window forgets the trail.
+    property var pageHistory: []
+    property string previousPage: page
+    property bool restoringPage: false
+    readonly property bool canGoBack: pageHistory.length > 0
+    onPageChanged: {
+        if (!restoringPage && panelOpen && previousPage !== "" && previousPage !== page)
+            pageHistory = pageHistory.concat([previousPage]).slice(-30);
+        previousPage = page;
+    }
+    function goBack() {
+        if (pageHistory.length === 0)
+            return false;
+        const target = pageHistory[pageHistory.length - 1];
+        pageHistory = pageHistory.slice(0, -1);
+        restoringPage = true;
+        page = target;
+        restoringPage = false;
+        return true;
+    }
+
     // One dirty/reset key list per settings page. A system page (Network,
     // Sound, Accounts) has no shell.json values, so it has no list.
     readonly property var sectionKeys: ({
@@ -300,11 +366,13 @@ Singleton {
             "font", "accent", "paletteMode", "theme", "themePalette", "desktopStyle",
             "pluginScale", "pluginBorderMode", "pluginBorderColor", "pluginBorderWidth", "pluginBorderOpacity", "pluginRadius", "pluginThemeOverrides"],
         // The widget layout and every widget's options belong to the Bar
-        // page, which also owns the bar's background color.
+        // page, which also owns the bar's background color. The dock has
+        // its own place on Workspaces & dock.
         bar: ["position", "barStyle", "gap", "barHeight", "barRadius", "autoHide",
             "exclusive", "barColorMode", "barCustomHue", "barCustomSaturation",
-            "barCustomLightness", "mods", "modOpts", "dock", "dockAutoHide", "dockPinned"],
-        workspaces: [],
+            "barCustomLightness", "mods", "modOpts"],
+        // The dock moved to Workspaces & dock with its switches (2026-10).
+        workspaces: ["dock", "dockAutoHide", "dockPinned"],
         plugins: [],
         drawer: ["drawerTabs", "drawerOverview", "drawerHover", "drawerWidth"],
         notifications: ["notifDnd", "notifDndUntilMs", "notifQuiet", "notifQuietStart", "notifQuietEnd",
@@ -325,8 +393,8 @@ Singleton {
             "assistantSpeak", "assistantScreenContext", "assistantCharacter",
             "assistantShown", "assistantScreen", "assistantX", "assistantY"],
         backup: [],
-        shortcuts: [],
-        about: []
+        keyboard: [],
+        home: []
     })
 
     // ---- Independent settings window -----------------------------------
@@ -337,8 +405,12 @@ Singleton {
         const resolved = resolvePage(targetPage, key);
         if (targetPage === "drawer")
             openWidgetSettings("control");
-        else if (resolved !== "")
+        else if (resolved !== "") {
+            const tab = resolveTab(targetPage, key);
+            if (tab !== "")
+                setTab(resolved, tab);
             page = resolved;
+        }
         Popouts.close();
         // Hyprland focuses a window as it maps; only one already open needs
         // raising. A focus-by-title sent with the map would arrive before the
@@ -372,6 +444,7 @@ Singleton {
 
     function closePanel() {
         panelOpen = false;
+        pageHistory = [];
     }
 
     function openWidgetSettings(id) {
@@ -403,11 +476,17 @@ Singleton {
         return true;
     }
 
+    // A value a person chose, with the one it replaced: Home's "Recently
+    // changed" list (SettingsRecent) is built from these.
+    signal valueSet(string key, var before, var after)
+
     function set(key, value) {
         if (!markExplicit(key))
             return;
         clearUndo();
+        const before = root[key];
         root[key] = SettingsHelpers.normalizeKey(key, value);
+        valueSet(key, before, root[key]);
     }
 
     function previewBarColor(mode) {

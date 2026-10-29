@@ -460,13 +460,13 @@ test "$(runuser -u cybexqa -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BU
         import base64
         body = self.python(shortcuts_script())
         evidence = json.loads(base64.b64decode(re.search(r'QA_SHORTCUTS:([A-Za-z0-9+/=]+)', body).group(1)))
-        # Settings → Keyboard shortcuts through the shell's IPC, as Super+K's
-        # "Edit shortcuts" opens it.
+        # Settings → Keyboard → Shortcuts through the shell's IPC, as Super+K's
+        # "Edit shortcuts" opens it; the old `shortcuts` id names that tab.
         self.settings('open shortcuts')
         deadline = time.monotonic() + 30
         while True:
             status = json.loads(self.settings('status'))
-            if status['open'] and status['page'] == 'shortcuts':
+            if status['open'] and status['page'] == 'keyboard' and status.get('tab') == 'shortcuts':
                 break
             if time.monotonic() >= deadline:
                 raise RuntimeError('Settings did not open on the shortcuts page: ' + json.dumps(status))
@@ -475,7 +475,8 @@ test "$(runuser -u cybexqa -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BU
         time.sleep(4)
         if screenshots:
             self.screenshot(screenshots / 'settings-shortcuts.png')
-        evidence['settingsPage'] = {'opened': 'cybexos-runtime ipc settings open shortcuts', 'page': status['page']}
+        evidence['settingsPage'] = {'opened': 'cybexos-runtime ipc settings open shortcuts', 'page': status['page'],
+                                    'tab': status['tab']}
         self.settings('close')
         # Only the count and QML error lines cross the serial console.
         count, *lines = self.command('invocation=$(runuser -u cybexqa -- env XDG_RUNTIME_DIR=/run/user/1000 '
@@ -1233,7 +1234,7 @@ QA_SOURCE''').strip())
             vm.screenshot(screenshots / 'welcome-first-login.png')
         # A window opened over the full-screen guide makes it step aside
         # (Hyprland's openwindow event), leaving only the resume pill.
-        vm.settings('open about')
+        vm.settings('open home')
         vm.wait_welcome_state(lambda state: state['open'] and state['aside'], 'Welcome did not step aside for Settings')
         vm.wait_welcome_layers(['qs-welcome-resume'])
         if screenshots:

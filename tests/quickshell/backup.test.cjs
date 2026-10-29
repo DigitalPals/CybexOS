@@ -133,31 +133,40 @@ test("the next run reads in the future tense", () => {
     assert.ok(-localTime.daysBetween(new Date(2026, 9, 13, 23, 0).getTime(), now) <= 0);
 });
 
-test("Backup & recovery is a System page that search reaches", () => {
+test("Backup & storage is a System page with three tabs that search reaches", () => {
     const settings = read("Common/Settings.qml");
     const view = read("Settings/SettingsView.qml");
-    assert.match(settings, /\{ id: "backup", group: "System", label: "Backup & recovery", glyph: "archive",/);
-    assert.ok(settings.indexOf('id: "backup"') < settings.indexOf('id: "about"'),
-        "the page sits before About in the System group");
+    assert.match(settings, /\{ id: "backup", group: "System", label: "Backup & storage", glyph: "database",/);
+    assert.match(settings, /\{ id: "backups", label: "Backups"[^}]*\},\s*\{ id: "recovery", label: "Recovery points"[^}]*\},\s*\{ id: "storage", label: "Disk space"/,
+        "Backups, then Recovery points, then Disk space");
+    assert.ok(settings.indexOf('id: "backup"') > settings.indexOf('id: "region"'),
+        "the page closes the System group");
     assert.match(settings, /backup: \[\],/, "nothing on the page is a shell.json value");
-    assert.match(view, /case "backup": return backupPage;/);
+    assert.match(view, /case "backup": return tab === "storage" \? storagePage : tab === "recovery" \? recoveryPage : backupPage;/);
     assert.match(view, /Component \{ id: backupPage; BackupPage \{\} \}/);
+    assert.match(view, /Component \{ id: recoveryPage; StoragePage \{ section: "recovery" \} \}/);
+    assert.match(view, /Component \{ id: storagePage; StoragePage \{ section: "storage" \} \}/);
     assert.match(read("Settings/qmldir"), /^BackupPage BackupPage\.qml$/m);
     assert.match(read("Common/qmldir"), /^singleton Backup Backup\.qml$/m);
+    // The old Storage & cleanup id opens Disk space.
+    assert.match(settings, /storage: "backup"/);
+    assert.match(settings, /legacyTabs: \(\{ shortcuts: "shortcuts", storage: "storage" \}\)/);
     const rows = load("SettingsSearchData.js").ROWS.filter(row => row.page === "backup");
-    assert.deepEqual(rows.map(row => row.label), ["Back up personal files", "Automatic backups",
-        "Restore files", "Recovery key", "Recovery points", "Factory reset"]);
-    assert.ok(rows.every(row => row.key === "" && row.pageLabel === "Backup & recovery"));
+    assert.deepEqual(rows.map(row => row.label), ["Review cleanup", "Automatic weekly cleanup",
+        "Back up personal files", "Automatic backups", "Restore files", "Recovery key", "Recovery points",
+        "Factory reset"]);
+    assert.deepEqual(rows.map(row => row.tab), ["storage", "recovery", "backups", "backups", "backups",
+        "backups", "recovery", "recovery"]);
+    assert.ok(rows.every(row => row.key === "" && row.pageLabel === "Backup & storage"));
     const search = load("SettingsSearchData.js").search;
-    for (const query of ["backup", "restic", "restore", "external drive", "rollback"])
+    for (const query of ["backup", "restic", "restore", "external drive", "rollback", "garbage"])
         assert.ok(search(query).some(row => row.page === "backup"), query);
 });
 
-test("the page is a backups group then the recovery points, with setup inline", () => {
+test("the Backups tab is personal files only, with setup inline", () => {
     const page = read("Settings/BackupPage.qml");
-    const backupsAt = page.indexOf('title: "Backups"');
-    const recoveryAt = page.indexOf("RecoveryGroup {");
-    assert.ok(backupsAt > 0 && recoveryAt > backupsAt, "backups first, recovery points below");
+    assert.ok(page.indexOf('title: "Backups"') > 0);
+    assert.doesNotMatch(page, /RecoveryGroup \{/, "recovery points have their own tab now");
     for (const step of ["Step 1 of 3", "Step 2 of 3", "Step 3 of 3"])
         assert.ok(page.includes(step), step);
     for (const label of ['label: "Last backup"', 'label: "Destination"', 'label: "Automatic backups"',
@@ -180,8 +189,15 @@ test("the page is a backups group then the recovery points, with setup inline", 
     assert.match(service, /running: root\.watched/, "status is polled only while the page is shown");
 });
 
-test("About keeps shell health and the settings file, not recovery points", () => {
-    const about = read("Settings/AboutPage.qml");
-    assert.doesNotMatch(about, /RecoveryGroup|Recovery points/);
-    assert.match(read("Common/Settings.qml"), /description: "Shell health and the settings file"/);
+test("recovery points live on one tab: the list, then how long they are kept, then the boot menu", () => {
+    const page = read("Settings/StoragePage.qml");
+    const listAt = page.indexOf('title: "Recovery points"');
+    const retentionAt = page.indexOf('title: "Retention"');
+    const generationsAt = page.indexOf('RecoveryGroup { visible: page.section === "recovery" }');
+    assert.ok(listAt > 0 && retentionAt > listAt && generationsAt > retentionAt, "list, retention, generations");
+    assert.match(page, /property string searchAnchor: "recoveryPoints"/, "search's Recovery points row lands here");
+    assert.match(page, /title: "Retention"[\s\S]{0,120}changeTag: "restart"/, "retention says it builds a system change");
+    assert.match(read("Settings/RecoveryGroup.qml"), /title: "System generations"[\s\S]*ValueRow \{\s*width: parent\.width/);
+    // Home took over from About and holds no recovery points either.
+    assert.doesNotMatch(read("Settings/HomePage.qml"), /RecoveryGroup|Recovery points/);
 });

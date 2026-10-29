@@ -32,13 +32,15 @@ test('refreshing Software preserves an edited draft and detects an external base
 });
 
 test('cleanup preference drafts retain their original policy until explicitly discarded', () => {
-    const source = read('Settings/StoragePage.qml');
+    // The draft outlives the Recovery points tab (RetentionDraft), so the
+    // header's Changes review sees it too.
+    const source = read('Settings/RetentionDraft.qml');
     const root = {policyBaseline:{automatic:false, keepConfirmed:5, keepDays:30}, draft:{automatic:true, keepConfirmed:5, keepDays:30},
         status:{policy:{automatic:false, keepConfirmed:10, keepDays:60}}};
     root.configuredPolicy = root.status.policy;
     vm.createContext(root);
     for (const name of ['same', 'discard', 'edit'])
-        vm.runInContext(source.match(new RegExp(`function ${name}\\([^\\n]+`))[0], root);
+        vm.runInContext(source.match(new RegExp(`^    function ${name}\\([^]*?^    }`, 'm'))[0], root);
     assert.equal(root.same(root.policyBaseline, root.status.policy), false);
     root.edit({keepDays:90});
     assert.equal(root.policyBaseline.keepDays, 30);

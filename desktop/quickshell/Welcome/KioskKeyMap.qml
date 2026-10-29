@@ -4,7 +4,7 @@ import "../Common"
 import "../Common/ShortcutEditor.js" as Helpers
 
 // The Super+digit and Super+letter keys as a keyboard, in installer keycaps,
-// from the same model as Settings → Keyboard shortcuts (ShortcutEditor.js).
+// from the same model as Settings → Keyboard → Shortcuts (ShortcutEditor.js).
 // Keys that do something are lit and name their action; a protected
 // default carries a lock, a key held twice an amber edge. One key is a tab
 // stop and the arrows move between keys.

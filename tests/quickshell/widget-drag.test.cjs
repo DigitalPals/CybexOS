@@ -217,10 +217,11 @@ test("the settings page still owns the keyboard path", () => {
 // ---- the rename -------------------------------------------------------
 
 test("the settings surfaces call them widgets", () => {
-    // The widget editor is the top of the Bar page (2026-09): the rail says
-    // Bar, and the page's own copy calls its contents widgets.
+    // The widget editor is the top of the Bar page (2026-09): the rail names
+    // the bar and its Control Center (2026-10), and the page's own copy
+    // calls its contents widgets.
     const settings = read("Common/Settings.qml");
-    assert.match(settings, /\{ id: "bar", group: "Personalize", label: "Bar"[^}]*description: "Widgets,/);
+    assert.match(settings, /\{ id: "bar", group: "Personalize", label: (?:I18n\.tr\()?"Bar & Control Center"\)?[^}]*description: (?:I18n\.tr\()?"Widgets,/);
     assert.doesNotMatch(settings, /label: "Modules"|title: "Modules"/);
 
     const detail = read("Settings/ModuleDetailView.qml");

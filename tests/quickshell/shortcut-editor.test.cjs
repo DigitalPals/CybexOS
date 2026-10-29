@@ -425,8 +425,12 @@ test('the editor UI is wired to the shared contract', () => {
     assert.match(map, /signal editRequested/);
     assert.match(map, /signal addRequested/);
     const settings = read('Common/Settings.qml');
-    assert.match(settings, /\{ id: "keyboard"[\s\S]*?\},\s*\{ id: "shortcuts", group: "Devices"/);
-    assert.match(read('Settings/SettingsView.qml'), /case "shortcuts": return shortcutsPage;/);
+    // Shortcuts are the Keyboard page's second tab (2026-10); the old page
+    // id still opens it, from ShortcutsOverlay and the welcome guide too.
+    assert.match(settings, /\{ id: "keyboard"[\s\S]*?tabs: \[\s*\{ id: "layouts"[^}]*\},\s*\{ id: "shortcuts", label: (?:I18n\.tr\()?"Shortcuts"/);
+    assert.match(settings, /shortcuts: "keyboard"/);
+    assert.match(settings, /legacyTabs: \(\{ shortcuts: "shortcuts"/);
+    assert.match(read('Settings/SettingsView.qml'), /case "keyboard": return tab === "shortcuts" \? shortcutsPage : keyboardPage;/);
     assert.match(read('Settings/qmldir'), /^ShortcutKeyboardMap ShortcutKeyboardMap\.qml$/m);
     assert.match(read('ShortcutsOverlay.qml'), /Settings\.showPanel\("shortcuts"\)/);
     const step = read('Welcome/ShortcutsStep.qml');

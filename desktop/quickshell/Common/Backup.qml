@@ -3,7 +3,7 @@ import QtQuick
 import Quickshell
 import "BackupHelpers.js" as BackupHelpers
 
-// Personal-file backups for Settings → Backup & recovery. The user helper
+// Personal-file backups for Settings → Backup & storage → Backups. The user helper
 // cybexos-backup owns everything that matters: the configuration, the
 // keyring password, every restic run, the state file and the notifications.
 // This reads its `status --json` while the page is on screen and starts
@@ -22,7 +22,7 @@ Singleton {
     property string statusError: ""
     readonly property bool configured: status.configured
     readonly property bool running: status.running
-    // The Backup & recovery page is on screen; status is polled only then.
+    // The Backups tab is on screen; status is polled only then.
     property bool watched: false
     // A short helper command is in flight: setup, a key, a switch, a list.
     readonly property bool busy: actionRequest.running
