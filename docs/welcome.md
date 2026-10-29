@@ -139,8 +139,9 @@ with a test-only IPC target. Shortcut state is served by a fake `hyprctl`
   while the guide shows; the assistant's
   own login command runs in a terminal against the real `cybexos-assistant`
   service with a scripted Claude Code, and the guide returns by itself once
-  the service reports the sign-in; Finish asks to close exactly the 1Password
-  window left open and the sign-in's windows, and not one the person opened;
+  the service reports the sign-in, not when the 1Password window left open
+  closes meanwhile; Finish asks to close exactly the sign-in's windows,
+  1Password's among them, and not one the person opened;
 - Ready's system-check card from a fixture `cybex doctor` report, and
   **Ask the assistant** sending the system-check question to the service;
 - a tour of every step, sheet (including the question about unapplied

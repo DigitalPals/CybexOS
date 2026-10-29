@@ -619,12 +619,18 @@ def main():
             # Every window the sign-in opens is the guide's to close.
             session.call('welcome-test', 'windowEvent', 'openwindow', '0a1b,1,kitty,claude auth login')
             session.call('welcome-test', 'windowEvent', 'openwindow', '2c3d,1,brave-browser,Claude')
+            session.call('welcome-test', 'windowEvent', 'openwindow', '4e5f,1,1password,Unlock 1Password')
             assert session.state()['connect']['assistant'] == 'signing-in', session.state()
+            # The 1Password window left open closing does not bring the guide
+            # back over the sign-in page: it stands aside for the sign-in now.
+            session.call('welcome-test', 'windowEvent', 'closewindow', 'c5d6')
+            time.sleep(.5)
+            assert session.state()['aside'], 'closing 1Password during the sign-in keeps the guide aside'
             session.home.joinpath('approve-sign-in').touch()
             session.wait(lambda: not session.state().get('aside') and session.state()['connect']['assistant'] == 'ready',
                          'the guide comes back once the assistant is signed in', timeout=40)
             assert session.state()['step'] == 'connect'
-            assert session.state()['connectWindows'] == ['c5d6', '0a1b', '2c3d'], session.state()
+            assert session.state()['connectWindows'] == ['0a1b', '2c3d', '4e5f'], session.state()
             session.capture(shots, 'welcome-connect-ready-en.png')
             # Ready: the check's findings, and the assistant asked about them.
             session.ipc('open', 'finish')
@@ -671,7 +677,7 @@ def main():
             session.wait(lambda: session.state().get('status') == 'completed', 'Finish')
             assert not session.state()['open']
             # Leaving for the desktop closes what Connect opened, and only that.
-            assert session.probe()['closed'] == ['c5d6', '0a1b', '2c3d'], session.probe()
+            assert session.probe()['closed'] == ['0a1b', '2c3d', '4e5f'], session.probe()
             assert session.state()['connectWindows'] == [], session.state()
             session.wait(lambda: session.probe().get('watchers') == 0, 'Keybindings claim released on close')
             session.ipc('open', '')

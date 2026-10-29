@@ -390,7 +390,11 @@ and Back follow that route (`WelcomeHelpers.neighbour`), and a saved
      `Welcome.openPassword()` runs that entry and steps aside. The Hyprland
      `openwindow` event with class `1Password` (in any case: its Wayland app
      id is `1password`) records its address; the `closewindow` event for
-     that address resumes the guide. Whether 1Password is signed in comes
+     that address resumes the guide. Both apply only while the guide stands
+     aside for 1Password (`Welcome.passwordAside`): once it is back, or
+     stands aside for a sign-in, a 1Password window closing (the one left
+     open, or one 1Password raises for the browser) leaves it where it is,
+     so it never comes back over a sign-in page. Whether 1Password is signed in comes
      from its own database:
      `scripts/onepassword-accounts.py` opens
      `$XDG_CONFIG_HOME/1Password/1password.sqlite` read-only and counts the

@@ -53,13 +53,15 @@ Singleton {
     }, document.checklist)
     property bool backupRead: false
     // ---- Connect ---------------------------------------------------------------
-    // 1Password, when the proprietary applications are installed. Its window
-    // tells the guide when the person is done: closing it brings the guide back.
+    // 1Password, when the proprietary applications are installed. While the
+    // guide stands aside for it, its window tells the guide when the person
+    // is done: closing it brings the guide back. Once the guide is back, or
+    // stands aside for a sign-in, 1Password's windows no longer count.
     readonly property var passwordEntry: DesktopEntries.applications.values.find(entry => entry.id === "1password") ?? null
     readonly property bool passwordAvailable: passwordEntry !== null
     property bool passwordOpened: false
     property string passwordWindow: ""
-    property bool passwordPending: false
+    readonly property bool passwordAside: aside && connectAside === "password"
     // How many accounts 1Password has: counted read-only in its own database,
     // never read (scripts/onepassword-accounts.py). -1 while unknown.
     property int passwordAccounts: -1
@@ -86,7 +88,11 @@ Singleton {
     signal present()
     // WelcomeWindow closes these through Hyprland and stays up until they are gone.
     signal closeWindows(var addresses)
-    onAsideChanged: if (!aside) connectAside = "";
+    onAsideChanged: {
+        if (aside) return;
+        connectAside = "";
+        passwordWindow = "";
+    }
 
     function changed(value) {
         document = value;
@@ -167,7 +173,7 @@ Singleton {
         if (!passwordEntry) return;
         stepAside(false);
         if (aside) connectAside = "password";
-        passwordOpened = passwordPending = true;
+        passwordOpened = true;
         passwordWindow = "";
         passwordEntry.execute();
     }
@@ -196,15 +202,12 @@ Singleton {
         const owned = Helpers.connectWindow(data, aside ? connectAside : "");
         if (owned) connectWindows = connectWindows.concat([owned]);
         const window = Helpers.openedWindow(data);
-        if (passwordPending && window && Helpers.isPassword(window.windowClass) && passwordWindow === "")
+        if (passwordAside && window && Helpers.isPassword(window.windowClass) && passwordWindow === "")
             passwordWindow = window.address;
     }
     function windowClosed(address) {
         connectWindows = connectWindows.filter(window => window.address !== address);
-        if (!passwordPending || address !== passwordWindow) return;
-        passwordPending = false;
-        passwordWindow = "";
-        resume();
+        if (passwordAside && address === passwordWindow) resume();
     }
     // As their close buttons would; a sign-in still waiting keeps its windows.
     // Closing the guide from its pill keeps them all: the person is using them.
