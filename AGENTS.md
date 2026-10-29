@@ -44,8 +44,14 @@
   A development machine's directory with the same path is not the served tree;
   copy the verified final ISO/checksum to the Beast before refreshing it.
 - Build in a unique task-specific staging directory, then copy the completed
-  ISO and its SHA-256 checksum into `/data/pxe/iso`. Preserve existing images
-  unless their replacement or removal is explicitly requested.
+  ISO and its SHA-256 checksum into `/data/pxe/iso`.
+- Serve only the latest Cybex OS ISO. Every new ISO goes to PXE and iVentoy is
+  refreshed. Once its checksum verifies in `/data/pxe/iso`, remove every older
+  `cybexos-*.iso` and its `.sha256` from that directory before the refresh.
+  Leave other operating systems' images alone. If the copy or checksum fails,
+  keep the existing images. Wait until no PXE boot or installation is in
+  progress before removing one. Local staging copies follow the cleanup rules
+  below.
 - Each new testing ISO takes the next beta number. Before freezing its source,
   increment the prerelease number in `VERSION` (for example `1.0.0-beta.2` to
   `1.0.0-beta.3`) past the highest number in `VERSION` and `/data/pxe/iso`, so
