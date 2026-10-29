@@ -13,6 +13,15 @@ const root = path.resolve(shellDir, "../..");
 const read = relative => fs.readFileSync(path.join(shellDir, relative), "utf8");
 const repo = relative => fs.readFileSync(path.join(root, relative), "utf8");
 
+test("tool permissions default to Always allow and Ask first remains an explicit choice", () => {
+    const H = load("SettingsHelpers.js");
+    assert.equal(H.defaults().assistantApprovalPolicy, "always");
+    for (const value of [undefined, null, false, "unknown", "always"])
+        assert.equal(H.merge({ assistantApprovalPolicy: value }).assistantApprovalPolicy, "always");
+    assert.equal(H.merge({ assistantApprovalPolicy: "ask" }).assistantApprovalPolicy, "ask");
+    assert.match(read("Settings/AssistantPage.qml"), /settingKey: "assistantApprovalPolicy"/);
+});
+
 test("the character starts in the top-right corner below the bar and stays on its output", () => {
     const output = { width: 1920, height: 1080 };
     assert.deepEqual(A.placement({ x: -1, y: -1 }, output, 60, 36),

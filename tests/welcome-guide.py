@@ -173,6 +173,16 @@ TEST_IPC = '''
         function draftShortcut(): string { return String(Keybindings.setKeys("apps.terminal", ["F9"])); }
         function discardShortcuts(): string { return String(Keybindings.discard()); }
         function next(): void { Welcome.move(1); }
+        function applyTheme(id: string): void { Themes.apply(id); }
+        function focusColour(value: string): void {
+            shell.testFind(welcomeWindow.contentItem,
+                item => item.value === value && typeof item.chosen === "function").forceActiveFocus();
+        }
+        function focusAccent(index: int): void {
+            const style = shell.testFind(welcomeWindow.contentItem, item => item.accents !== undefined);
+            shell.testFind(style, item => item.modelData === style.accents[index]
+                && typeof item.use === "function").forceActiveFocus();
+        }
         // Activates a named control the way a click does, when it can be clicked.
         function press(name: string): string {
             const item = shell.testItem(name);
@@ -190,6 +200,7 @@ TEST_IPC = '''
             const view = shell.testItem("welcomeView");
             const step = shell.testItem("welcomeWallpaperStep");
             const search = shell.testItem("wallhavenSearch");
+            const style = shell.testFind(welcomeWindow.contentItem, item => item.accents !== undefined);
             const origin = view ? view.mapToItem(null, 0, 0) : {x: 0, y: 0};
             const keys = {};
             for (const id of ACTION_IDS) keys[id] = Keybindings.keysFor(id);
@@ -203,6 +214,9 @@ TEST_IPC = '''
                 paletteMode: Settings.paletteMode, paletteReady: TestCommon.Palette.ready, paletteBusy: TestCommon.Palette.busy,
                 paletteError: TestCommon.Palette.error, paletteActive: Theme.paletteActive,
                 paletteIdentity: TestCommon.Palette.wallpaperIdentity, primary: TestCommon.Palette.primary.toString(),
+                styleSource: style ? style.source : "", accent: Settings.accent,
+                effectiveAccent: Theme.accent.toString(), theme: Settings.theme,
+                themePaletteActive: Theme.themePaletteActive,
                 themeMode: Settings.themeMode, closed: shell.testClosed,
                 requests: OnlineWallpapers.requestTimes.length});
         }
@@ -712,6 +726,25 @@ def main():
                 str(ROOT / 'assets/wallpapers/quiet-fjord.png'), '--type', 'scheme-tonal-spot',
                 '--source-color-index', '0', '--dry-run', '--json', 'hex', '--quiet'], env=session.env))
             assert generated['primary'] == expected_palette['colors']['primary']['dark']['color'], generated
+            # Switch from a preset to a solid colour through the actual controls.
+            session.call('welcome-test', 'applyTheme', 'nord')
+            session.wait(lambda: session.probe().get('styleSource') == 'theme'
+                         and session.probe().get('themePaletteActive'), 'Nord preset applied')
+            session.call('welcome-test', 'focusColour', 'accent')
+            session.key('-k', 'Return')
+            session.wait(lambda: session.probe().get('styleSource') == 'accent', 'solid accent radio selected')
+            assert not session.probe()['themePaletteActive'], session.probe()
+            for index, colour in enumerate(('#60a5fa', '#9ecbeb', '#a992e0', '#79b88b', '#d3b47e', '#e8837a')):
+                session.call('welcome-test', 'focusAccent', str(index))
+                session.key('-k', 'Return')
+                session.wait(lambda: session.probe().get('effectiveAccent') == colour,
+                             f'solid accent {colour} applied')
+                assert session.probe()['styleSource'] == 'accent', session.probe()
+                assert not session.probe()['paletteActive'], session.probe()
+            session.wait(lambda: json.loads(session.settings_path.read_text()).get('accent') == '#e8837a'
+                         and json.loads(session.settings_path.read_text()).get('themePalette', {}).get('mode') == '',
+                         'solid accent and cleared preset persisted')
+            session.patch_settings(paletteMode='wallpaper')
             session.patch_settings(themeMode='light')
             session.wait(lambda: session.probe().get('primary') == expected_palette['colors']['primary']['light']['color'],
                          'light wallpaper palette')

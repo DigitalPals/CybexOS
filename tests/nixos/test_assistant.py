@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "desktop" / "assistant"))
 from cybexos_assistant import auth, policy, prompt, speech  # noqa: E402
 from cybexos_assistant.protocol import encode, iter_lines, parse_json  # noqa: E402
 from cybexos_assistant.server import RESTARTED, Server  # noqa: E402
+from cybexos_assistant.turn import Turn  # noqa: E402
 
 
 FAKE_CLAUDE = r'''
@@ -92,8 +93,10 @@ while True:
         first = ask("r1", "Bash", {"command": "touch ~/y"})
         second = ask("r2", "Bash", {"command": "touch ~/y"})
         finish(first["behavior"] + "/" + second["behavior"])
+    elif "other tool" in text:
+        finish(ask("r1", "mcp__example__action", {"value": 1})["behavior"])
     elif "edit" in text:
-        target = home / ".config/cybexos/shell.json"
+        target = home / ("notes.txt" if "ordinary" in text else ".config/cybexos/shell.json")
         answer = ask("r1", "Edit", {"file_path": str(target), "old_string": "a", "new_string": "b"})
         if answer["behavior"] == "allow":
             target.write_text('{"bar": "transparent"}\n')
@@ -211,8 +214,13 @@ while True:
                              {"threadId": "th-1", "turnId": "tu-1", "itemId": "c1", "command": "rm -rf ~/x",
                               "cwd": str(home), "reason": "Clean up", "startedAtMs": 0, "kind": "command", "environmentId": None})
             final("decision:" + result["decision"])
+        elif "permissions" in text:
+            result = request("item/permissions/requestApproval", {
+                "threadId": "th-1", "turnId": "tu-1", "reason": "Read project files",
+                "permissions": {"network": {"enabled": True}, "fileSystem": {"read": [str(home)]}}})
+            final(json.dumps(result))
         elif "edit" in text:
-            target = home / ".config/cybexos/shell.json"
+            target = home / ("notes.txt" if "ordinary" in text else ".config/cybexos/shell.json")
             notify("item/started", {"threadId": "th-1", "turnId": "tu-1", "item": {
                 "type": "fileChange", "id": "f1", "status": "inProgress",
                 "changes": [{"path": str(target), "kind": {"type": "update", "move_path": None}, "diff": "-a\n+b"}]}})
@@ -431,6 +439,96 @@ class ServiceTest(unittest.IsolatedAsyncioTestCase):
     async def ask(self, text, **params):
         started = await self.client.result("turn.start", dict({"text": text, "agent": "claude"}, **params))
         return started["turn"]
+
+    def approval_policy(self, value):
+        path = self.harness.home / ".config/cybexos/shell.json"
+        settings = json.loads(path.read_text())
+        settings["assistantApprovalPolicy"] = value
+        path.write_text(json.dumps(settings))
+
+
+class DefaultApprovalTest(ServiceTest):
+    async def test_both_agents_allow_commands_without_cards_across_turns(self):
+        for agent, text, expected in (("claude", "bash", "allowed"),
+                                      ("codex", "command", "decision:accept")):
+            for _ in range(2):
+                with self.subTest(agent=agent):
+                    self.client.notifications.clear()
+                    await self.ask(text, agent=agent)
+                    done = await self.client.finished()
+                    self.assertEqual((done["status"], done["text"]), ("completed", expected))
+                    self.assertFalse(any(m["params"]["turn"]["approvals"]
+                                         for m in self.client.notifications if m["method"] == "turn.updated"))
+
+    async def test_applying_a_staged_change_does_not_ask_for_tool_permission(self):
+        await self.ask("stage obsidian")
+        done = await self.client.finished()
+        self.assertEqual((done["text"], done["approvals"], done["staged"]), ("applied", [], "b" * 32))
+
+    async def test_ordinary_file_edits_are_allowed_and_undoable_with_both_agents(self):
+        for agent in ("claude", "codex"):
+            with self.subTest(agent=agent):
+                self.client.notifications.clear()
+                turn = await self.ask("edit an ordinary file", agent=agent)
+                done = await self.client.finished()
+                self.assertEqual((done["status"], done["approvals"], done["undo"]),
+                                 ("completed", [], ["~/notes.txt"]))
+                self.assertTrue((self.harness.home / "notes.txt").exists())
+                await self.client.result("turn.undo", {"id": turn["id"]})
+                self.assertFalse((self.harness.home / "notes.txt").exists())
+
+    async def test_other_tools_and_codex_permissions_are_allowed_without_cards(self):
+        await self.ask("use other tool")
+        self.assertEqual((await self.client.finished())["text"], "allow")
+        self.client.notifications.clear()
+        await self.ask("request permissions", agent="codex")
+        done = await self.client.finished()
+        self.assertEqual(json.loads(done["text"]), {"permissions": {
+            "network": {"enabled": True}, "fileSystem": {"read": [str(self.harness.home)]}}, "scope": "turn"})
+        self.assertEqual(done["approvals"], [])
+
+    async def test_invalid_policy_uses_the_default(self):
+        for value in (None, False, "unknown"):
+            with self.subTest(value=value):
+                self.approval_policy(value)
+                self.client.notifications.clear()
+                await self.ask("bash")
+                self.assertEqual((await self.client.finished())["text"], "allowed")
+
+    async def test_default_allows_commands_after_a_service_restart(self):
+        await self.ask("bash")
+        await self.client.finished()
+        await self.client.close()
+        await self.harness.stop()
+        await self.harness.start()
+        self.client = await Client().open(self.harness.socket)
+        await self.ask("bash")
+        done = await self.client.finished()
+        self.assertEqual((done["text"], done["approvals"]), ("allowed", []))
+
+    async def test_always_allow_preserves_refusals_and_cancellation(self):
+        turn = Turn("test", "claude", "test", self.harness.home, set(), lambda *args: None)
+        for decision in (policy.decide_edit(["/etc/cybexos/release.json"], self.harness.home),
+                         policy.decide_command("sudo true"), policy.decide_command("reboot"),
+                         policy.decide_command("nixos-rebuild switch")):
+            with self.subTest(decision=decision):
+                answer, message = await turn.authorize(decision)
+                self.assertEqual(answer, "deny")
+                self.assertTrue(message)
+        turn.stopping = True
+        self.assertEqual((await turn.authorize(policy.decide_command("touch ~/notes")))[0], "deny")
+        self.assertEqual(turn.snapshot()["approvals"], [])
+
+    async def test_setting_changes_apply_to_the_next_turn_without_a_restart(self):
+        self.approval_policy("ask")
+        await self.ask("bash")
+        card = (await self.client.turn(lambda turn: turn["approvals"]))["approvals"][0]
+        await self.client.result("approval.respond", {"id": card["id"], "decision": "allow"})
+        await self.client.finished()
+        self.approval_policy("always")
+        self.client.notifications.clear()
+        await self.ask("bash")
+        self.assertEqual((await self.client.finished())["text"], "allowed")
 
 
 class AuthenticationTest(ServiceTest):
@@ -718,6 +816,7 @@ class ClaudeTest(ServiceTest):
         self.assertEqual(handoff["cwd"], str(self.harness.home))
 
     async def test_commands_reach_a_card(self):
+        self.approval_policy("ask")
         await self.ask("run bash please")
         waiting = await self.client.turn(lambda turn: turn["approvals"])
         card = waiting["approvals"][0]
@@ -731,6 +830,7 @@ class ClaudeTest(ServiceTest):
         self.assertEqual(missing["error"]["code"], -32002)
 
     async def test_denied_and_remembered_answers(self):
+        self.approval_policy("ask")
         await self.ask("bash")
         card = (await self.client.turn(lambda turn: turn["approvals"]))["approvals"][0]
         await self.client.result("approval.respond", {"id": card["id"], "decision": "deny"})
@@ -761,6 +861,7 @@ class ClaudeTest(ServiceTest):
         self.assertEqual(done["undo"], ["~/.local/share/cybexos/plugins/personal.cputemp/manifest.json"])
 
     async def test_staged_change_and_apply_card(self):
+        self.approval_policy("ask")
         await self.ask("stage obsidian")
         waiting = await self.client.turn(lambda turn: turn["approvals"])
         card = waiting["approvals"][0]
@@ -892,6 +993,7 @@ class CodexTest(ServiceTest):
         self.assertEqual(handoff["argv"][1:], ["resume", "th-1"])
 
     async def test_command_approval_and_session_grant(self):
+        self.approval_policy("ask")
         await self.ask("run a command")
         card = (await self.client.turn(lambda turn: turn["approvals"]))["approvals"][0]
         self.assertEqual((card["kind"], card["command"], card["detail"]), ("command", "rm -rf ~/x", "Clean up"))

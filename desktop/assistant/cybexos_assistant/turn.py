@@ -21,7 +21,8 @@ def classify(error):
 
 
 class Turn:
-    def __init__(self, identifier, agent, prompt, home, memory, publish, screenshot=False):
+    def __init__(self, identifier, agent, prompt, home, memory, publish, screenshot=False,
+                 approval_policy="always"):
         self.id = identifier
         self.agent = agent
         self.prompt = prompt
@@ -39,6 +40,7 @@ class Turn:
         self.snapshots = policy.Snapshots(home)
         # Conversation-wide "always" answers, shared with the next turns.
         self.memory = memory
+        self.approval_policy = approval_policy
         self.stopping = False
         self._publish = publish
         self._approvals = {}
@@ -94,7 +96,8 @@ class Turn:
             return "deny", decision.message
         if self.stopping or self.finished:
             return "deny", STOPPED_MESSAGE
-        if decision.action == "ask" and not (decision.key and decision.key in self.memory):
+        if decision.action == "ask" and self.approval_policy == "ask" \
+                and not (decision.key and decision.key in self.memory):
             answer = await self.ask(decision.card, cancel_key)
             if answer == "cancelled":
                 return "cancelled", ""

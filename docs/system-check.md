@@ -107,7 +107,8 @@ follow the skill's [system check reference](../agent-skills/cybexos/references/s
 explain the findings most important first, and change nothing until the
 person agrees (see [the assistant protocol](assistant.md#protocol)). Fixes go
 through the normal lifecycle: personal declarations in `/etc/nixos/local`,
-`cybex update stage local`, the review card, `cybex update apply`; firmware
+`cybex update stage local`, `cybex update apply` and administrator authentication
+(plus a review card with **Ask first** selected); firmware
 through the Update drawer's firmware action.
 
 ## Tests

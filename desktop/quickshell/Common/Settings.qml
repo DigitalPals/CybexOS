@@ -123,6 +123,7 @@ Singleton {
     property bool dockAutoHide: defaults.dockAutoHide
     property var dockPinned: defaults.dockPinned
     property string assistantAgent: defaults.assistantAgent
+    property string assistantApprovalPolicy: defaults.assistantApprovalPolicy
     property string assistantClaudeModel: defaults.assistantClaudeModel
     property string assistantCodexModel: defaults.assistantCodexModel
     property bool assistantSpeak: defaults.assistantSpeak
@@ -389,7 +390,7 @@ Singleton {
         region: ["clock24", "unit"],
         // Where the character stands and whether it is out are runtime
         // state, reset with the page as idle inhibition is with Power.
-        assistant: ["assistantAgent", "assistantClaudeModel", "assistantCodexModel",
+        assistant: ["assistantAgent", "assistantApprovalPolicy", "assistantClaudeModel", "assistantCodexModel",
             "assistantSpeak", "assistantScreenContext", "assistantCharacter",
             "assistantShown", "assistantScreen", "assistantX", "assistantY"],
         backup: [],

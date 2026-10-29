@@ -366,7 +366,16 @@ def main():
             assert undone == {"restored": ["~/.config/cybexos/shell.json"], "skipped": []}, undone
             assert "glassEnabled" not in json.loads(session.preferences.read_text())
 
-            # Anything else waits for the person, and the shell shows it as waiting.
+            # Ordinary commands proceed with the fresh-install default.
+            session.ipc("ask", "Clean up these downloads")
+            allowed = session.finished("Clean up these downloads")
+            assert allowed["status"] == "completed" and allowed["text"] == "Removed it.", allowed
+            assert allowed["approvals"] == [], allowed
+
+            # Ask first takes effect on the next question without a service restart.
+            preferences = json.loads(session.preferences.read_text())
+            preferences["assistantApprovalPolicy"] = "ask"
+            session.preferences.write_text(json.dumps(preferences) + "\n")
             session.ipc("ask", "Clean up my old downloads")
             waiting = session.wait(lambda: (lambda t: t if t and t["approvals"] else None)(session.turn()),
                                    "the command card")
@@ -395,7 +404,7 @@ def main():
             output = session.log()
             errors = [line for line in output.splitlines() if QML_ERRORS.search(line)]
             assert not errors, "\n".join(errors)
-            print("Assistant onboarding/draft preservation, repeated pointer dragging, approvals, Undo, widget hand-off and hiding passed")
+            print("Assistant onboarding/draft preservation, repeated pointer dragging, default automatic approvals, Ask first, Undo, widget hand-off and hiding passed")
         finally:
             session.stop()
 

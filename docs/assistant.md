@@ -48,7 +48,7 @@ listen or speak unless asked to for one question.
   Continue in a terminal (opens the same Claude Code or Codex session in
   Kitty, for longer coding work) appear under a reply.
 - **From a terminal**, `cybex assistant ask "…"` asks the same assistant and
-  prints the reply; anything it needs approved still appears on screen.
+  prints the reply. With **Ask first** selected, approval cards appear on screen.
   `cybex assistant status` prints the service's state as JSON.
 - **Screen context**, when enabled in Settings → Assistant, adds a screen
   button to the box. It attaches one screenshot of the display the character is
@@ -57,8 +57,17 @@ listen or speak unless asked to for one question.
 
 ## What it may do without asking
 
-Every tool call the agent makes passes through the assistant's approval policy
-(`desktop/assistant/cybexos_assistant/policy.py`):
+Tool permissions default to **Always allow** for both Claude Code and Codex.
+Commands, file edits and other tool requests proceed without permission cards,
+including across conversations and service restarts. Settings → Assistant →
+Tool permissions can select **Ask first** instead; the next question uses the
+new choice without restarting the service.
+
+The assistant still checks tool requests against its system ownership rules
+(`desktop/assistant/cybexos_assistant/policy.py`). Administrator authentication
+for staged system changes remains with polkit. The table below shows **Ask
+first** behavior; **Always allow** automatically accepts its approval cards,
+while refusals and Undo remain in effect:
 
 | Action | Decision |
 | --- | --- |
@@ -74,8 +83,9 @@ Every tool call the agent makes passes through the assistant's approval policy
 
 The person's own agent settings still apply on top: a rule in
 `~/.claude/settings.json` that already allows a tool is honored by Claude
-Code. Codex runs with a read-only sandbox and asks for every write or
-escalation, which reaches the same cards.
+Code. Codex runs with a read-only sandbox and routes write and escalation
+requests through the assistant. **Always allow** answers each request
+automatically, so ownership checks still run on subsequent requests.
 
 New widgets are created disabled. When a reply created one, **Add to bar**
 enables it with `cybex plugin enable`.
@@ -87,6 +97,7 @@ Settings → Assistant, stored in `~/.config/cybexos/shell.json`:
 | Key | Values | Default |
 | --- | --- | --- |
 | `assistantAgent` | `auto`, `claude`, `codex` | `auto` (the `cybex agent` default when it is Claude Code or Codex, else whichever is installed) |
+| `assistantApprovalPolicy` | `always` (Always allow), `ask` (Ask first) | `always` |
 | `assistantClaudeModel` | `default`, `fable`, `sonnet`, `opus` | `default` |
 | `assistantCodexModel` | `default`, `gpt-5.6-luna`, `gpt-5.6-terra`, `gpt-5.6-sol` | `default` |
 | `assistantSpeak` | spoken replies | `false` |
@@ -126,7 +137,8 @@ the shortcut and the service; nothing in `shell.json` is lost.
     credentials remain with the provider CLI, outside the assistant and store.
   - `claude.py` — Claude Code over `--input-format stream-json` with
     `--permission-prompt-tool stdio`: every permission prompt arrives as a
-    `can_use_tool` control request and is answered by the policy or a card.
+    `can_use_tool` control request and is answered automatically by default,
+    or through a card with **Ask first** selected.
   - `codex.py` — `codex app-server` (JSON-RPC over stdio): threads, turns,
     and `item/*/requestApproval` server requests.
   - `policy.py` — the table above, and the file snapshots behind Undo.

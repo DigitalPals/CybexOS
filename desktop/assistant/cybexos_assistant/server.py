@@ -89,6 +89,8 @@ class Server:
     def __init__(self, socket_path, state_dir=None, home=None, env=None):
         self.env = dict(os.environ if env is None else env)
         self.home = Path(home or self.env.get("HOME") or Path.home())
+        config = Path(self.env.get("XDG_CONFIG_HOME") or self.home / ".config")
+        self.settings_path = config / "cybexos" / "shell.json"
         self.socket_path = Path(socket_path)
         self.state_path = Path(state_dir or default_state_dir(self.home)) / "state.json"
         self.status_path = self.env.get("CYBEXOS_ASSISTANT_STATUS") or "/var/lib/cybexos/status.json"
@@ -315,8 +317,10 @@ class Server:
             raise RpcFault(-32004, f'Sign in to {LABELS[agent]} before asking the assistant. Your question has been kept.')
         if self.conversation.get("agent") not in (None, agent):
             await self._reset_conversation()
+        settings = policy.read_json(self.settings_path)
+        approval_policy = "ask" if settings.get("assistantApprovalPolicy") == "ask" else "always"
         turn = Turn("t-" + secrets.token_hex(8), agent, text, self.home, self.memory, self._turn_event,
-                    screenshot=shot is not None)
+                    screenshot=shot is not None, approval_policy=approval_policy)
         turn.snapshots.begin()
         plugins = policy.plugin_manifests(self.home)
         status = policy.read_json(self.status_path)

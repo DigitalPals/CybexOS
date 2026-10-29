@@ -11,13 +11,16 @@ supported because a check passed.
 Propose fixes and wait for the person's agreement before changing anything.
 Every system change follows the skill's lifecycle: a narrowly scoped module in
 `/etc/nixos/local/` imported from `local/default.nix`, `cybex update stage
-local`, the review card from `cybex update status`, then `cybex update apply
+local`, inspect the package changes in `cybex update status`, then `cybex update apply
 TRANSACTION REVIEW_TOKEN`. Desktop preferences stay in `~/.config/cybexos`.
 Never use sudo, `nixos-rebuild`, `systemctl reset-failed` or a vendor file
 edit to make a check pass, and never restart the computer; say when a restart
 is needed. `cybex doctor`, `lspci`, `lsusb`, `lsblk`, `df`, `systemctl
-status`, `journalctl` and `hyprctl -j configerrors` run without a card; other
-commands ask the person first.
+status`, `journalctl` and `hyprctl -j configerrors` run without a card. Tool
+permissions default to **Always allow**. If the person selects **Ask first**,
+the assistant shows cards for other commands. Do not ask for duplicate
+confirmation of work the person already requested; administrator authentication
+still goes through the system dialog.
 
 Each check has `id`, `state`, `summary`, `detail` and `facts`. Facts never
 contain serials, addresses, hostnames, user names or home paths; `[user]`,

@@ -6,8 +6,8 @@ import "../Common/AssistantHelpers.js" as AssistantHelpers
 
 // Assistant: who answers, what it may see and hear, and how it looks
 // (docs/assistant.md). The agents keep their own sign-in and settings; this
-// page only chooses between them. Screen context and spoken replies are off
-// until switched on here.
+// page chooses the agent and the assistant's tool permissions. Screen context
+// and spoken replies are off until switched on here.
 SettingsPage {
     id: page
     pageReset: true
@@ -94,7 +94,16 @@ SettingsPage {
             }
             SettingsHint {
                 width: parent.width
-                text: I18n.tr("Automatic follows your cybex agent default, then whichever is installed. Sign-in and permissions stay with the agent itself.")
+                text: I18n.tr("Automatic follows your cybex agent default, then whichever is installed. Sign-in stays with the agent itself.")
+            }
+            PickerRow {
+                width: parent.width
+                label: I18n.tr("Tool permissions")
+                settingKey: "assistantApprovalPolicy"
+                model: [
+                    { value: "always", label: I18n.tr("Always allow") },
+                    { value: "ask", label: I18n.tr("Ask first") }
+                ]
             }
             ValueRow {
                 width: parent.width

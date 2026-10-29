@@ -127,6 +127,8 @@ with a test-only IPC target. Shortcut state is served by a fake `hyprctl`
   selection, with a scripted offline listing/download boundary;
 - real Matugen generation for the default and selected images, light/dark
   palettes, explicit fixed-colour preservation, and Style → Shortcuts navigation;
+- switching from a named theme to One accent colour with the actual keyboard
+  controls, clearing the preset palette and applying each of the six accents;
 - Space typing in Wallhaven search without a request;
 - the Space peek, by comparing a frame taken while Space is held (past the
   key-repeat delay) with a desktop-only frame;

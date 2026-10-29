@@ -18,6 +18,16 @@ Item {
         .filter((name, index, names) => names.indexOf(name) === index)
     Component.onCompleted: { if (!Themes.loaded) Themes.refresh(); }
 
+    function useAccent(colour) {
+        // Fixed palettes are also used by named themes. Leave the preset
+        // explicitly, including its surface colours, even when this accent
+        // already matches the preset's accent.
+        Settings.set("theme", "");
+        Settings.set("themePalette", Settings.defaults.themePalette);
+        Settings.set("paletteMode", "fixed");
+        Settings.set("accent", colour);
+    }
+
     component Option: Item {
         id: option
         property string value: ""
@@ -241,7 +251,7 @@ Item {
                     value: "accent"
                     glyph: "circle-dot"
                     title: I18n.tr("One accent colour")
-                    onChosen: Settings.set("paletteMode", "fixed")
+                    onChosen: root.useAccent(Settings.accent)
                     Row {
                         spacing: Kiosk.px(8)
                         topPadding: Kiosk.px(4)
@@ -264,8 +274,7 @@ Item {
                                 Accessible.checked: chosen
                                 Accessible.onPressAction: accent.use()
                                 function use() {
-                                    Settings.set("paletteMode", "fixed");
-                                    Settings.set("accent", accent.modelData);
+                                    root.useAccent(accent.modelData);
                                 }
                                 Keys.onPressed: event => {
                                     if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
