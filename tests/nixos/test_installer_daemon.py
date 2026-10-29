@@ -15,7 +15,7 @@ import signal
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'lifecycle'))
@@ -281,6 +281,46 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
             self.service.handle_event({'event': 'complete', 'username': 'ada', 'encrypted': True})
         with patch.object(daemon.time, 'monotonic', return_value=500.0):
             self.assertEqual(self.service.snapshot()['elapsed'], 42)
+
+    async def test_progress_keeps_streaming_without_rewriting_an_unchanged_draft(self):
+        await self.setup_phase()
+        if self.service.network_task:
+            await self.service.network_task
+        await asyncio.sleep(0)
+        with patch.object(daemon.os, 'replace', wraps=os.replace) as replace:
+            self.service.update(message='Downloading the system…')
+            await self.until(lambda m: m['type'] == 'state' and m['message'] == 'Downloading the system…')
+            replace.assert_not_called()
+            await self.send(action='draft', values={'apps': {'assistant': False}})
+            await self.until(lambda m: m['type'] == 'state' and m['draft']['apps'].get('assistant') is False)
+            replace.assert_called_once()
+        saved = json.loads((self.root / 'run/draft.json').read_text())
+        self.assertIs(saved['draft']['apps']['assistant'], False)
+        restarted = daemon.Daemon([], network_helper='')
+        self.assertEqual(restarted.draft['apps'], saved['draft']['apps'])
+
+    async def test_a_failed_draft_write_is_retried_on_the_next_state(self):
+        await self.setup_phase()
+        with patch.object(daemon.os, 'replace', side_effect=OSError('write failed')):
+            await self.send(action='draft', values={'username': 'retry-save'})
+            await self.until(lambda m: m['type'] == 'state' and m['draft']['username'] == 'retry-save')
+        self.service.update(message='Retrying draft persistence')
+        await self.until(lambda m: m['type'] == 'state' and m['message'] == 'Retrying draft persistence')
+        saved = json.loads((self.root / 'run/draft.json').read_text())
+        self.assertEqual(saved['draft']['username'], 'retry-save')
+
+    async def test_broadcast_encodes_once_and_a_failed_client_does_not_block_others(self):
+        await self.setup_phase()
+        good, failed = Mock(), Mock()
+        failed.write.side_effect = OSError('disconnected')
+        clients = {good, failed}
+        with patch.object(self.service, 'clients', clients), patch.object(self.service, 'encode', wraps=self.service.encode) as encode:
+            message = {'type': 'state', 'message': 'Checking this medium…'}
+            self.service.send_all(message)
+            encode.assert_called_once_with(message)
+            self.assertEqual(clients, {good})
+        self.assertEqual(json.loads(good.write.call_args.args[0]), message)
+        self.assertIs(good.write.call_args.args[0], failed.write.call_args.args[0])
 
     async def test_slow_details_do_not_block_edits_and_refreshes_are_coalesced(self):
         await self.setup_phase()

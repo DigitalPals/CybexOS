@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type Dispatch } from 'react';
+import { useCallback, useEffect, useRef, useState, type Dispatch } from 'react';
 import { Activity, ArrowRight, Check, ChevronDown, Clock3, Eye, EyeOff, Info, Pause, Play, RefreshCw, RotateCcw, Server, ShieldCheck, SlidersHorizontal, X } from 'lucide-react';
 import { eligibleAccounts, providerSummary, usageReducer, type ProviderId, type UsageAccount, type UsageAction, type UsageState } from '../lib/model-usage';
 import { Overlay } from './Overlay';
@@ -78,10 +78,32 @@ interface ModelUsagePanelProps {
 }
 
 export function ModelUsagePanel({ state, dispatch, provider, setProvider, now: suppliedNow, close }: ModelUsagePanelProps) {
-  const clock = useWallTime(1000, suppliedNow === undefined);
-  const now = suppliedNow ?? clock?.getTime() ?? state.updatedAt;
   const [view, setView] = useState<View>('limits');
   const [details, setDetails] = useState(true);
+  // Labels have minute precision, but their boundaries follow each quota or
+  // request timestamp rather than wall-clock minutes. Wake exactly when a
+  // displayed label can change, including sub-second reset deadlines.
+  const nextUpdateAt = useCallback((now: number) => {
+    let next = now + 60_000;
+    if (view === 'limits') {
+      for (const account of state.accounts) {
+        if (account.provider !== provider) continue;
+        for (const resetAt of details ? [account.weeklyResetAt, account.sessionResetAt] : [account.weeklyResetAt]) {
+          if (resetAt > now) next = Math.min(next, resetAt - (Math.ceil((resetAt - now) / 60_000) - 1) * 60_000);
+        }
+      }
+    } else if (view === 'activity') {
+      for (const event of state.events) {
+        if (event.provider !== provider) continue;
+        const age = Math.max(0, now - event.createdAt);
+        const resolution = age < 3_600_000 ? 60_000 : 3_600_000;
+        next = Math.min(next, event.createdAt + (Math.floor(age / resolution) + 1) * resolution);
+      }
+    }
+    return next;
+  }, [state.accounts, state.events, provider, view, details]);
+  const clock = useWallTime(60_000, suppliedNow === undefined && view !== 'proxy', nextUpdateAt);
+  const now = suppliedNow ?? clock?.getTime() ?? state.updatedAt;
   const [hideEmails, setHideEmails] = useState(true);
   const [live, setLive] = useState(false);
   const [refreshed, setRefreshed] = useState(false);

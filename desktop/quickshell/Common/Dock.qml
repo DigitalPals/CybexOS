@@ -19,15 +19,37 @@ Singleton {
 
     // Focus history, most recent first, for "focus the app's last window".
     property var recent: []
-    readonly property string browserId: String((DefaultApplications.roles.browser || {}).effective || "").replace(/\.desktop$/, "")
-    readonly property string terminalId: String((DefaultApplications.roles.terminal || {}).effective || "").replace(/\.desktop$/, "")
+    property var effectiveDefaults: ({})
+    property int defaultsEpoch: 0
+    readonly property string browserId: String(effectiveDefaults.browser || "").replace(/\.desktop$/, "")
+    readonly property string terminalId: String(effectiveDefaults.terminal || "").replace(/\.desktop$/, "")
     property var webApps: []
     readonly property var desktopApps: DesktopEntries.applications.values
 
     // One local registry read on construction and when desktop entries change,
     // coalesced across installs/removals. No network or per-window subprocess.
     onDesktopAppsChanged: { webAppRefresh.restart(); DefaultApplications.refresh(); }
-    Component.onCompleted: { webAppRefresh.restart(); DefaultApplications.refresh(); }
+    Component.onCompleted: { webAppRefresh.restart(); refreshDefaults(); }
+
+    function refreshDefaults() {
+        if (defaultsRequest.busy)
+            return;
+        defaultsRequest.epoch = defaultsEpoch;
+        defaultsRequest.run(["cybexos-apps", "effective-defaults"]);
+    }
+
+    // Settings already obtains full status after a selection. Publish it
+    // immediately, and prevent an earlier periodic query from replacing it.
+    Connections {
+        target: DefaultApplications
+        function onRolesChanged() {
+            root.defaultsEpoch++;
+            root.effectiveDefaults = {
+                browser: (DefaultApplications.roles.browser || {}).effective || "",
+                terminal: (DefaultApplications.roles.terminal || {}).effective || ""
+            };
+        }
+    }
 
     readonly property string activeAddress: Hyprland.activeToplevel
         ? Hyprland.activeToplevel.address : ""
@@ -210,5 +232,15 @@ Singleton {
     }
 
     // GIO and xdg-terminal-exec resolve personal and system defaults together.
-    Timer { interval: 30000; repeat: true; running: true; onTriggered: DefaultApplications.refresh() }
+    // This shared singleton queries only the effective IDs on periodic ticks;
+    // installed-app changes above still refresh the Settings catalog.
+    JsonCommand {
+        id: defaultsRequest
+        property int epoch: 0
+        onCompleted: value => {
+            if (epoch === root.defaultsEpoch)
+                root.effectiveDefaults = value;
+        }
+    }
+    Timer { interval: 30000; repeat: true; running: true; onTriggered: root.refreshDefaults() }
 }

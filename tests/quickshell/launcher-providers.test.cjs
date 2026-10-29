@@ -110,6 +110,35 @@ test("user actions require a name and argv command and cannot inject glyphs", ()
     assert.notEqual(P.parseActions("{}").error, "");
 });
 
+test("bounded emoji search preserves score order, source ties and result limits", () => {
+    const names = ["face", "face smiling", "grinning face", "typeface", "not a match"];
+    const entries = Array.from({ length: 4000 }, (_, index) => ({
+        name: names[index % names.length], emoji: `emoji-${index}`
+    }));
+    const score = (name, query) => {
+        const target = name.toLowerCase(), needle = query.trim().toLowerCase();
+        if (!needle) return 1;
+        if (target === needle) return 10000;
+        if (target.startsWith(needle)) return 8000;
+        if (target.split(/[^a-z0-9]+/).some(word => word.startsWith(needle))) return 6000;
+        return target.includes(needle) ? 4000 : -1;
+    };
+    for (const query of ["", " FaCe ", "smil", "missing"]) {
+        const expected = entries.map((entry, index) => ({ index, score: score(entry.name, query) }))
+            .filter(row => row.score >= 0).sort((a, b) => b.score - a.score || a.index - b.index);
+        for (const limit of [-1, 0, 0.5, 1, 8, 18, 5000, Infinity]) {
+            const rows = P.emojiRows(entries, query, limit);
+            const selected = expected.slice(0, Math.max(0, Number(limit) || 0));
+            assert.deepEqual(rows.map(row => [row.sourceIndex, row.score]),
+                selected.map(row => [row.index, row.score]), `${query}, ${limit}`);
+            for (const row of rows) {
+                assert.equal(row.title, entries[row.sourceIndex].name);
+                assert.equal(row.value, entries[row.sourceIndex].emoji);
+            }
+        }
+    }
+});
+
 function qmlFiles(dir) {
     return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
         const full = path.join(dir, entry.name);

@@ -4,6 +4,16 @@ const { load } = require("./shell.cjs");
 const H = load("UpdatesHelpers.js");
 const available = { upstream: { state: "available", available: "new revision" }, cybexos: { state: "unavailable" } };
 
+test("updater status polling slows only when its window and worker are idle", () => {
+    for (const state of ["idle", "done", "ready", "awaiting-boot", "failed", "unavailable"])
+        assert.equal(H.statusPollInterval(false, false, state), 30000, state);
+    assert.equal(H.statusPollInterval(true, false, "idle"), 2000, "visible status remains responsive");
+    assert.equal(H.statusPollInterval(false, true, "building"), 2000, "background progress remains responsive");
+    assert.equal(H.statusPollInterval(false, true, "idle"), 2000, "queued requests keep the fast cadence");
+    assert.equal(H.statusPollInterval(false, false, "awaiting-login"), 2000,
+        "boot confirmation and its result retain the fast cadence");
+});
+
 test("progress distinguishes compilation from measured downloads and handles old workers", () => {
     const deployment = {state: "building", progress: {schema: 1, active: true, step: "downloading",
         downloads: {doneBytes: 25e6, expectedBytes: 100e6, active: 2, totalKnown: true},

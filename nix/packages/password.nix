@@ -3,7 +3,10 @@ let python = python3.withPackages (p: [ p.pyside6 ]); in
 stdenvNoCC.mkDerivation {
   pname = "cybexos-password";
   version = lib.trim (builtins.readFile (source + /VERSION));
-  src = source;
+  src = import ../package-source.nix {
+    inherit lib source;
+    paths = [ "desktop/password/cybexos-password.py" ];
+  };
   nativeBuildInputs = [ makeWrapper qt6.wrapQtAppsHook ];
   buildInputs = [ qt6.qtbase ];
   dontWrapQtApps = true;

@@ -380,8 +380,11 @@ function words(value) {
 }
 
 function textScore(value, query) {
+    return textScoreForNeedle(value, String(query || "").trim().toLowerCase());
+}
+
+function textScoreForNeedle(value, needle) {
     var target = String(value || "").toLowerCase();
-    var needle = String(query || "").trim().toLowerCase();
     if (needle === "")
         return 1;
     if (target === needle)
@@ -594,11 +597,30 @@ function parseEmojiData(text) {
 }
 
 function emojiRows(entries, query, limit) {
-    var max = Math.max(0, Number(limit) || 0);
-    return (Array.isArray(entries) ? entries : []).map(function(entry, index) {
-        var score = textScore(entry && entry.name, query);
+    var max = Math.max(0, Math.floor(Number(limit) || 0));
+    if (max === 0)
+        return [];
+    var source = Array.isArray(entries) ? entries : [];
+    var needle = String(query || "").trim().toLowerCase();
+    // textScore has five fixed relevance levels. Retain at most the visible
+    // limit from each, in source order, then materialize just the winning
+    // rows. A broad query must not allocate and sort the whole emoji catalog.
+    var scores = [10000, 8000, 6000, 4000, 1];
+    var buckets = [[], [], [], [], []];
+    for (var index = 0; index < source.length; index++) {
+        var entry = source[index];
+        var score = textScoreForNeedle(entry && entry.name, needle);
         if (score < 0)
-            return null;
+            continue;
+        var bucket = buckets[scores.indexOf(score)];
+        if (bucket.length < max)
+            bucket.push(index);
+        if (needle === "" && bucket.length === max)
+            break;
+    }
+    var selected = [].concat.apply([], buckets).slice(0, max);
+    return selected.map(function(index) {
+        var entry = source[index];
         return {
             providerId: "emoji",
             kind: "emoji",
@@ -607,12 +629,10 @@ function emojiRows(entries, query, limit) {
             iconText: String(entry.emoji || ""),
             glyph: providerById("emoji").glyph,
             value: String(entry.emoji || ""),
-            score: score,
+            score: textScoreForNeedle(entry && entry.name, needle),
             sourceIndex: index
         };
-    }).filter(Boolean).sort(function(a, b) {
-        return b.score - a.score || a.sourceIndex - b.sourceIndex;
-    }).slice(0, max);
+    });
 }
 
 function cleanString(value, maxLength) {

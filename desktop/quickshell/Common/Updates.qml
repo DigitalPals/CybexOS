@@ -305,7 +305,13 @@ Singleton {
             root.startUnit("cybexos-update-confirm.service");
         }
     }
-    Timer { interval: 2000; repeat: true; running: true; triggeredOnStart: true; onTriggered: root.refreshStatus() }
+    Timer {
+        interval: Helpers.statusPollInterval(root.appOpen, root.runActive, root.deployment.state)
+        repeat: true
+        running: true
+        triggeredOnStart: true
+        onTriggered: root.refreshStatus()
+    }
     Timer {
         interval: Math.max(10, Number((Settings.modOpts.updates || {}).pollMins) || 60) * 60000
         repeat: true; running: true; triggeredOnStart: true; onTriggered: root.check()

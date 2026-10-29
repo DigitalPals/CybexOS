@@ -122,6 +122,18 @@ def status():
     return {'roles': result}
 
 
+def effective_defaults():
+    # The dock only needs these two effective IDs, not an installed-app
+    # catalog and six Settings choice lists. Use the same GIO/terminal
+    # resolution as full status, including unavailable-default fallbacks.
+    load_choices()
+    result = {}
+    for role in ('browser', 'terminal'):
+        app = current(role)
+        result[role] = app.get_id() if app else ''
+    return result
+
+
 def select(role, identifier):
     _, _, Desktop = libraries()
     app = desktop_app(identifier)
@@ -236,6 +248,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='action', required=True)
     sub.add_parser('status')
+    sub.add_parser('effective-defaults')
     choose = sub.add_parser('set'); choose.add_argument('role', choices=ROLES); choose.add_argument('desktop_id')
     term = sub.add_parser('terminal'); term.add_argument('arguments', nargs=argparse.REMAINDER)
     web = sub.add_parser('browser'); web.add_argument('--private', action='store_true'); web.add_argument('addresses', nargs='*')
@@ -246,6 +259,7 @@ def main():
         terminal(sys.argv[2:]); return
     args = parser.parse_args()
     if args.action == 'status': print(json.dumps(status()))
+    elif args.action == 'effective-defaults': print(json.dumps(effective_defaults()))
     elif args.action == 'set': print(json.dumps(select(args.role, args.desktop_id)))
     elif args.action == 'terminal': terminal(args.arguments)
     elif args.action == 'browser': browser(args.addresses, args.private)
@@ -258,7 +272,7 @@ if __name__ == '__main__':
     except Exception as error:
         # GIO diagnostics and application arguments can contain private URLs.
         message = str(error) if isinstance(error, ValueError) else 'The application request failed. Check the selected application and retry.'
-        if len(sys.argv) > 1 and sys.argv[1] not in ('status', 'set'):
+        if len(sys.argv) > 1 and sys.argv[1] not in ('status', 'effective-defaults', 'set'):
             notify('Application could not be opened', message)
         print(json.dumps({'error': message}), file=sys.stderr)
         sys.exit(1)

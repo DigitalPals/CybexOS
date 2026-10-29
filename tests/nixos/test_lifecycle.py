@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'lifecycle'))
 from cybexos.common import CommandFailure, Failure, Runner, atomic, digest, locked, parse, read, syncdir
 from cybexos import inputs, trust
-from cybexos.engine import Engine, config_digest, copy_config
+from cybexos.engine import Engine, config_digest, configuration_paths, copy_config
 
 REV_OLD, REV_NEW = '1' * 40, '2' * 40
 NAR_OLD, NAR_NEW = 'sha256-' + 'A' * 43 + '=', 'sha256-' + 'B' * 43 + '='
@@ -48,6 +48,98 @@ def release():
             'minUpdater':1,'notes':'A qualified release','vendorInputs':['lanzaboote'],
             'assets':[{'name':'source.tar.gz','url':'https://github.com/DigitalPals/CybexOS/releases/download/v1.1.0/source.tar.gz',
                        'sha256':'f'*64,'bytes':1}]}
+
+
+class ConfigurationIdentityTests(unittest.TestCase):
+    def test_configuration_identity_prunes_git_before_reading_its_tree(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / 'source'
+            (source / 'local/.git/objects').mkdir(parents=True)
+            (source / '.git/objects').mkdir(parents=True)
+            (source / 'local/personal.nix').write_text('{}\n')
+            (source / 'local/service').write_bytes(b'#!/bin/sh\nexit 0\n')
+            (source / 'local/service').chmod(0o755)
+            (source / 'empty').mkdir()
+            (source / 'payload').write_bytes(b'A' * (2 * 1024 * 1024 + 7))
+            scanned = []
+            scandir = os.scandir
+            def inspect(path):
+                scanned.append(Path(path))
+                if '.git' in Path(path).relative_to(source).parts:
+                    self.fail('Git bookkeeping must not be traversed')
+                return scandir(path)
+            with patch('os.scandir', side_effect=inspect):
+                self.assertEqual(config_digest(source),
+                                 '676492bad4dc0de6f8bc01eaa892092a40c6891c64438e0b37e1a72d51c969ed')
+            self.assertEqual(set(scanned), {source, source / 'local', source / 'empty'})
+            self.assertEqual({str(p.relative_to(source)) for p in configuration_paths(source)},
+                             {'local', 'local/personal.nix', 'local/service', 'empty', 'payload'})
+            target = Path(directory) / 'staged'
+            copy_config(source, target)
+            self.assertEqual(config_digest(target), config_digest(source))
+            self.assertFalse((target / '.git').exists())
+            self.assertFalse((target / 'local/.git').exists())
+
+    def test_pruned_traversal_still_rejects_links_and_special_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'source'
+            source.mkdir()
+            external = root / 'external'
+            external.mkdir()
+            link = source / 'personal'
+            link.symlink_to(external, target_is_directory=True)
+            for kind in ('link', 'fifo'):
+                if kind == 'fifo':
+                    link.unlink()
+                    os.mkfifo(link)
+                with self.subTest(kind=kind):
+                    with self.assertRaisesRegex(Failure, 'link or special file'):
+                        config_digest(source)
+                    with self.assertRaisesRegex(Failure, 'link or special file'):
+                        copy_config(source, root / 'staged')
+
+    def test_growth_and_truncation_during_hashing_refuse_an_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            personal = root / 'personal.nix'
+            original = b'personal configuration\n' * 8
+            fstat = os.fstat
+            for change, updated in (('growth', original + b'more configuration\n'),
+                                    ('truncation', original[:12])):
+                with self.subTest(change=change):
+                    personal.write_bytes(original)
+                    def edit_after_size_is_observed(descriptor):
+                        metadata = fstat(descriptor)
+                        # Change the real open file synchronously after its
+                        # size is recorded, avoiding scheduling-dependent races.
+                        personal.write_bytes(updated)
+                        return metadata
+                    with patch('cybexos.engine.os.fstat', side_effect=edit_after_size_is_observed):
+                        with self.assertRaisesRegex(Failure, 'configuration changed'):
+                            config_digest(root)
+                    self.assertEqual(personal.read_bytes(), updated)
+
+    def test_unreadable_personal_directory_refuses_partial_identity_and_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'source'
+            personal = source / 'local'
+            personal.mkdir(parents=True)
+            (personal / 'module.nix').write_text('{}\n')
+            failure = PermissionError(13, 'Permission denied', str(personal))
+            scandir = os.scandir
+            def inaccessible(path):
+                if Path(path) == personal:
+                    raise failure
+                return scandir(path)
+            with patch('os.scandir', side_effect=inaccessible):
+                with self.assertRaises(PermissionError) as raised:
+                    config_digest(source)
+                self.assertIs(raised.exception, failure)
+                with self.assertRaises(PermissionError):
+                    copy_config(source, root / 'staged')
+            self.assertFalse((root / 'staged').exists())
 
 
 class TrustTests(unittest.TestCase):

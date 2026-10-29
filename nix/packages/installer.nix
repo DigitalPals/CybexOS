@@ -57,7 +57,10 @@ let
 in stdenvNoCC.mkDerivation {
   pname = "cybexos-installer";
   inherit version;
-  src = source;
+  src = import ../package-source.nix {
+    inherit lib source;
+    paths = [ "installer/cybexos-installerd" "desktop/quickshell/scripts/network-tool.py" ];
+  };
   nativeBuildInputs = [ makeWrapper ];
   dontBuild = true;
   installPhase = ''

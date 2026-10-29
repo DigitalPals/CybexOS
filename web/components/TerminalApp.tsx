@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import type { AppProps } from '../lib/types';
 import { completeInput, displayPath, HOME_PATH, runCommand, SYSTEM_INFO } from '../lib/terminal';
@@ -11,6 +11,24 @@ type Entry = { id: number; command: string; cwd: string; output: string; fastfet
 function PromptContext({ cwd }: { cwd: string }) {
   return <div className="terminal-prompt-context"><span className="terminal-user">guest<span>@</span>cybexos</span><span className="terminal-path">{displayPath(cwd)}</span></div>;
 }
+
+// Submitted entries are immutable. Typing and browsing completion/history
+// should only update the active prompt, even with a full scrollback buffer.
+const TerminalEntry = memo(function TerminalEntry({ entry }: { entry: Entry }) {
+  return <div className="terminal-entry">
+    <div className="terminal-command">
+      <PromptContext cwd={entry.cwd} />
+      <div className="terminal-command-line"><span className="terminal-chevron" aria-hidden="true">❯</span><span>{entry.command}{entry.cancelled && <span className="terminal-interrupt">^C</span>}</span></div>
+    </div>
+    {entry.fastfetch ? <Fastfetch /> : entry.output && <pre>{entry.output}</pre>}
+  </div>;
+});
+
+const TerminalHistory = memo(function TerminalHistory({ entries }: { entries: Entry[] }) {
+  return <div className="terminal-history" role="log" aria-label="Terminal output" aria-live="polite">
+    {entries.map(entry => <TerminalEntry key={entry.id} entry={entry} />)}
+  </div>;
+});
 
 export function TerminalApp({ openApp }: AppProps) {
   const [cwd, setCwd] = useState(HOME_PATH);
@@ -111,15 +129,7 @@ export function TerminalApp({ openApp }: AppProps) {
     <div className="terminal-app" onClick={() => { if (!window.getSelection()?.toString()) inputRef.current?.focus(); }}>
       <div className="terminal-scroll" ref={scrollRef}>
         <div className="terminal-intro"><span>fish <span className="terminal-intro-version">4.3</span> <span className="terminal-intro-divider">/</span> Welcome to Cybex OS</span><button onClick={(event) => { event.stopPropagation(); setInput('help'); setHistoryIndex(-1); setCompletions([]); inputRef.current?.focus(); }}>help ↵</button></div>
-        <div className="terminal-history" role="log" aria-label="Terminal output" aria-live="polite">
-          {entries.map((entry) => <div className="terminal-entry" key={entry.id}>
-            <div className="terminal-command">
-              <PromptContext cwd={entry.cwd} />
-              <div className="terminal-command-line"><span className="terminal-chevron" aria-hidden="true">❯</span><span>{entry.command}{entry.cancelled && <span className="terminal-interrupt">^C</span>}</span></div>
-            </div>
-            {entry.fastfetch ? <Fastfetch /> : entry.output && <pre>{entry.output}</pre>}
-          </div>)}
-        </div>
+        <TerminalHistory entries={entries} />
         <div className="terminal-active-prompt">
           <PromptContext cwd={cwd} />
           <div className="terminal-prompt">

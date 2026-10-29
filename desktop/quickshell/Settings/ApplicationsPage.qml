@@ -5,6 +5,14 @@ import "../Common"
 SettingsPage {
     id: page
     Component.onCompleted: DefaultApplications.refresh()
+    // Keep external default changes visible in Settings without enumerating
+    // every installed application while this page is closed.
+    Timer {
+        interval: 30000
+        repeat: true
+        running: Settings.panelOpen && page.visible
+        onTriggered: DefaultApplications.refresh()
+    }
     Column {
         width: parent.width
         spacing: Theme.settingsGroupSpacing
