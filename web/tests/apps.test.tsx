@@ -3,6 +3,15 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TerminalApp } from '../components/TerminalApp';
 
+const renders = vi.hoisted(() => ({ fastfetch: 0 }));
+vi.mock('../components/Fastfetch', async importOriginal => {
+  const original = await importOriginal<typeof import('../components/Fastfetch')>();
+  return { ...original, Fastfetch: () => {
+    renders.fastfetch++;
+    return <original.Fastfetch />;
+  } };
+});
+
 describe('terminal interactions', () => {
   it('does not submit a pending command when the desktop Alt+Enter shortcut is pressed', async () => {
     const user = userEvent.setup();
@@ -18,6 +27,22 @@ describe('terminal interactions', () => {
 });
 
 describe('improved terminal', () => {
+  it('keeps submitted output out of typing, completion and append updates', async () => {
+    const user = userEvent.setup();
+    render(<TerminalApp openApp={vi.fn()} notify={vi.fn()} />);
+    const input = screen.getByRole('textbox', { name: 'Terminal command' });
+    const before = renders.fastfetch;
+    await user.type(input, 'echo a draft with several words');
+    expect(renders.fastfetch).toBe(before);
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('log')).toHaveTextContent('a draft with several words');
+    expect(renders.fastfetch).toBe(before);
+    await user.type(input, 'fas');
+    await user.keyboard('{Tab}{Enter}');
+    expect(screen.getAllByRole('region', { name: 'Cybex OS system overview' })).toHaveLength(2);
+    expect(renders.fastfetch).toBe(before + 1);
+  });
+
   it('shows a readable Cybex OS overview for fastfetch aliases and options', async () => {
     const user = userEvent.setup();
     render(<TerminalApp openApp={vi.fn()} notify={vi.fn()} />);

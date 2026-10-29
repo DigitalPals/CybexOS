@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / 'assets/scripts/cybexos-apps'
@@ -21,6 +22,36 @@ try:
     HAS_GIO = True
 except ImportError:
     HAS_GIO = False
+
+
+class EffectiveDefaultsTests(unittest.TestCase):
+    def test_effective_defaults_resolves_only_browser_and_terminal_without_catalog(self):
+        browser = Mock(); browser.get_id.return_value = 'browser.desktop'
+        terminal = Mock(); terminal.get_id.return_value = 'terminal.desktop'
+        gio = Mock()
+        gio.AppInfo.get_default_for_type.return_value = browser
+        gio.AppInfo.get_all.side_effect = AssertionError('effective defaults must not enumerate applications')
+        desktop = Mock(); desktop.new.return_value = terminal
+        process = Mock(returncode=0, stdout='terminal.desktop:desktop-action\n')
+        with patch.object(apps, 'libraries', return_value=(gio, None, desktop)), \
+                patch.object(apps, 'load_choices', return_value={}), \
+                patch.object(apps.subprocess, 'run', return_value=process):
+            self.assertEqual(apps.effective_defaults(), {'browser':'browser.desktop', 'terminal':'terminal.desktop'})
+        gio.AppInfo.get_default_for_type.assert_called_once_with('x-scheme-handler/http', False)
+        gio.AppInfo.get_all.assert_not_called()
+        desktop.new.assert_called_once_with('terminal.desktop')
+
+    def test_missing_defaults_remain_empty_and_resolution_errors_propagate(self):
+        with patch.object(apps, 'load_choices', return_value={}), \
+                patch.object(apps, 'current', return_value=None):
+            self.assertEqual(apps.effective_defaults(), {'browser':'', 'terminal':''})
+        with patch.object(apps, 'load_choices', side_effect=ValueError('Preserve preferences')):
+            with self.assertRaisesRegex(ValueError, 'Preserve preferences'):
+                apps.effective_defaults()
+        with patch.object(apps, 'load_choices', return_value={}), \
+                patch.object(apps, 'current', side_effect=TimeoutError('terminal lookup')):
+            with self.assertRaises(TimeoutError):
+                apps.effective_defaults()
 
 
 @unittest.skipUnless(HAS_GIO and shutil.which('xdg-terminal-exec'), 'GIO and xdg-terminal-exec are provided by nix develop')
@@ -75,6 +106,22 @@ class DefaultApplicationTests(unittest.TestCase):
         self.run_apps('terminal', '--title=Two words', '--', 'printf', 'literal $(touch no-file)')
         self.assertEqual(self.captured(), ['--title=Two words', '-e', 'printf', 'literal $(touch no-file)'])
         self.assertFalse((self.base / 'no-file').exists())
+
+    def test_effective_defaults_matches_full_status_and_follows_external_changes(self):
+        self.run_apps('set', 'browser', 'browser.desktop')
+        self.run_apps('set', 'terminal', 'terminal.desktop')
+        before = (self.base / 'config/cybexos/default-applications.json').read_bytes()
+        status = self.run_apps('status')['roles']
+        self.assertEqual(self.run_apps('effective-defaults'),
+                         {role:status[role]['effective'] for role in ('browser', 'terminal')})
+        self.desktop('other-browser.desktop', 'Browser', 'MimeType=x-scheme-handler/http;x-scheme-handler/https;text/html;\n')
+        path = self.base / 'config/mimeapps.list'
+        path.write_text(path.read_text().replace('browser.desktop', 'other-browser.desktop'))
+        status = self.run_apps('status')['roles']
+        effective = self.run_apps('effective-defaults')
+        self.assertEqual(effective, {role:status[role]['effective'] for role in ('browser', 'terminal')})
+        self.assertEqual(effective['browser'], 'other-browser.desktop')
+        self.assertEqual((self.base / 'config/cybexos/default-applications.json').read_bytes(), before)
 
     def test_explicit_editor_override_and_removed_application_choice_survive(self):
         self.run_apps('set', 'editor', 'editor.desktop')

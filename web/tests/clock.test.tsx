@@ -15,7 +15,7 @@ vi.mock('../components/Window', async importOriginal => {
   } };
 });
 
-afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('scoped wall clocks', () => {
   it('ticks on the minute boundary and resynchronizes across midnight after sleep', () => {
@@ -40,10 +40,96 @@ describe('scoped wall clocks', () => {
     vi.setSystemTime(new Date(2026, 9, 15, 12, 34, 55));
     render(<Desktop />);
     const before = renders.windows;
-    // Cross a displayed minute without reaching the existing 30s usage refresh.
-    for (let second = 0; second < 20; second++) act(() => vi.advanceTimersByTime(1000));
+    // An idle hour includes 120 former quota polling intervals.
+    act(() => vi.advanceTimersByTime(60 * 60_000));
     expect(renders.windows - before).toBe(0);
-    expect(screen.getByText('12:35')).toBeVisible();
+    expect(screen.getByText('13:34')).toBeVisible();
+  });
+
+  it('refreshes quotas at their exact deadline and catches up after a hidden tab wakes', () => {
+    vi.useFakeTimers();
+    const start = new Date(2026, 9, 15, 12, 0).getTime();
+    vi.setSystemTime(start);
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+    const view = render(<Desktop />);
+    const codex = screen.getByRole('button', { name: 'Open Codex model usage' });
+    expect(codex).toHaveAttribute('title', expect.stringContaining('72% remaining'));
+    act(() => vi.advanceTimersByTime(90 * 60_000 - 1));
+    expect(codex).toHaveAttribute('title', expect.stringContaining('72% remaining'));
+    act(() => vi.advanceTimersByTime(1));
+    expect(codex).toHaveAttribute('title', expect.stringContaining('84% remaining'));
+
+    hidden.mockReturnValue(true);
+    fireEvent(document, new Event('visibilitychange'));
+    expect(vi.getTimerCount()).toBe(0);
+    vi.setSystemTime(start + 8 * 24 * 60 * 60_000);
+    fireEvent(window, new Event('focus'));
+    expect(codex).toHaveAttribute('title', expect.stringContaining('84% remaining'));
+    hidden.mockReturnValue(false);
+    fireEvent(document, new Event('visibilitychange'));
+    expect(codex).toHaveAttribute('title', expect.stringContaining('100% remaining'));
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+    hidden.mockRestore();
+  });
+
+  it('handles foreground clock corrections without refreshing unchanged quotas', () => {
+    vi.useFakeTimers();
+    const start = new Date(2026, 9, 15, 12, 0).getTime();
+    vi.setSystemTime(start);
+    const view = render(<Desktop />);
+    const codex = screen.getByRole('button', { name: 'Open Codex model usage' });
+    const before = renders.windows;
+
+    vi.setSystemTime(start - 3 * 60 * 60_000);
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(codex).toHaveAttribute('title', expect.stringContaining('72% remaining'));
+    expect(renders.windows).toBe(before);
+
+    vi.setSystemTime(start + 2 * 60 * 60_000);
+    act(() => vi.advanceTimersByTime(29_999));
+    expect(codex).toHaveAttribute('title', expect.stringContaining('72% remaining'));
+    act(() => vi.advanceTimersByTime(1));
+    expect(codex).toHaveAttribute('title', expect.stringContaining('84% remaining'));
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('renders usage countdowns only when their displayed minute changes and stops the clock in Proxy', () => {
+    vi.useFakeTimers();
+    const start = new Date(2026, 9, 15, 12, 34, 10).getTime();
+    vi.setSystemTime(start);
+    const commit = vi.fn();
+    const view = render(<Profiler id="usage" onRender={commit}><ModelUsagePanel state={createUsageState(start)} dispatch={vi.fn()} provider="codex" setProvider={vi.fn()} close={vi.fn()} /></Profiler>);
+    const before = commit.mock.calls.length;
+    expect(screen.getByText('Resets in 1h 30m')).toBeVisible();
+    act(() => vi.advanceTimersByTime(59_999));
+    expect(commit).toHaveBeenCalledTimes(before);
+    act(() => vi.advanceTimersByTime(1));
+    expect(commit).toHaveBeenCalledTimes(before + 1);
+    expect(screen.getByText('Resets in 1h 29m')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Proxy' }));
+    expect(vi.getTimerCount()).toBe(0);
+    const inProxy = commit.mock.calls.length;
+    act(() => vi.advanceTimersByTime(5 * 60_000));
+    expect(commit).toHaveBeenCalledTimes(inProxy);
+    fireEvent.click(screen.getByRole('button', { name: 'Limits' }));
+    expect(screen.getByText('Resets in 1h 24m')).toBeVisible();
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('updates activity ages at request-relative minute boundaries', () => {
+    vi.useFakeTimers();
+    const start = new Date(2026, 9, 15, 12, 34, 10).getTime();
+    vi.setSystemTime(start);
+    const state = createUsageState(start);
+    state.events[0] = { ...state.events[0], createdAt: start - 59_900 };
+    render(<ModelUsagePanel state={state} dispatch={vi.fn()} provider="claude" setProvider={vi.fn()} close={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
+    expect(screen.getAllByRole('article')[0]).toHaveTextContent('Just now');
+    act(() => vi.advanceTimersByTime(100));
+    expect(screen.getAllByRole('article')[0]).toHaveTextContent('1m ago');
   });
 
   it('updates reset-due within a second while the usage panel is open', () => {

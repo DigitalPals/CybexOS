@@ -250,6 +250,7 @@ class Daemon:
         self.network_task = None
         self.pending_network = None
         self.pending_push = None
+        self.persisted_draft = None
         self.queries = {}
 
     # ── static data ──────────────────────────────────────────────────────────
@@ -286,19 +287,33 @@ class Daemon:
     def flush(self):
         self.pending_push = None
         self.send_all(self.snapshot())
+        draft = json.dumps({'draft': self.draft})
+        if draft == self.persisted_draft:
+            return
         with contextlib.suppress(OSError):
             RUNTIME.mkdir(parents=True, exist_ok=True)
             temporary = RUNTIME / 'draft.json.tmp'
-            temporary.write_text(json.dumps({'draft': self.draft}))
+            temporary.write_text(draft)
             os.replace(temporary, RUNTIME / 'draft.json')
+            self.persisted_draft = draft
 
     def send_all(self, message):
+        if not self.clients:
+            return
+        data = self.encode(message)
         for client in list(self.clients):
-            self.send(client, message)
+            self.send_bytes(client, data)
 
     def send(self, writer, message):
+        self.send_bytes(writer, self.encode(message))
+
+    @staticmethod
+    def encode(message):
+        return (json.dumps(message, ensure_ascii=False, separators=(',', ':')) + '\n').encode()
+
+    def send_bytes(self, writer, data):
         try:
-            writer.write((json.dumps(message, ensure_ascii=False, separators=(',', ':')) + '\n').encode())
+            writer.write(data)
         except (OSError, RuntimeError):
             self.clients.discard(writer)
             self.screens.discard(writer)

@@ -16,6 +16,7 @@ import { ControlDrawer, type DrawerTab } from './ControlDrawer';
 import { CalendarWithClock, DesktopClock } from './Clock';
 import { ModelUsageBar, ModelUsagePanel } from './ModelUsagePanel';
 import { createUsageState, usageReducer, type ProviderId } from '../lib/model-usage';
+import { useUsageRefresh } from './useUsageRefresh';
 
 const ICONS = { welcome: Command, terminal: Terminal, files: Folder, notes: StickyNote, settings: Settings2, shortcuts: Keyboard, usage: SlidersHorizontal };
 type Panel = 'launcher' | 'controls' | 'calendar' | 'usage' | 'layout' | null;
@@ -95,11 +96,7 @@ export default function Desktop() {
     setRatios(current => ({ ...current, [workspace]: Math.max(0.3, Math.min(0.7, next)) }));
   }
 
-  useEffect(() => {
-    usageDispatch({ type: 'initialize', now: Date.now() });
-    const timer = setInterval(() => usageDispatch({ type: 'refresh', now: Date.now() }), 30_000);
-    return () => clearInterval(timer);
-  }, []);
+  useUsageRefresh(usage, usageDispatch);
 
   const notify = useCallback((message: string) => {
     setNotices(items => [message, ...items].slice(0, 20));

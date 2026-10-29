@@ -5,6 +5,62 @@ const { load } = require("./shell.cjs");
 const D = load("DockHelpers.js");
 const S = load("SettingsHelpers.js");
 
+test("the shared dock polls effective defaults and preserves full catalog refresh on app changes", () => {
+    const { readFileSync } = require("node:fs");
+    const { join } = require("node:path");
+    const { shellDir } = require("./shell.cjs");
+    const source = readFileSync(join(shellDir, "Common/Dock.qml"), "utf8");
+    assert.match(source, /pragma Singleton/);
+    assert.match(source, /defaultsRequest\.run\(\["cybexos-apps", "effective-defaults"\]\)/);
+    assert.match(source, /interval: 30000; repeat: true; running: true; onTriggered: root\.refreshDefaults\(\)/);
+    assert.match(source, /onDesktopAppsChanged: \{ webAppRefresh\.restart\(\); DefaultApplications\.refresh\(\); \}/);
+});
+
+test("a newer Settings selection wins over a previously started dock query", () => {
+    const { readFileSync } = require("node:fs");
+    const { join } = require("node:path");
+    const vm = require("node:vm");
+    const { shellDir } = require("./shell.cjs");
+    const source = readFileSync(join(shellDir, "Common/Dock.qml"), "utf8");
+    const selected = source.match(/function onRolesChanged\(\) \{([\s\S]*?)\n        \}/)[1];
+    const completed = source.slice(source.indexOf("id: defaultsRequest"))
+        .match(/onCompleted: value => \{([\s\S]*?)\n        \}/)[1];
+    const root = { defaultsEpoch: 0, effectiveDefaults: {browser: "old.desktop", terminal: "terminal.desktop"} };
+    const context = vm.createContext({ root, epoch: 0, value: {browser:"old.desktop", terminal:"terminal.desktop"},
+        DefaultApplications: { roles: {browser:{effective:"new.desktop"}, terminal:{effective:"terminal.desktop"}} } });
+    vm.runInContext(selected, context);
+    vm.runInContext(completed, context);
+    assert.equal(root.effectiveDefaults.browser, "new.desktop");
+    context.epoch = root.defaultsEpoch;
+    context.value = {browser: "external.desktop", terminal: "other-terminal.desktop"};
+    vm.runInContext(completed, context);
+    assert.equal(root.effectiveDefaults.browser, "external.desktop", "later queries observe external defaults");
+    assert.equal(root.effectiveDefaults.terminal, "other-terminal.desktop");
+});
+
+test("full application catalogs refresh periodically only while their Settings page is open", () => {
+    const { readFileSync } = require("node:fs");
+    const { join } = require("node:path");
+    const vm = require("node:vm");
+    const { shellDir } = require("./shell.cjs");
+    const source = readFileSync(join(shellDir, "Settings/ApplicationsPage.qml"), "utf8");
+    const timer = source.match(/Timer\s*\{([\s\S]*?)\n    \}/)[1];
+    assert.match(timer, /interval: 30000/);
+    assert.match(timer, /repeat: true/);
+    const running = timer.match(/running: (.+)/)[1];
+    const triggered = timer.match(/onTriggered: (.+)/)[1];
+    let calls = 0;
+    const context = vm.createContext({ Settings: {panelOpen: false}, page: {visible: true},
+        DefaultApplications: {refresh: () => calls++} });
+    assert.equal(vm.runInContext(running, context), false);
+    context.Settings.panelOpen = true;
+    assert.equal(vm.runInContext(running, context), true);
+    vm.runInContext(triggered, context);
+    assert.equal(calls, 1, "external defaults refresh while the page is open");
+    context.page.visible = false;
+    assert.equal(vm.runInContext(running, context), false);
+});
+
 test("automatic docks follow layout per monitor, including empty floating workspaces", () => {
     const live = { id: 41, name: "41" };
     for (const layout of ["floating", "dwindle", "scrolling", "unmanaged"])

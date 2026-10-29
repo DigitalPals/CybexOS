@@ -95,6 +95,25 @@ test("CPU readings format compactly", () => {
     assert.equal(P.formatCpu(42.6), "43%");
 });
 
+test("bounded process ranking matches a full stable sort across limits and ties", () => {
+    const rows = Array.from({ length: 4096 }, (_, index) => ({
+        pid: 4096 - index, cpu: index % 11 === 0 ? null : index * 17 % 101,
+        memory: index * 23 % 89
+    }));
+    const original = rows.slice();
+    for (const mode of ["cpu", "memory"]) {
+        const cpu = row => row.cpu === null ? -1 : row.cpu;
+        const sorted = rows.slice().sort((a, b) => mode === "memory"
+            ? b.memory - a.memory || cpu(b) - cpu(a) || a.pid - b.pid
+            : cpu(b) - cpu(a) || b.memory - a.memory || a.pid - b.pid);
+        for (const limit of [-1, 0.5, 1, 6, 32, 33, 5000, Infinity]) {
+            const max = Math.max(0, Math.floor(Number(limit) || P.DEFAULT_LIMIT));
+            assert.deepEqual(P.rank(rows, mode, limit), sorted.slice(0, max), `${mode}, ${limit}`);
+        }
+    }
+    assert.deepEqual(rows, original, "the complete snapshot remains unchanged for process tracking");
+});
+
 test("End process is offered only where it can work and cannot end the session", () => {
     assert.equal(P.canEnd({ pid: 500, name: "firefox", own: true }, 900), true);
     assert.equal(P.canEnd({ pid: 500, name: "firefox", own: false }, 900), false, "another user's");

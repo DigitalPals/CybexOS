@@ -7,6 +7,13 @@ function pending(request) {
     return ["queued", "running", "unknown"].includes((request || {}).state);
 }
 
+// Status starts a Python CLI, even when there is nothing to update. Keep
+// progress responsive while it is visible or work is pending, and retain the
+// fast cadence until a trial boot has been confirmed.
+function statusPollInterval(appOpen, runActive, state) {
+    return appOpen || runActive || state === "awaiting-login" ? 2000 : 30000;
+}
+
 function validSources(value) {
     const states = ["available", "current", "unpublished", "unavailable", "unreachable", "unknown"];
     return value && typeof value === "object" && ["upstream", "cybexos"].every(name =>
@@ -233,7 +240,7 @@ function downloadSize(bytes) {
 }
 
 if (typeof module !== "undefined") module.exports = {
-    active, pending, validSources, validDeployment, scope, scopeLabel, capabilities,
+    active, pending, statusPollInterval, validSources, validDeployment, scope, scopeLabel, capabilities,
     overviewVisible, indicator, COMPONENTS, component, page, confirmFailed, problem, versionParts,
     summary, noteItems, sizeChange, targetKey, autoPrepare, PREPARATION_LABELS, preparation, elapsed, downloadSize
 };

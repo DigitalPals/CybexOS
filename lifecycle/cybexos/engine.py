@@ -60,13 +60,20 @@ def configuration_paths(source):
     # Repository bookkeeping is not part of the selected Nix configuration.
     # Copying and review identities must apply precisely the same exclusion.
     source = Path(source)
-    return (path for path in source.rglob('*') if '.git' not in path.relative_to(source).parts)
+    def unreadable(error):
+        raise error
+    for directory, folders, files in os.walk(source, onerror=unreadable):
+        # Prune before descending: a personal repository's object database can
+        # dwarf its actual configuration, and identities are checked repeatedly.
+        folders[:] = [name for name in folders if name != '.git']
+        for name in folders + files:
+            if name != '.git':
+                yield Path(directory) / name
 
 
 def copy_config(source, target):
     source = Path(source).resolve()
-    files = list(configuration_paths(source))
-    for path in files:
+    for path in configuration_paths(source):
         if path.is_symlink() or (not path.is_file() and not path.is_dir()):
             raise Failure('Configuration contains a link or special file. Use runtime secret paths and plain local modules.')
         if path.is_file():
@@ -95,8 +102,15 @@ def config_digest(path):
         h.update(len(relative).to_bytes(8, 'big') + relative)
         if p.is_file():
             h.update(b'x' if p.stat().st_mode & 0o111 else b'f')
-            data = p.read_bytes()
-            h.update(len(data).to_bytes(8, 'big') + data)
+            with p.open('rb') as stream:
+                size = os.fstat(stream.fileno()).st_size
+                h.update(size.to_bytes(8, 'big'))
+                consumed = 0
+                while data := stream.read(1024 * 1024):
+                    consumed += len(data)
+                    h.update(data)
+                if consumed != size:
+                    raise Failure('Personal configuration changed while its identity was being checked. Stage again.')
         elif p.is_dir():
             h.update(b'd')
     return h.hexdigest()

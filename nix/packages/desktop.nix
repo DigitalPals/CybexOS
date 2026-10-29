@@ -42,7 +42,16 @@ let
 in stdenv.mkDerivation {
   pname = "cybexos-desktop";
   version = lib.trim (builtins.readFile (source + /VERSION));
-  src = source;
+  src = import ../package-source.nix {
+    inherit lib source;
+    paths = [
+      "desktop/quickshell" "desktop/hypr" "desktop/defaults" "desktop/fastfetch"
+      "desktop/icons/hicolor" "desktop/bin" "assets/brand" "assets/wallpapers"
+      "assets/EDM115-newline2.omp.json" "assets/scripts" "agent-skills/cybexos"
+      "nix/tests/desktop-runtime.py"
+    ] ++ map (name: "desktop/${name}")
+      (builtins.filter (lib.hasSuffix ".desktop") (builtins.attrNames (builtins.readDir (source + /desktop))));
+  };
   nativeBuildInputs = [ makeWrapper gobject-introspection wrapGAppsNoGuiHook ];
   buildInputs = [ python glib networkmanager libsecret gnome-online-accounts
     evolution-data-server libical fwupd glib-networking gsettings-desktop-schemas adwaita-icon-theme ];

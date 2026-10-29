@@ -128,12 +128,39 @@ function rows(previous, current, pageSize) {
 function rank(list, mode, limit) {
     var byMemory = mode === "memory";
     var max = Math.max(0, Math.floor(Number(limit) || DEFAULT_LIMIT));
+    if (max === 0)
+        return [];
     function cpuOf(row) { return row.cpu === null || row.cpu === undefined ? -1 : row.cpu; }
-    return (Array.isArray(list) ? list.slice() : []).sort(function(a, b) {
+    var source = Array.isArray(list) ? list : [];
+    function compare(a, b) {
         var primary = byMemory ? b.memory - a.memory : cpuOf(b) - cpuOf(a);
         var secondary = byMemory ? cpuOf(b) - cpuOf(a) : b.memory - a.memory;
         return primary || secondary || a.pid - b.pid;
-    }).slice(0, max);
+    }
+    // The drawer shows six rows. Keep only those contenders rather than
+    // copying and sorting every process on each two-second sample. Larger
+    // callers retain native sort instead of shifting a large prefix.
+    if (max > 32 || max >= source.length)
+        return source.slice().sort(compare).slice(0, max);
+    var best = [];
+    for (var i = 0; i < source.length; i++) {
+        var row = source[i];
+        if (best.length === max && compare(row, best[max - 1]) >= 0)
+            continue;
+        var low = 0;
+        var high = best.length;
+        while (low < high) {
+            var middle = (low + high) >>> 1;
+            if (compare(row, best[middle]) < 0)
+                high = middle;
+            else
+                low = middle + 1;
+        }
+        best.splice(low, 0, row);
+        if (best.length > max)
+            best.pop();
+    }
+    return best;
 }
 
 function formatCpu(percent) {

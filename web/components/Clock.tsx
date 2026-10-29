@@ -5,7 +5,7 @@ import { CalendarPanel } from './CalendarPanel';
 
 // Align ticks to wall time and resync after sleep or a backgrounded tab.
 // A minute-only display must not cause the desktop and hidden apps to render.
-export function useWallTime(resolution = 60_000, enabled = true) {
+export function useWallTime(resolution = 60_000, enabled = true, nextUpdateAt?: (now: number) => number) {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
     if (!enabled) return;
@@ -15,7 +15,8 @@ export function useWallTime(resolution = 60_000, enabled = true) {
       if (document.hidden) return;
       const timestamp = Date.now();
       setNow(new Date(timestamp));
-      timer = setTimeout(sync, resolution - timestamp % resolution);
+      const delay = nextUpdateAt ? Math.max(1, nextUpdateAt(timestamp) - timestamp) : resolution - timestamp % resolution;
+      timer = setTimeout(sync, delay);
     };
     // Intentional post-hydration clock initialization keeps SSR deterministic.
     sync();
@@ -28,7 +29,7 @@ export function useWallTime(resolution = 60_000, enabled = true) {
       window.removeEventListener('focus', sync);
       window.removeEventListener('pageshow', sync);
     };
-  }, [resolution, enabled]);
+  }, [resolution, enabled, nextUpdateAt]);
   return now;
 }
 
